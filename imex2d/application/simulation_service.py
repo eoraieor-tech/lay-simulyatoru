@@ -140,23 +140,6 @@ class ModelAwareSimulationService(SimulationService):
                                               self.capillary_provider)
             if model.initial_conditions.use_equilibration else None)
 
-        # A7: PVT-də qaz xassələri varsa (istifadəçi "Qaz fazasını
-        # aktivləşdir" qutusunu işarələyib), IMPES/IMPLICIT seçimindən
-        # ASILI OLMAYARAQ üç fazalı mühərrik işlədilir — ikisi qazı
-        # dəstəkləmir. Bax `A7_PLAN.md`: nüvə doğrulanıb, lakin quyu öz
-        # BHP hədəfinə çox yaxınlaşan hallarda simulyasiya vaxtından
-        # əvvəl (yığılmadan) dayana bilər — bu, xəta kimi ATILMIR,
-        # `SimulationResult.converged=False` + aydın mesajla qaytarılır,
-        # son yığılmış nöqtəyə qədər olan nəticələr saxlanılır.
-        if self.pvt_provider is not None and self.pvt_provider.has_gas_phase():
-            from ..simulation.stone_relperm import StoneRelativePermeabilityProvider
-            from ..simulation.implicit.three_phase_engine import (
-                ThreePhaseSimulationEngine)
-            gas_scal = getattr(model, "gas_scal_parameters", None)
-            if gas_scal is not None:
-                self.relperm_provider = StoneRelativePermeabilityProvider.from_corey(
-                    model.scal_parameters, gas_scal)
-            self.engine_factory = ThreePhaseSimulationEngine
         return super().create_engine(model, config)
 
     @staticmethod

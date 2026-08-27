@@ -208,7 +208,7 @@ class ProjectSerializer:
             "wells": [self._well_to_dict(w) for w in model.wells],
             "initial_conditions": _dataclass_to_dict(model.initial_conditions, [
                 "datum_depth", "datum_pressure", "water_saturation",
-                "oil_water_contact", "gas_oil_contact", "equilibration_region",
+                "oil_water_contact", "equilibration_region",
                 "use_equilibration"]),
             "scal": _dataclass_to_dict(model.scal_parameters, [
                 "swc", "sor", "krw_end", "kro_end", "nw", "no"]),
