@@ -215,26 +215,6 @@ class ScalRenderer:
                     textcoords="offset points", color=PALETTE.oil, fontsize=9)
         style_axes(a2, "Fraksional axın + Welge toxunanı", "Sw", "fw")
 
-    def draw_gas(self, ax, scal: CoreyParameters, gas=None):
-        """Qaz-neft (Stone II) əyrilərinin ÖNİZLƏMƏSİ (A7, mərhələ 3).
-
-        `gas=None` — söndürülüb, oxlar boş mesajla göstərilir. Bu
-        qrafik simulyasiyaya təsir etmir, yalnız Stone II əyrilərinin
-        necə görünəcəyini əvvəlcədən göstərir.
-        """
-        ax.clear()
-        if gas is None:
-            style_axes(ax, "Qaz-neft əyriləri söndürülüb", "Sg", "kr")
-            return
-
-        sg = np.linspace(0.0, max(1.0 - scal.swc - gas.sorg, 1e-3), 250)
-        ax.plot(sg, gas.krg(sg, scal.swc), color=PALETTE.accent, lw=2,
-               label="krg")
-        ax.plot(sg, gas.krog(sg, scal.swc, scal.kro_end), color=PALETTE.oil,
-               lw=2, ls="--", label="krog")
-        style_axes(ax, "Qaz-neft (önizləmə, Stone II)", "Sg", "kr")
-        legend(ax)
-
 
 class CrossSectionRenderer:
     """Şaquli kəsik — X (və ya Y) oxu boyunca dərinlik üzrə görüntü.
