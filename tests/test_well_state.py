@@ -11,7 +11,7 @@ from imex2d.application.model_builder import ReservoirModelBuilder
 from imex2d.application.scenarios import (SyntheticGeologicalModelBuilder,
                                           five_spot)
 from imex2d.domain.wells import ControlMode
-from imex2d.simulation.implicit.three_phase_state import ThreePhaseState
+from imex2d.simulation.implicit.state import ReservoirState
 from imex2d.simulation.implicit.well_state import CoupledState, WellUnknowns
 from imex2d.simulation.well_model import PeacemanWellModel
 
@@ -28,8 +28,7 @@ def _setup():
     model = _model()
     connections = PeacemanWellModel().build_connections(model)
     n = model.ncell
-    reservoir = ThreePhaseState(np.full(n, 213.5), np.full(n, 0.35),
-                                np.zeros(n), np.zeros(n, bool))
+    reservoir = ReservoirState(np.full(n, 213.5), np.full(n, 0.35))
     wells = WellUnknowns.from_connections(connections, reservoir.pressure)
     return model, connections, reservoir, wells
 
@@ -94,15 +93,15 @@ def test_copy_is_independent():
 def test_vector_size_is_reservoir_plus_wells():
     model, connections, reservoir, wells = _setup()
     state = CoupledState(reservoir, wells)
-    assert state.size == model.ncell * 3 + wells.count
+    assert state.size == model.ncell * 2 + wells.count
 
 
 def test_wells_are_appended_after_the_reservoir_block():
-    """Rezervuarın 3×3 blok strukturu TOXUNULMAMALIDIR — quyular sona
+    """Rezervuarın 2×2 blok strukturu TOXUNULMAMALIDIR — quyular sona
     əlavə olunur (CPR ön-şərtçisi bu quruluşa əsaslanır)."""
     model, connections, reservoir, wells = _setup()
     state = CoupledState(reservoir, wells)
-    assert state.well_offset == model.ncell * 3
+    assert state.well_offset == model.ncell * 2
     vector = state.to_vector()
     assert np.allclose(vector[:state.well_offset], reservoir.to_vector())
     assert np.allclose(vector[state.well_offset:], wells.bhp)
@@ -119,8 +118,7 @@ def test_global_well_index_points_at_the_right_slot():
 def test_vector_round_trip_preserves_everything():
     model, connections, reservoir, wells = _setup()
     state = CoupledState(reservoir, wells)
-    restored = CoupledState.from_vector(state.to_vector(),
-                                        reservoir.is_saturated, wells.names)
+    restored = CoupledState.from_vector(state.to_vector(), wells.names)
     assert np.allclose(restored.to_vector(), state.to_vector())
     assert np.allclose(restored.reservoir.pressure, reservoir.pressure)
     assert np.allclose(restored.wells.bhp, wells.bhp)
@@ -132,7 +130,7 @@ def test_from_vector_rejects_an_inconsistent_length():
     state = CoupledState(reservoir, wells)
     broken = np.zeros(state.size + 1)
     try:
-        CoupledState.from_vector(broken, reservoir.is_saturated, wells.names)
+        CoupledState.from_vector(broken, wells.names)
     except ValueError:
         return
     raise AssertionError("uyğunsuz uzunluq qəbul edildi")
