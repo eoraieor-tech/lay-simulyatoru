@@ -1,0 +1,65 @@
+"""Quyu tərifi — YALNIZ məlumat. Peaceman hesablaması burada deyil."""
+
+from __future__ import annotations
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List
+
+
+class WellType(Enum):
+    PRODUCER = "PROD"
+    INJECTOR = "INJ"
+
+
+class ControlMode(Enum):
+    BHP = "BHP"
+    RATE = "RATE"
+
+
+class Phase(Enum):
+    WATER = "WATER"
+    OIL = "OIL"
+    GAS = "GAS"
+
+
+@dataclass
+class Perforation:
+    """Bir hüceyrədə açılmış interval."""
+    i: int
+    j: int
+    k: int = 0
+    open: bool = True
+    skin: float = 0.0
+
+
+@dataclass
+class WellControl:
+    mode: ControlMode = ControlMode.BHP
+    target: float = 150.0
+    injected_phase: Phase = Phase.WATER
+
+
+@dataclass
+class Well:
+    name: str
+    well_type: WellType = WellType.PRODUCER
+    control: WellControl = field(default_factory=WellControl)
+    perforations: List[Perforation] = field(default_factory=list)
+    radius: float = 0.1
+    active: bool = True
+
+    @classmethod
+    def vertical(cls, name, i, j, well_type=WellType.PRODUCER,
+                 mode=ControlMode.BHP, target=150.0, radius=0.1,
+                 skin=0.0, k=0) -> "Well":
+        return cls(name=name, well_type=well_type,
+                   control=WellControl(mode, target),
+                   perforations=[Perforation(i, j, k, True, skin)],
+                   radius=radius)
+
+    @property
+    def is_injector(self) -> bool:
+        return self.well_type is WellType.INJECTOR
+
+    def open_perforations(self) -> List[Perforation]:
+        return [p for p in self.perforations if p.open]

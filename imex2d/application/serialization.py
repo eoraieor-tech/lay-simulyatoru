@@ -1,0 +1,393 @@
+"""Layihə faylı (.imx) — saxlama və oxuma.
+
+Format: gzip ilə sıxılmış JSON. Mətn formatı seçilməsinin səbəbi:
+fayl açılıb baxıla bilir, versiyalar arasında fərq izlənə bilir və
+xarici alətlə emal oluna bilir. Sıxılma anlıq şəkillərin (snapshot)
+həcmini idarə edir.
+
+Bu modul YALNIZ domain obyektlərini tanıyır — Qt, matplotlib və
+hesablama mühərriki ilə əlaqəsi yoxdur.
+"""
+
+from __future__ import annotations
+
+import gzip
+import json
+from datetime import datetime
+from typing import Optional
+
+import numpy as np
+
+from ..domain.geological_model import Fault, GeologicalModel, Horizon
+from ..domain.geometry import CellGeometry
+from ..domain.grid import CartesianGrid
+from ..domain.initial import InitialConditions
+from ..domain.properties import FluidProperties, PropertyMap, RockProperties
+from ..domain.pvt import PVTTable
+from ..domain.reservoir_model import ReservoirModel
+from ..domain.scal import CapillaryParameters, CoreyParameters
+from ..domain.structure import FaultReference, HorizonReference, RegionSet
+from ..domain.units import FIELD, METRIC
+from ..domain.wells import (ControlMode, Perforation, Phase, Well, WellControl,
+                            WellType)
+from ..simulation.results import SimulationResult, Snapshot, TimeSeries
+from .config import (LinearSolverConfig, OutputConfig, SimulationConfig,
+                     TimeSteppingConfig)
+from .project import Project, SimulationRun
+
+FORMAT_VERSION = 1
+FILE_EXTENSION = ".imx"
+
+_UNIT_SYSTEMS = {"METRIC": METRIC, "FIELD": FIELD}
+
+
+class ProjectFileError(Exception):
+    """Fayl oxuna bilmədikdə və ya format uyğun gəlmədikdə."""
+
+
+# ══════════════════════════════════════════════════════════ köməkçilər
+
+def _array(values) -> list:
+    return np.asarray(values, dtype=float).ravel().tolist()
+
+
+def _property_map(prop: Optional[PropertyMap]) -> Optional[dict]:
+    if prop is None:
+        return None
+    return {"name": prop.name, "unit": prop.unit, "values": _array(prop.values)}
+
+
+def _property_map_from(data: Optional[dict]) -> Optional[PropertyMap]:
+    if data is None:
+        return None
+    return PropertyMap(data["name"], np.asarray(data["values"], dtype=float),
+                       data.get("unit", ""))
+
+
+def _dataclass_to_dict(obj, fields) -> dict:
+    return {field: getattr(obj, field) for field in fields}
+
+
+# ══════════════════════════════════════════════════════════ serializer
+
+class ProjectSerializer:
+
+    # ---------------------------------------------------------- public
+    def save(self, project: Project, path: str,
+             include_snapshots: bool = True) -> str:
+        payload = {
+            "format": "IMEX-2D project",
+            "version": FORMAT_VERSION,
+            "saved_at": datetime.now().isoformat(timespec="seconds"),
+            "project": self.project_to_dict(project, include_snapshots),
+        }
+        with gzip.open(path, "wt", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+        return path
+
+    def load(self, path: str) -> Project:
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except OSError:
+            # sıxılmamış fayl da qəbul edilir
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            except Exception as exc:
+                raise ProjectFileError(f"Fayl oxuna bilmədi: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise ProjectFileError(f"Fayl formatı pozulub: {exc}") from exc
+
+        version = payload.get("version")
+        if version != FORMAT_VERSION:
+            raise ProjectFileError(
+                f"Fayl versiyası {version}, bu proqram {FORMAT_VERSION} versiyasını oxuyur.")
+        return self.project_from_dict(payload["project"])
+
+    # -------------------------------------------------------- project
+    def project_to_dict(self, project: Project, include_snapshots=True) -> dict:
+        return {
+            "name": project.name,
+            "counter": project._counter,
+            "geological_models": [self.geological_model_to_dict(m)
+                                  for m in project.geological_models.values()],
+            "reservoir_models": [self.reservoir_model_to_dict(m)
+                                 for m in project.reservoir_models.values()],
+            "runs": [self.run_to_dict(r, include_snapshots)
+                     for r in project.runs.values()],
+        }
+
+    def project_from_dict(self, data: dict) -> Project:
+        project = Project(name=data.get("name", "Layihə"))
+        project._counter = int(data.get("counter", 0))
+        for item in data.get("geological_models", []):
+            project.add_geological_model(self.geological_model_from_dict(item))
+        for item in data.get("reservoir_models", []):
+            project.add_reservoir_model(self.reservoir_model_from_dict(item))
+        for item in data.get("runs", []):
+            run = self.run_from_dict(item)
+            project.runs[run.run_id] = run
+        return project
+
+    # ---------------------------------------------------- grid/geometry
+    def _geometry_to_dict(self, geometry: CellGeometry) -> dict:
+        return {
+            "dx": geometry.dx, "dy": geometry.dy, "dz": geometry.dz,
+            "top_depth": geometry.top_depth,
+            "top_depth_map": (None if geometry.top_depth_map is None
+                              else _array(geometry.top_depth_map)),
+        }
+
+    def _geometry_from_dict(self, grid: CartesianGrid, data: dict) -> CellGeometry:
+        surface = data.get("top_depth_map")
+        return CellGeometry(
+            grid=grid, dx=data["dx"], dy=data["dy"], dz=data["dz"],
+            top_depth=data.get("top_depth", 0.0),
+            top_depth_map=None if surface is None else np.asarray(surface, float))
+
+    # -------------------------------------------------- geological model
+    def geological_model_to_dict(self, model: GeologicalModel) -> dict:
+        return {
+            "name": model.name,
+            "grid": {"nx": model.grid.nx, "ny": model.grid.ny, "nz": model.grid.nz},
+            "geometry": self._geometry_to_dict(model.geometry),
+            "property_maps": [_property_map(p) for p in model.property_maps.values()],
+            "regions": {"region_id": _property_map(model.regions.region_id),
+                        "names": {str(k): v for k, v in model.regions.names.items()}},
+            "horizons": [{"name": h.name} for h in model.horizons],
+            "faults": [{"name": f.name, "throw": f.throw, "dip": f.dip}
+                       for f in model.faults],
+            "coordinate_system": model.coordinate_system,
+        }
+
+    def geological_model_from_dict(self, data: dict) -> GeologicalModel:
+        grid = CartesianGrid(**data["grid"])
+        geometry = self._geometry_from_dict(grid, data["geometry"])
+        regions = RegionSet(
+            _property_map_from(data["regions"]["region_id"]),
+            {int(k): v for k, v in data["regions"].get("names", {}).items()})
+        model = GeologicalModel(
+            name=data["name"], grid=grid, geometry=geometry, regions=regions,
+            horizons=[Horizon(h["name"]) for h in data.get("horizons", [])],
+            faults=[Fault(f["name"], None, f.get("throw", 0.0), f.get("dip", 90.0))
+                    for f in data.get("faults", [])],
+            coordinate_system=data.get("coordinate_system", "LOCAL"))
+        for item in data.get("property_maps", []):
+            model.add_property(_property_map_from(item))
+        return model
+
+    # --------------------------------------------------- reservoir model
+    def reservoir_model_to_dict(self, model: ReservoirModel) -> dict:
+        rock = model.rock
+        return {
+            "name": model.name,
+            "grid": {"nx": model.grid.nx, "ny": model.grid.ny, "nz": model.grid.nz},
+            "geometry": self._geometry_to_dict(model.geometry),
+            "rock": {
+                "porosity": _property_map(rock.porosity),
+                "permx": _property_map(rock.permx),
+                "permy": _property_map(rock.permy),
+                "permz": _property_map(rock.permz),
+                "net_to_gross": _property_map(rock.net_to_gross),
+                "compressibility": rock.compressibility,
+            },
+            "fluids": _dataclass_to_dict(model.fluids, [
+                "water_viscosity", "oil_viscosity", "water_fvf", "oil_fvf",
+                "water_compressibility", "oil_compressibility",
+                "water_density", "oil_density"]),
+            "property_maps": [_property_map(p) for p in model.property_maps.values()],
+            "regions": {"region_id": _property_map(model.regions.region_id),
+                        "names": {str(k): v for k, v in model.regions.names.items()}},
+            "faults": [_dataclass_to_dict(f, ["name", "source_id",
+                                              "transmissibility_multiplier", "sealing",
+                                              "axis", "plane_index", "range_a", "range_b"])
+                       for f in model.fault_references],
+            "horizons": [_dataclass_to_dict(h, ["name", "source_id", "role"])
+                         for h in model.horizon_references],
+            "wells": [self._well_to_dict(w) for w in model.wells],
+            "initial_conditions": _dataclass_to_dict(model.initial_conditions, [
+                "datum_depth", "datum_pressure", "water_saturation",
+                "oil_water_contact", "gas_oil_contact", "equilibration_region",
+                "use_equilibration"]),
+            "scal": _dataclass_to_dict(model.scal_parameters, [
+                "swc", "sor", "krw_end", "kro_end", "nw", "no"]),
+            "capillary": _dataclass_to_dict(model.capillary_parameters, [
+                "entry_pressure", "lambda_exponent", "max_pressure"]),
+            "pvt": self._pvt_to_dict(model.pvt_table),
+            "units": model.units.name,
+            "source_geological_model": model.source_geological_model,
+        }
+
+    def reservoir_model_from_dict(self, data: dict) -> ReservoirModel:
+        grid = CartesianGrid(**data["grid"])
+        geometry = self._geometry_from_dict(grid, data["geometry"])
+        rock_data = data["rock"]
+        rock = RockProperties(
+            porosity=_property_map_from(rock_data["porosity"]),
+            permx=_property_map_from(rock_data["permx"]),
+            permy=_property_map_from(rock_data["permy"]),
+            permz=_property_map_from(rock_data.get("permz")),
+            net_to_gross=_property_map_from(rock_data.get("net_to_gross")),
+            compressibility=rock_data.get("compressibility", 4.5e-5))
+        maps = {}
+        for item in data.get("property_maps", []):
+            prop = _property_map_from(item)
+            maps[prop.name] = prop
+        regions = RegionSet(
+            _property_map_from(data["regions"]["region_id"]),
+            {int(k): v for k, v in data["regions"].get("names", {}).items()})
+        return ReservoirModel(
+            name=data["name"], grid=grid, geometry=geometry, rock=rock,
+            fluids=FluidProperties(**data["fluids"]),
+            property_maps=maps, regions=regions,
+            fault_references=[FaultReference(**f) for f in data.get("faults", [])],
+            horizon_references=[HorizonReference(**h) for h in data.get("horizons", [])],
+            wells=[self._well_from_dict(w) for w in data.get("wells", [])],
+            initial_conditions=InitialConditions(**data["initial_conditions"]),
+            scal_parameters=CoreyParameters(**data["scal"]),
+            capillary_parameters=CapillaryParameters(**data.get("capillary", {})),
+            pvt_table=self._pvt_from_dict(data.get("pvt")),
+            units=_UNIT_SYSTEMS.get(data.get("units", "METRIC"), METRIC),
+            source_geological_model=data.get("source_geological_model", ""))
+
+    # ------------------------------------------------------------ wells
+    @staticmethod
+    def _well_to_dict(well: Well) -> dict:
+        return {
+            "name": well.name,
+            "well_type": well.well_type.value,
+            "control": {"mode": well.control.mode.value,
+                        "target": well.control.target,
+                        "injected_phase": well.control.injected_phase.value},
+            "perforations": [{"i": p.i, "j": p.j, "k": p.k,
+                              "open": p.open, "skin": p.skin}
+                             for p in well.perforations],
+            "radius": well.radius,
+            "active": well.active,
+        }
+
+    @staticmethod
+    def _well_from_dict(data: dict) -> Well:
+        control = data["control"]
+        return Well(
+            name=data["name"],
+            well_type=WellType(data["well_type"]),
+            control=WellControl(ControlMode(control["mode"]), control["target"],
+                                Phase(control.get("injected_phase", "WATER"))),
+            perforations=[Perforation(**p) for p in data.get("perforations", [])],
+            radius=data.get("radius", 0.1),
+            active=data.get("active", True))
+
+    # -------------------------------------------------------------- pvt
+    @staticmethod
+    def _pvt_to_dict(table: Optional[PVTTable]) -> Optional[dict]:
+        if table is None:
+            return None
+        return {
+            "pressure": _array(table.pressure),
+            "oil_fvf": _array(table.oil_fvf),
+            "oil_viscosity": _array(table.oil_viscosity),
+            "solution_gor": _array(table.solution_gor),
+            "water_fvf": _array(table.water_fvf),
+            "water_viscosity": _array(table.water_viscosity),
+            "bubble_point": table.bubble_point,
+            "rock_compressibility": table.rock_compressibility,
+            "source": table.source,
+        }
+
+    @staticmethod
+    def _pvt_from_dict(data: Optional[dict]) -> Optional[PVTTable]:
+        if data is None:
+            return None
+        return PVTTable(**data)
+
+    # -------------------------------------------------------------- run
+    def run_to_dict(self, run: SimulationRun, include_snapshots=True) -> dict:
+        return {
+            "run_id": run.run_id,
+            "reservoir_model_name": run.reservoir_model_name,
+            "created_at": run.created_at,
+            "status": run.status,
+            "config": self._config_to_dict(run.config),
+            "result": (None if run.result is None
+                       else self._result_to_dict(run.result, include_snapshots)),
+        }
+
+    def run_from_dict(self, data: dict) -> SimulationRun:
+        run = SimulationRun(
+            run_id=data["run_id"],
+            reservoir_model_name=data["reservoir_model_name"],
+            config=self._config_from_dict(data["config"]),
+            created_at=data.get("created_at", ""),
+            status=data.get("status", "FINISHED"))
+        if data.get("result") is not None:
+            run.result = self._result_from_dict(data["result"])
+        return run
+
+    @staticmethod
+    def _config_to_dict(config: SimulationConfig) -> dict:
+        return {
+            "end_time": config.end_time,
+            "time_stepping": _dataclass_to_dict(config.time_stepping, [
+                "initial_dt", "max_dt", "min_dt", "cfl_factor",
+                "growth_factor", "max_steps"]),
+            "linear_solver": _dataclass_to_dict(config.linear_solver, [
+                "tolerance", "max_iterations", "preconditioner_refresh_steps",
+                "ilu_drop_tolerance", "ilu_fill_factor", "fallback_to_direct"]),
+            "output": _dataclass_to_dict(config.output, [
+                "snapshot_count", "record_well_rates", "progress_every_n_steps"]),
+        }
+
+    @staticmethod
+    def _config_from_dict(data: dict) -> SimulationConfig:
+        return SimulationConfig(
+            end_time=data["end_time"],
+            time_stepping=TimeSteppingConfig(**data["time_stepping"]),
+            linear_solver=LinearSolverConfig(**data["linear_solver"]),
+            output=OutputConfig(**data["output"]))
+
+    @staticmethod
+    def _result_to_dict(result: SimulationResult, include_snapshots=True) -> dict:
+        series = result.series
+        return {
+            "model_name": result.model_name,
+            "grid_shape": list(result.grid_shape),
+            "ooip": result.ooip,
+            "steps": result.steps,
+            "converged": result.converged,
+            "message": result.message,
+            "series": {name: list(getattr(series, name)) for name in (
+                "time", "oil_rate", "water_rate", "water_injection_rate",
+                "cumulative_oil", "cumulative_water", "water_cut",
+                "average_pressure", "recovery_factor")},
+            "well_oil_rate": {k: list(v) for k, v in result.well_oil_rate.items()},
+            "well_water_rate": {k: list(v) for k, v in result.well_water_rate.items()},
+            "snapshots": ([{"time": s.time,
+                            "pressure": _array(s.pressure),
+                            "water_saturation": _array(s.water_saturation)}
+                           for s in result.snapshots] if include_snapshots else []),
+        }
+
+    @staticmethod
+    def _result_from_dict(data: dict) -> SimulationResult:
+        series = TimeSeries()
+        for name, values in data["series"].items():
+            setattr(series, name, list(values))
+        shape = tuple(data["grid_shape"])
+        result = SimulationResult(
+            model_name=data.get("model_name", ""),
+            grid_shape=shape,
+            series=series,
+            ooip=data.get("ooip", 0.0),
+            steps=data.get("steps", 0),
+            converged=data.get("converged", True),
+            message=data.get("message", ""))
+        result.well_oil_rate = {k: list(v) for k, v in data.get("well_oil_rate", {}).items()}
+        result.well_water_rate = {k: list(v) for k, v in data.get("well_water_rate", {}).items()}
+        result.snapshots = [
+            Snapshot(time=s["time"],
+                     pressure=np.asarray(s["pressure"], float).reshape(shape),
+                     water_saturation=np.asarray(s["water_saturation"], float).reshape(shape))
+            for s in data.get("snapshots", [])]
+        return result
