@@ -68,6 +68,20 @@ def _dataclass_to_dict(obj, fields) -> dict:
     return {field: getattr(obj, field) for field in fields}
 
 
+def _known_fields(cls, data: dict) -> dict:
+    """Yalnız dataclass-ın TANIDIĞI açarları buraxır.
+
+    NİYƏ: köhnə layihə fayllarında artıq mövcud olmayan sahələr ola
+    bilər (məs. v67-nin `gas_oil_contact` açarı). Süzgəc olmasa
+    `Cls(**data)` `TypeError: unexpected keyword argument` atır və
+    istifadəçinin köhnə `.imx` faylı ÜMUMİYYƏTLƏ açılmır. Naməlum
+    açarı sükutla atmaq geriyə uyğunluğu saxlayır.
+    """
+    import dataclasses
+    names = {f.name for f in dataclasses.fields(cls)}
+    return {key: value for key, value in data.items() if key in names}
+
+
 # ══════════════════════════════════════════════════════════ serializer
 
 class ProjectSerializer:
@@ -244,7 +258,9 @@ class ProjectSerializer:
             fault_references=[FaultReference(**f) for f in data.get("faults", [])],
             horizon_references=[HorizonReference(**h) for h in data.get("horizons", [])],
             wells=[self._well_from_dict(w) for w in data.get("wells", [])],
-            initial_conditions=InitialConditions(**data["initial_conditions"]),
+            initial_conditions=InitialConditions(
+                **_known_fields(InitialConditions,
+                                data["initial_conditions"])),
             scal_parameters=CoreyParameters(**data["scal"]),
             capillary_parameters=CapillaryParameters(**data.get("capillary", {})),
             pvt_table=self._pvt_from_dict(data.get("pvt")),

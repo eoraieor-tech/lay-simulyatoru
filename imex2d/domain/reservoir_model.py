@@ -200,13 +200,14 @@ class ReservoirModel:
                     f"lay təzyiqindən ({reference:.0f} bar) aşağı deyil — "
                     f"quyu hasilat verməyəcək.", well.name,
                     f"BHP-ni {reference:.0f} bardan aşağı sal")
-            elif (self.pvt_table is not None and self.pvt_table.bubble_point > 0
-                  and not self.pvt_table.has_gas_phase):
-                # A7-dən sonra: PVT-də qaz xassələri VARSA (has_gas_phase),
-                # bu vəziyyət artıq REAL modelləşdirilir (ThreePhaseSimulationEngine)
-                # — xəbərdarlıq YALNIZ qaz modelləşdirilməyəndə (iki fazalı
-                # rejimdə) doğrudur. Əvvəllər bu şərt yox idi, A7-dən sonra
-                # da köhnə mətn göstərilirdi — düzəldi.
+            elif (self.pvt_table is not None
+                  and self.pvt_table.bubble_point > 0):
+                # v69: üç fazalı mühərrik silindi — qaz ARTIQ HEÇ VAXT
+                # modelləşdirilmir. A7 dövründə burada `has_gas_phase`
+                # şərti var idi (qaz real modelləşdiriləndə xəbərdarlıq
+                # yersiz olurdu); indi o şərt xəbərdarlığı SƏHVƏN
+                # susdururdu — qaz sütunlu PVT cədvəli (Eclipse importu,
+                # köhnə .imx) yüklənəndə istifadəçi heç nə görmürdü.
                 bubble = self.pvt_table.bubble_point
                 if target < bubble:
                     report.warning(
