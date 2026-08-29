@@ -41,13 +41,6 @@ class ReservoirModel:
     wells: List[Well] = field(default_factory=list)
     initial_conditions: InitialConditions = field(default_factory=InitialConditions)
     scal_parameters: CoreyParameters = field(default_factory=CoreyParameters)
-    gas_scal_parameters: Optional[object] = None
-    """`GasCoreyParameters` — A7, YALNIZ qaz fazası aktiv olanda oxunur.
-
-    Tip annotasiyası `object`-dir (domain qatının `scal_tables`
-    modulundan asılı olmaması üçün eyni səbəb — bax `scal_tables`
-    şərhi aşağıda).
-    """
     capillary_parameters: CapillaryParameters = field(default_factory=CapillaryParameters)
     pvt_table: Optional[PVTTable] = None
     scal_tables: Optional[object] = None
@@ -202,12 +195,8 @@ class ReservoirModel:
                     f"BHP-ni {reference:.0f} bardan aşağı sal")
             elif (self.pvt_table is not None
                   and self.pvt_table.bubble_point > 0):
-                # v69: üç fazalı mühərrik silindi — qaz ARTIQ HEÇ VAXT
-                # modelləşdirilmir. A7 dövründə burada `has_gas_phase`
-                # şərti var idi (qaz real modelləşdiriləndə xəbərdarlıq
-                # yersiz olurdu); indi o şərt xəbərdarlığı SƏHVƏN
-                # susdururdu — qaz sütunlu PVT cədvəli (Eclipse importu,
-                # köhnə .imx) yüklənəndə istifadəçi heç nə görmürdü.
+                # v69: qaz modelləşdirilmir, ona görə doyma təzyiqindən
+                # aşağı BHP həmişə xəbərdarlıq doğurur.
                 bubble = self.pvt_table.bubble_point
                 if target < bubble:
                     report.warning(

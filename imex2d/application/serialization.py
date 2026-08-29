@@ -68,6 +68,18 @@ def _dataclass_to_dict(obj, fields) -> dict:
     return {field: getattr(obj, field) for field in fields}
 
 
+def _phase_or_water(value) -> Phase:
+    """Naməlum faza adını (məs. v67-nin "GAS"-ı) suya endirir.
+
+    Qaz fazası v69-da silindi, ona görə `Phase("GAS")` artıq
+    `ValueError` atardı və köhnə layihə faylı açılmazdı.
+    """
+    try:
+        return Phase(value) if value else Phase.WATER
+    except ValueError:
+        return Phase.WATER
+
+
 def _known_fields(cls, data: dict) -> dict:
     """Yalnız dataclass-ın TANIDIĞI açarları buraxır.
 
@@ -290,7 +302,7 @@ class ProjectSerializer:
             name=data["name"],
             well_type=WellType(data["well_type"]),
             control=WellControl(ControlMode(control["mode"]), control["target"],
-                                Phase(control.get("injected_phase", "WATER"))),
+                                _phase_or_water(control.get("injected_phase"))),
             perforations=[Perforation(**p) for p in data.get("perforations", [])],
             radius=data.get("radius", 0.1),
             active=data.get("active", True))

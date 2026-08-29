@@ -37,9 +37,6 @@ class BlackOilPVTProvider(IPVTProvider):
                   ("oil_viscosity", table.oil_viscosity),
                   ("water_viscosity", table.water_viscosity),
                   ("solution_gor", table.solution_gor)]
-        if table.has_gas_phase:
-            columns += [("gas_fvf", table.gas_fvf),
-                       ("gas_viscosity", table.gas_viscosity)]
         self._slopes = {name: np.diff(values) / np.diff(pressure)
                         for name, values in columns}
 
@@ -71,23 +68,6 @@ class BlackOilPVTProvider(IPVTProvider):
     def bubble_point(self, region: Optional[np.ndarray] = None) -> float:
         return self.table.bubble_point
 
-    def has_gas_phase(self, region: Optional[np.ndarray] = None) -> bool:
-        return self.table.has_gas_phase
-
-    def gas_fvf(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
-        if not self.table.has_gas_phase:
-            raise NotImplementedError(
-                "Bu PVT cədvəlində qaz xassələri yoxdur "
-                "(build_pvt_table(..., include_gas=True) işlədin).")
-        return self._interp(self.table.gas_fvf, pressure)
-
-    def gas_viscosity(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
-        if not self.table.has_gas_phase:
-            raise NotImplementedError(
-                "Bu PVT cədvəlində qaz xassələri yoxdur "
-                "(build_pvt_table(..., include_gas=True) işlədin).")
-        return self._interp(self.table.gas_viscosity, pressure)
-
     # ─────────────────────────────────────────── analitik törəmələr
     def _slope(self, name: str, pressure) -> np.ndarray:
         """Parçalı xətti cədvəlin dəqiq törəməsi.
@@ -114,12 +94,6 @@ class BlackOilPVTProvider(IPVTProvider):
 
     def water_viscosity_derivative(self, pressure, region=None) -> np.ndarray:
         return self._slope("water_viscosity", pressure)
-
-    def gas_fvf_derivative(self, pressure, region=None) -> np.ndarray:
-        return self._slope("gas_fvf", pressure)
-
-    def gas_viscosity_derivative(self, pressure, region=None) -> np.ndarray:
-        return self._slope("gas_viscosity", pressure)
 
     def solution_gor_derivative(self, pressure, region=None) -> np.ndarray:
         """dRs_sat/dp — Jakobianda doymuş hüceyrələr üçün lazımdır (A7/6c).

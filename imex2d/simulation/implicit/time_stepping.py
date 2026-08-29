@@ -54,8 +54,8 @@ class AdaptiveTimeStepConfig:
     (məs. quyunun öz BHP sərhədinə çox yaxın olması) "asılıb" qala
     bilər, halbuki qlobal nəticə fiziki cəhətdən etibarlıdır.
 
-    A7-nin üç fazalı mühərriki bunu aktivləşdirir — bax
-    `three_phase_engine.py`.
+    Defolt olaraq söndürülüb; qəbul edən mühərrik bunu özü
+    aktivləşdirir.
     """
     max_growth_per_step: float = 2.0
 

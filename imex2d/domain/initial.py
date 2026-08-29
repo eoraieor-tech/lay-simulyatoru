@@ -18,6 +18,5 @@ class InitialConditions:
     datum_pressure: float = 250.0
     water_saturation: float = 0.20
     oil_water_contact: Optional[float] = None
-    gas_oil_contact: Optional[float] = None
     equilibration_region: int = 1
     use_equilibration: bool = False

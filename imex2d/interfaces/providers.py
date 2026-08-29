@@ -41,26 +41,8 @@ class IPVTProvider(ABC):
         """ct(p, Sw), 1/bar."""
 
     def bubble_point(self, region: Optional[np.ndarray] = None):
-        """Pb — qaz fazası əlavə olunanda tələb olunacaq."""
-        raise NotImplementedError
-
-    def has_gas_phase(self, region: Optional[np.ndarray] = None) -> bool:
-        """A7: cədvəldə Bg/μg varsa üç fazalı hesablama aktivləşir.
-
-        Defolt `False` — köhnə iki fazalı provider-lər (məs. sabit
-        dəyərli `StaticFluidPropertiesProvider`) heç nə etmədən bu
-        interfeysi tətbiq edir.
-        """
-        return False
-
-    def gas_fvf(self, pressure: np.ndarray,
-               region: Optional[np.ndarray] = None) -> np.ndarray:
-        """Bg(p) — YALNIZ `has_gas_phase()` True olanda çağırılır."""
-        raise NotImplementedError
-
-    def gas_viscosity(self, pressure: np.ndarray,
-                      region: Optional[np.ndarray] = None) -> np.ndarray:
-        """μg(p), cP — YALNIZ `has_gas_phase()` True olanda çağırılır."""
+        """Pb — doyma təzyiqi. Qaz modelləşdirilmir, lakin diaqnostika
+        (quyudibi təzyiqin Pb-dən aşağı düşməsi) bunu işlədir."""
         raise NotImplementedError
 
     def solution_gor(self, pressure: np.ndarray,
@@ -98,32 +80,6 @@ class IRelativePermeabilityProvider(ABC):
                                        region: Optional[int] = None) -> float:
         """max |dfw/dSw| — CFL limiti üçün."""
 
-    def has_gas_phase(self, region: Optional[int] = None) -> bool:
-        """A7: üç fazalı (Stone) provider `True` qaytarır.
-
-        Defolt `False` — mövcud iki fazalı provider-lər (Corey
-        adapteri, B4 cədvəl provider-i) heç nə etmədən bu interfeysi
-        tətbiq edir.
-        """
-        return False
-
-    def krg(self, sg: np.ndarray, region: Optional[np.ndarray] = None) -> np.ndarray:
-        """krg(Sg) — YALNIZ `has_gas_phase()` True olanda çağırılır."""
-        raise NotImplementedError
-
-    def kro_three_phase(self, sw: np.ndarray, sg: np.ndarray,
-                        region: Optional[np.ndarray] = None) -> np.ndarray:
-        """kro(Sw, Sg) — Stone modeli, hər iki doyumluluqdan asılı.
-
-        İki fazalı `kro(sw)`-dan fərqli olaraq üç fazalı sistemdə neft
-        həm suyun, həm qazın "sıxışdırmasına" məruz qalır.
-        """
-        raise NotImplementedError
-
-    def gas_saturation_limits(self, region: Optional[int] = None) -> tuple:
-        """(Sgc, 1 − Swc − Sorg) — qazın hərəkətli doyumluluq intervalı."""
-        raise NotImplementedError
-
 
 class ICapillaryPressureProvider(ABC):
     """Kapilyar təzyiq. HƏLƏ İMPLEMENTASİYA EDİLMƏYİB."""
@@ -138,24 +94,11 @@ class ICapillaryPressureProvider(ABC):
 
 
 class InitialState:
-    """Initialization provider-in nəticəsi.
+    """Initialization provider-in nəticəsi — iki fazalı (So = 1 − Sw)."""
 
-    `gas_saturation` YALNIZ üç fazalı modeldə (A7) verilir. `None`
-    defoltu iki fazalı davranışı saxlayır — köhnə provider-lər və
-    onları çağıran bütün kod (mühərriklər, testlər) toxunulmadan
-    işləyir; `So = 1 − Sw` fərziyyəsi qorunur.
-    """
-
-    def __init__(self, pressure: np.ndarray, water_saturation: np.ndarray,
-                 gas_saturation: Optional[np.ndarray] = None):
+    def __init__(self, pressure: np.ndarray, water_saturation: np.ndarray):
         self.pressure = pressure
         self.water_saturation = water_saturation
-        self.gas_saturation = (None if gas_saturation is None
-                               else np.asarray(gas_saturation, float))
-
-    @property
-    def has_gas(self) -> bool:
-        return self.gas_saturation is not None
 
 
 class IInitializationProvider(ABC):

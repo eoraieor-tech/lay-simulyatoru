@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 
@@ -18,13 +18,6 @@ class TimeSeries:
     water_cut: List[float] = field(default_factory=list)
     average_pressure: List[float] = field(default_factory=list)
     recovery_factor: List[float] = field(default_factory=list)
-    gas_rate: List[float] = field(default_factory=list)
-    """Səth qaz debiti (sərbəst+həll olmuş) — YALNIZ A7 üç fazalı
-    mühərrikdə doldurulur. İki fazalı nəticələrdə boş qalır (geriyə
-    uyğunluq — mövcud qrafiklər bu sahəni oxumur)."""
-    cumulative_gas: List[float] = field(default_factory=list)
-    gas_oil_ratio: List[float] = field(default_factory=list)
-    """GOR = qaz_debiti / neft_debiti, sm³/sm³."""
 
 
 @dataclass
@@ -32,8 +25,6 @@ class Snapshot:
     time: float
     pressure: np.ndarray
     water_saturation: np.ndarray
-    gas_saturation: Optional[np.ndarray] = None
-    """A7 üç fazalı mühərrikdə doldurulur, iki fazalıda `None` qalır."""
 
 
 @dataclass
@@ -45,9 +36,6 @@ class SimulationResult:
     well_oil_rate: Dict[str, List[float]] = field(default_factory=dict)
     well_water_rate: Dict[str, List[float]] = field(default_factory=dict)
     ooip: float = 0.0
-    ogip: float = 0.0
-    """Original Gas In Place — YALNIZ üç fazalı mühərrikdə hesablanır."""
-    well_gas_rate: Dict[str, List[float]] = field(default_factory=dict)
     steps: int = 0
     converged: bool = True
     message: str = ""
