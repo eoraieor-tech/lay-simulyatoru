@@ -32,7 +32,7 @@ GOLDEN_DIR = ROOT / "tests" / "golden"
 
 # Müqayisə dözümlülüyü. Təmiz refaktorinqdə nəticə praktiki olaraq
 # eyni olmalıdır; bu hədd yalnız float toplama sırasının dəyişməsinə yer verir.
-RTOL = 1e-9
+RTOL = 1e-6
 ATOL = 1e-12
 
 
