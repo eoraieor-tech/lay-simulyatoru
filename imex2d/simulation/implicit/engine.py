@@ -76,13 +76,27 @@ class FullyImplicitEngine(ISimulationEngine):
     # ─────────────────────────────────────────────────────── qurulma
     @staticmethod
     def _time_config(config: SimulationConfig) -> AdaptiveTimeStepConfig:
-        """Ümumi konfiqurasiyadan adaptiv addım parametrləri."""
+        """Ümumi konfiqurasiyadan adaptiv addım parametrləri.
+
+        `max_dt` istifadəçinin sorduğu kimi hörmət edilir. ƏVVƏLLƏR
+        (TAPILAN SƏHV) bura süni minimum (30 gün) tətbiq olunurdu —
+        istifadəçi 0.5 və ya 2 gün desə də, mühərrik səssizcə 30 günə
+        keçirdi. Bu, `max_dt`-nin nəticəyə təsirini yoxlayan sınaqları
+        çaşdırırdı, çünki 30-dan kiçik HƏR DƏYƏR eyni davranışı verirdi.
+
+        `soft_failure_*` — son-çarə təhlükəsizlik toru: minimal Δt-də
+        DƏ tam yığılmasa, YALNIZ HƏM CNV, HƏM DƏ qlobal kütlə balansı
+        kifayət qədər kiçikdirsə, addım tam dayanmaq əvəzinə
+        XƏBƏRDARLIQLA qəbul edilir (bax `AdaptiveTimeStepConfig`).
+        """
         stepping = config.time_stepping
         return AdaptiveTimeStepConfig(
             initial_dt=stepping.initial_dt,
             min_dt=stepping.min_dt,
-            max_dt=max(stepping.max_dt, 30.0),
-            growth_factor=stepping.growth_factor + 0.35)
+            max_dt=stepping.max_dt,
+            growth_factor=stepping.growth_factor + 0.35,
+            soft_failure_cnv_tolerance=1e-2,
+            soft_failure_mb_tolerance=1e-4)
 
     def _initial_state(self) -> ReservoirState:
         ic = self.model.initial_conditions
@@ -185,11 +199,16 @@ class FullyImplicitEngine(ISimulationEngine):
         result.steps = steps
         if not result.message:
             statistics = self.time_stepper.summary()
+            soft = statistics.get("yumşaq qəbul", 0)
+            soft_note = (f" DİQQƏT: {soft} addım tam yığılmadan "
+                        f"XƏBƏRDARLIQLA qəbul edildi — log-a baxın."
+                        if soft else "")
             result.message = (
                 f"Tamamlandı: {steps} addım, t = {time:.1f} gün "
                 f"(orta Δt = {statistics.get('orta Δt', 0.0):.1f} gün, "
                 f"orta {statistics.get('orta iterasiya', 0.0):.1f} Nyuton "
-                f"iterasiyası, {statistics.get('təkrar', 0)} təkrar).")
+                f"iterasiyası, {statistics.get('təkrar', 0)} təkrar)."
+                f"{soft_note}")
         LOG.info("%s  RF = %.2f %%", result.message,
                  result.final_recovery_factor)
         return result

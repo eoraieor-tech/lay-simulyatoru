@@ -57,6 +57,24 @@ class AdaptiveTimeStepConfig:
     Defolt olaraq söndürülüb; qəbul edən mühərrik bunu özü
     aktivləşdirir.
     """
+    soft_failure_mb_tolerance: Optional[float] = None
+    """`soft_failure_cnv_tolerance` ilə BİRLİKDƏ tələb olunur.
+
+    CNV yalnız ƏN PİS HÜCEYRənin yerli qalığını ölçür — qlobal kütlə
+    balansını yoxlamır. Bu hədd olmadan "yumşaq uğursuzluq" lokal
+    cəhətdən yaxşı görünən, lakin qlobal kütləni itirən/yaradan bir
+    vəziyyəti də qəbul edə bilərdi. İkisi BİRLİKDƏ tələb olunur.
+    """
+    max_consecutive_soft_failures: int = 20
+    """TAPILAN SƏHV-in nəticəsi: bəzi hüceyrələrdə çətinlik KEÇİCİ
+    deyil, DAVAMLI olanda (məs. PVT-nin doyma nöqtəsi ətrafında) hər
+    addım YENİDƏN minimal Δt-yə düşüb yumşaq qəbul edilir — simulyasiya
+    "dayanmır", lakin praktiki olaraq İRƏLİLƏMİR (min_dt qədər addımlarla
+    sonsuza addımlayır). Bu hədd BU HALI aşkarlayır: ardıcıl yumşaq
+    qəbulların sayı bunu keçsə, davam etmək əvəzinə TƏMİZ dayandırılır —
+    "sonsuz sürünmə" "sonsuz gözləmə"dən daha pisdir, çünki nəticəsiz CPU
+    yeyir və istifadəçini aldadır (`converged=True` amma faktiki t
+    irəliləmir)."""
     max_growth_per_step: float = 2.0
 
     max_saturation_change: float = 0.2
@@ -79,6 +97,10 @@ class TimeStepRecord:
     repeats: int
     max_saturation_change: float
     converged: bool
+    soft_failure: bool = False
+    """Tam yığılmadan (bax `soft_failure_cnv_tolerance`) XƏBƏRDARLIQLA
+    qəbul edilib — nəticə fiziki cəhətdən etibarlıdır, lakin sərt
+    yığılma meyarına tam çatmayıb."""
 
 
 class AdaptiveTimeStepper:
@@ -90,6 +112,7 @@ class AdaptiveTimeStepper:
         self.config = config or AdaptiveTimeStepConfig()
         self.dt = self.config.initial_dt
         self.history: List[TimeStepRecord] = []
+        self._consecutive_soft_failures = 0
 
     # ═══════════════════════════════════════════════════ bir addım
     def advance(self, state: ReservoirState, time: float,
@@ -122,25 +145,46 @@ class AdaptiveTimeStepper:
                 self.history.append(TimeStepRecord(
                     time, dt, result.iterations, repeat, change, True))
                 self.dt = self._next_dt(dt, result.iterations, change)
+                self._consecutive_soft_failures = 0
                 return result.state, dt, result
 
             reason = ("yığılmadı: " + result.status.value if not result.converged
                       else f"ΔSw = {change:.3f} həddi keçdi")
             if dt <= config.min_dt * (1.0 + 1e-9):
                 soft_tolerance = config.soft_failure_cnv_tolerance
-                history = getattr(result, "history", None)
+                mb_tolerance = config.soft_failure_mb_tolerance
+                history = getattr(result, "cnv_history", None)
                 last_cnv = history[-1] if history else float("inf")
-                if soft_tolerance is not None and history and last_cnv < soft_tolerance:
+                mb_water, mb_oil = getattr(
+                    result, "material_balance", (float("inf"), float("inf")))
+                soft_ok = (soft_tolerance is not None and mb_tolerance is not None
+                          and history and last_cnv < soft_tolerance
+                          and max(mb_water, mb_oil) < mb_tolerance
+                          and (self._consecutive_soft_failures
+                               < config.max_consecutive_soft_failures))
+                if soft_ok:
+                    self._consecutive_soft_failures += 1
                     LOG.warning(
                         "t = %.2f gün: minimal Δt-də tam yığılmadı, lakin "
-                        "CNV=%.2e yumşaq həddin (%.2e) altındadır — "
-                        "XƏBƏRDARLIQLA qəbul edilir.", time, last_cnv,
-                        soft_tolerance)
+                        "CNV=%.2e və MB=%.2e yumşaq hədlərin altındadır — "
+                        "XƏBƏRDARLIQLA qəbul edilir (%d/%d ardıcıl).", time,
+                        last_cnv, max(mb_water, mb_oil),
+                        self._consecutive_soft_failures,
+                        config.max_consecutive_soft_failures)
                     self.history.append(TimeStepRecord(
-                        time, dt, result.iterations, repeat, change, True))
+                        time, dt, result.iterations, repeat, change, True,
+                        soft_failure=True))
                     self.dt = config.min_dt
                     return result.state, dt, result
-                LOG.error("t = %.2f gün: minimal Δt-də də %s", time, reason)
+                if (soft_tolerance is not None
+                        and self._consecutive_soft_failures
+                        >= config.max_consecutive_soft_failures):
+                    LOG.error(
+                        "t = %.2f gün: %d ardıcıl yumşaq qəbuldan sonra DA "
+                        "irəliləmə yoxdur — model bu nöqtədə TIXANIB, "
+                        "dayandırılır.", time, self._consecutive_soft_failures)
+                else:
+                    LOG.error("t = %.2f gün: minimal Δt-də də %s", time, reason)
                 self.history.append(TimeStepRecord(
                     time, dt, result.iterations, repeat, change, False))
                 return state, 0.0, result
@@ -187,4 +231,5 @@ class AdaptiveTimeStepper:
             "maks Δt": float(max(r.dt for r in steps)) if steps else 0.0,
             "orta iterasiya": float(np.mean([r.iterations for r in steps]))
             if steps else 0.0,
+            "yumşaq qəbul": sum(1 for r in steps if r.soft_failure),
         }

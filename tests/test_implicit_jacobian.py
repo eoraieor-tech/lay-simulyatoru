@@ -146,11 +146,16 @@ def test_pvt_derivatives_are_zero_without_a_provider():
 
 
 def test_pvt_derivatives_have_expected_signs_below_bubble_point():
+    """TAPILAN SƏHV düzəldildikdən sonra (bax `test_pvt.py`-də
+    `test_oil_fvf_is_smooth_across_the_bubble_point`) Bo/μo Pb-nin HƏR
+    İKİ tərəfində EYNİ (doymamış maye) düsturu ilə hamar davam edir —
+    ona görə işarələr artıq Pb-dən aşağıda da YUXARIDAKI ilə eynidir
+    (əvvəllər tərs idi: Bo artırdı, μo azalırdı)."""
     provider = DerivativeProvider(
         CoreyRelativePermeabilityAdapter(CoreyParameters()), pvt=_pvt())
     pressure = np.array([150.0, 200.0])
-    assert np.all(provider.dbo_dp(pressure) > 0)      # Bo Pb-yə qədər artır
-    assert np.all(provider.dmuo_dp(pressure) < 0)     # μo azalır
+    assert np.all(provider.dbo_dp(pressure) < 0)      # Bo təzyiqlə azalır
+    assert np.all(provider.dmuo_dp(pressure) > 0)     # μo təzyiqlə artır
 
 
 # ── Jakobianın strukturu ──────────────────────────────────────────────

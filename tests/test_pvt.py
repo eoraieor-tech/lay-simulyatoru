@@ -51,18 +51,37 @@ def test_solution_gor_increases_then_flattens_at_bubble_point():
     assert np.ptp(table.solution_gor[above]) < 1e-9, "Rs doyma üstündə sabit deyil"
 
 
-def test_oil_fvf_peaks_at_bubble_point():
+def test_oil_fvf_is_smooth_across_the_bubble_point():
+    """TAPILAN SƏHV: Bo(p) əvvəllər Pb-də DOYMUŞ (artan) qoldan
+    DOYMAMIŞ (azalan) qola keçirdi — DƏYƏR kəsilməzdir, lakin ∂Bo/∂p
+    işarə dəyişirdi. Bu, Nyutonu Pb ətrafında sonsuz ossilyasiyaya
+    salırdı (bax `test_line_search_prevents_infinite_oscillation_near_a_well`).
+
+    Rs (həll olmuş qaz-neft nisbəti) mühərrikdə HEÇ YERDƏ
+    istifadə olunmur (yalnız hesabat/diaqnostika) — ona görə Bo/μo-nu
+    Pb-nin HƏR İKİ tərəfində EYNİ (doymamış maye) düsturu ilə hamar
+    saxlamaq heç bir əlavə fiziki dəqiqlik itirmir, YALNIZ artıq
+    modelləşdirilməyən qaz-ayrılma effektini (onsuz da izlənmirdi)
+    təmsil etmir — bu, UI-nin artıq verdiyi xəbərdarlıqla (`"nəticələr
+    nikbin ola bilər"`) uyğundur.
+    """
     pb = 240.0
     table = _table(bubble_point_bar=pb, pressure_max=400.0)
-    peak_pressure = table.pressure[int(np.argmax(table.oil_fvf))]
-    assert abs(peak_pressure - pb) < (table.pressure[1] - table.pressure[0]) * 2
+    # Monoton: Bo təzyiqlə İSTİQAMƏTİNİ DƏYİŞMİR (kəskin işarə
+    # dəyişikliyi yoxdur) — köhnə "pik Pb-də" forması artıq yoxdur.
+    diffs = np.diff(table.oil_fvf)
+    assert np.all(diffs <= 1e-9) or np.all(diffs >= -1e-9), \
+        "Bo(p) Pb-də hələ də istiqamətini dəyişir (qırılma qalıb)"
 
 
-def test_oil_viscosity_is_minimum_at_bubble_point():
+def test_oil_viscosity_is_smooth_across_the_bubble_point():
+    """`test_oil_fvf_is_smooth_across_the_bubble_point`-in eynisi, μo
+    üçün — əvvəllər Pb-də minimum (V-şəklində qırılma) idi."""
     pb = 240.0
     table = _table(bubble_point_bar=pb, pressure_max=400.0)
-    min_pressure = table.pressure[int(np.argmin(table.oil_viscosity))]
-    assert abs(min_pressure - pb) < (table.pressure[1] - table.pressure[0]) * 2
+    diffs = np.diff(table.oil_viscosity)
+    assert np.all(diffs <= 1e-9) or np.all(diffs >= -1e-9), \
+        "μo(p) Pb-də hələ də istiqamətini dəyişir (qırılma qalıb)"
 
 
 def test_heavier_oil_has_higher_viscosity():

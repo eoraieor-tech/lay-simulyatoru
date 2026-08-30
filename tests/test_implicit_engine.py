@@ -8,7 +8,8 @@ from imex2d.application.config import (OutputConfig, SimulationConfig,
 from imex2d.domain.wells import ControlMode, WellControl
 from imex2d.interfaces.services import ISimulationEngine
 from imex2d.simulation.implicit.engine import FullyImplicitEngine
-from imex2d.simulation.implicit.newton import NewtonConfig
+from imex2d.simulation.implicit.newton import (NewtonConfig, NewtonResult,
+                                               NewtonStatus)
 from imex2d.simulation.implicit.state import ReservoirState
 from imex2d.simulation.implicit.time_stepping import (AdaptiveTimeStepConfig,
                                                       AdaptiveTimeStepper)
@@ -113,6 +114,61 @@ def test_summary_reports_statistics():
     assert summary["addım"] == 5
     assert summary["orta Δt"] > 0
     assert summary["orta iterasiya"] > 0
+
+
+class _AlmostConvergedSolver:
+    """Saxta Nyuton — CNV/MB HƏMİŞƏ sərt meyarın bir az üstündə, lakin
+    yumşaq hədlərin altındadır. `AdaptiveTimeStepper`-in yumşaq-qəbul
+    məntiqini fiziki modeldən asılı olmadan, dəqiq idarə edilən
+    dəyərlərlə sınamaq üçün."""
+
+    def __init__(self, cnv: float, mb: float):
+        self._cnv = cnv
+        self._mb = mb
+
+    def solve(self, previous, dt):
+        return NewtonResult(NewtonStatus.MAX_ITERATIONS, previous.copy(), 12,
+                            [self._cnv], (self._mb, self._mb))
+
+
+def test_soft_failure_accepts_a_step_within_relaxed_tolerances():
+    """TAPILAN SƏHV: `soft_failure_cnv_tolerance` heç vaxt işləmirdi —
+    kod `getattr(result, "history", None)` axtarırdı, halbuki
+    `NewtonResult`-un sahəsi `cnv_history`-dir. Səssizcə `None`
+    qaytarılırdı, şərt HƏMİŞƏ False olurdu, funksiya heç vaxt işə
+    düşmürdü (istifadəçi tərəfindən aktivləşdirilsə belə)."""
+    solver = _AlmostConvergedSolver(cnv=1e-4, mb=1e-6)
+    config = AdaptiveTimeStepConfig(initial_dt=1.0, min_dt=1.0,
+                                    soft_failure_cnv_tolerance=1e-2,
+                                    soft_failure_mb_tolerance=1e-4)
+    stepper = AdaptiveTimeStepper(solver, config)
+    state = ReservoirState(np.array([200.0]), np.array([0.3]))
+
+    _, dt, result = stepper.advance(state, 0.0, 10.0)
+    assert dt > 0, "Yumşaq qəbul işləmədi (reqressiya)"
+    assert stepper.history[-1].soft_failure
+
+
+def test_stall_detection_stops_after_repeated_soft_failures():
+    """Yumşaq qəbul EYNI nöqtədə ardıcıl-ardıcıl işə düşəndə (davamlı,
+    keçici olmayan çətinlik) simulyasiya sonsuz kiçik addımlarla
+    SÜRÜNMƏK əvəzinə təmiz dayanmalıdır — "sonsuz sürünmə" nəticəsiz
+    CPU yeyən, istifadəçini aldadan (t irəliləmir) ən pis haldır."""
+    solver = _AlmostConvergedSolver(cnv=1e-4, mb=1e-6)
+    config = AdaptiveTimeStepConfig(initial_dt=1.0, min_dt=1.0,
+                                    soft_failure_cnv_tolerance=1e-2,
+                                    soft_failure_mb_tolerance=1e-4,
+                                    max_consecutive_soft_failures=5)
+    stepper = AdaptiveTimeStepper(solver, config)
+    state = ReservoirState(np.array([200.0]), np.array([0.3]))
+
+    for _ in range(5):
+        state, dt, result = stepper.advance(state, 0.0, 10.0)
+        assert dt > 0
+
+    _, dt, result = stepper.advance(state, 0.0, 10.0)
+    assert dt <= 0.0, "Hədddən sonra da qəbul edilməyə davam edir"
+    assert not result.converged
 
 
 # ── mühərrik ──────────────────────────────────────────────────────────

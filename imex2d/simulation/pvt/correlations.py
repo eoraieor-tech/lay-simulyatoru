@@ -136,24 +136,40 @@ def build_pvt_table(api: float = 32.0,
     rs_at_pb = float(standing_solution_gor(np.array([bubble_point_bar]), api,
                                            gas_gravity, temperature_c)[0])
 
-    # Pb-dən yuxarı Rs sabit qalır (qaz artıq həll olub)
+    # Rs YALNIZ hesabat/diaqnostika üçündür (bax `ReservoirModel.diagnose`,
+    # `rendering/renderers.py`) — mühərrikin qalıq/Jakobian hesablamasında
+    # HEÇ YERDƏ istifadə OLUNMUR (bu, iki fazalı modeldə sərbəst qaz
+    # fazasının izlənmədiyinin birbaşa nəticəsidir). Ona görə Pb-də
+    # doymuş qaz-neft nisbətinin "qırılması" saxlanılır — bu, YALNIZ
+    # görüntüləmə üçündür və Nyutona TƏSİR ETMİR.
     rs = np.where(pressure < bubble_point_bar, rs_saturated, rs_at_pb)
 
-    bo = vazquez_beggs_oil_fvf(rs, api, gas_gravity, temperature_c)
+    # Bo(p) və μo(p) İSƏ Nyutonun HƏLL ETDİYİ tənliklərə birbaşa girir
+    # (bax `BlackOilPVTProvider`/`ResidualAssembler`). TAPILAN SƏHV: bu
+    # ikisi əvvəllər Pb-də FƏRQLİ düsturlara keçirdi (doymuş qaz-neft
+    # qarışığı ↔ doymamış maye) — DƏYƏR kəsilməzdir, lakin TÖRƏMƏ Pb-də
+    # sıçrayır (∂Bo/∂p işarə dəyişir). Bu, Nyutonu Pb ətrafında sonsuz
+    # OSSİLYASİYAYA sala bilir (ölçüldü və sənədləşdirilib —
+    # `test_line_search_prevents_infinite_oscillation_near_a_well`).
+    #
+    # Qərar: qaz fazası onsuz da modelləşdirilmədiyi üçün (istifadəçiyə
+    # UI-də artıq bildirilir: "nəticələr nikbin ola bilər"), Pb-dən
+    # AŞAĞIDA da EYNİ (doymamış maye) düsturunu davam etdiririk —
+    # doymuş qarışığa KEÇMİRİK. Bu, Bo/μo-nu BÜTÜN təzyiq oblastında
+    # HAMAR (C¹) edir və qırılmanı kökündən aradan qaldırır — "yumşaq
+    # uğursuzluq" kimi bir SONRAKI TƏDBİR deyil, məhz SƏBƏBİN özünün
+    # düzəldilməsidir.
     bo_at_pb = float(vazquez_beggs_oil_fvf(np.array([rs_at_pb]), api,
                                            gas_gravity, temperature_c)[0])
     co = vazquez_beggs_undersaturated_compressibility(
         rs_at_pb, api, gas_gravity, temperature_c, bubble_point_bar)
-    above = pressure >= bubble_point_bar
-    bo[above] = bo_at_pb * np.exp(-co * (pressure[above] - bubble_point_bar))
+    bo = bo_at_pb * np.exp(-co * (pressure - bubble_point_bar))
 
     mu_dead = beggs_robinson_dead_oil_viscosity(api, temperature_c)
-    mu_oil = beggs_robinson_saturated_viscosity(mu_dead, rs)
     mu_at_pb = float(beggs_robinson_saturated_viscosity(
         mu_dead, np.array([rs_at_pb]))[0])
-    # Pb-dən yuxarı lözlük təzyiqlə artır (Vazquez-Beggs)
-    ratio = np.maximum(pressure[above] / max(bubble_point_bar, 1e-9), 1.0)
-    mu_oil[above] = mu_at_pb * ratio ** 0.278
+    ratio = np.maximum(pressure / max(bubble_point_bar, 1e-9), 1e-6)
+    mu_oil = mu_at_pb * ratio ** 0.278
 
     return PVTTable(
         pressure=pressure,

@@ -47,7 +47,12 @@ class NewtonStatus(Enum):
 
 @dataclass
 class NewtonConfig:
-    max_iterations: int = 12
+    max_iterations: int = 20
+    """Geri-izləmə əlavə olunandan sonra ölçüldü: çətin addımlar CNV-ni
+    MONOTON (dövr etmədən) azaldır, lakin tolerantlığa çatmaq üçün
+    12-dən çox — tipik 14-18 — iterasiya tələb edə bilir. 20 bu
+    marjını verir, xərci isə əhəmiyyətsizdir (asan addımlar 1-4
+    iterasiyada, bu hədəd ora heç toxunmur)."""
     cnv_tolerance: float = 1e-3
     material_balance_tolerance: float = 1e-7
     max_pressure_change: float = 50.0        # bar, bir iterasiyada
@@ -222,11 +227,60 @@ class NewtonSolver:
                                     fluid, rates, linear_iterations)
 
             pressure_limit, saturation_limit = config.limits_at(iteration)
-            state = state.updated(
+            trial = state.updated(
                 delta, self.sw_min, self.sw_max,
                 max_pressure_change=pressure_limit,
                 max_saturation_change=saturation_limit)
+            state = self._line_search(state, trial, delta, previous, dt,
+                                      previous_fluid, residual_vector,
+                                      pressure_limit, saturation_limit)
 
         return NewtonResult(NewtonStatus.MAX_ITERATIONS, state,
                             config.max_iterations, history, material_balance,
                             fluid, rates, linear_iterations)
+
+    # ═══════════════════════════════════════════════════ geri-izləmə
+    def _scaled_norm(self, residual_vector: np.ndarray,
+                     state: ReservoirState, dt: float) -> float:
+        """Geri-izləmənin qəbul meyarı — CNV ilə eyni miqyaslı RMS qalıq."""
+        pore_volume = self.R.pore_volume_at(state.pressure)
+        scale = np.maximum(pore_volume / dt, 1e-30)
+        water = residual_vector[WATER::2] / scale
+        oil = residual_vector[OIL::2] / scale
+        return float(np.sqrt(np.mean(water ** 2 + oil ** 2)))
+
+    def _line_search(self, state: ReservoirState, trial: ReservoirState,
+                     delta: np.ndarray, previous: ReservoirState, dt: float,
+                     previous_fluid, residual_vector: np.ndarray,
+                     pressure_limit: float, saturation_limit: float
+                     ) -> ReservoirState:
+        """Kəsmə (Appleyard) tək başına kifayət etmir.
+
+        O, addımın YALNIZ UZUNLUĞUNU məhdudlaşdırır — istiqamətin
+        FAYDALI olub-olmadığını (qalığı azaldıb-azaltmadığını) yoxlamır.
+        Quyu hüceyrəsi ətrafında axının yuxarı axın (upstream) istiqaməti
+        iterasiyadan-iterasiyaya dəyişəndə bu, Nyutonu bir neçə vəziyyət
+        arasında SONSUZ DÖVRƏYƏ sala bilir (ölçüldü: CNV heç vaxt
+        yığılmadan eyni 3 qiymət arasında rəqs edir).
+
+        `CoupledNewtonSolver`-də tapılan və doğrulanmış həllin eynisi:
+        addımı qalığı AZALDANA qədər yarıya böl (bax onun sənədləşməsi).
+        """
+        trial_residual, _, _ = self.R.residual(trial, previous, dt,
+                                               previous_fluid)
+        current_norm = self._scaled_norm(residual_vector, state, dt)
+        trial_norm = self._scaled_norm(trial_residual, trial, dt)
+
+        scale = 1.0
+        for _ in range(10):
+            if trial_norm <= current_norm * 0.999 or scale < 1.0 / 512.0:
+                break
+            scale *= 0.5
+            trial = state.updated(
+                delta * scale, self.sw_min, self.sw_max,
+                max_pressure_change=pressure_limit,
+                max_saturation_change=saturation_limit)
+            trial_residual, _, _ = self.R.residual(trial, previous, dt,
+                                                   previous_fluid)
+            trial_norm = self._scaled_norm(trial_residual, trial, dt)
+        return trial

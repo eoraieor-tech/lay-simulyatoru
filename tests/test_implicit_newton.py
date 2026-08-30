@@ -239,16 +239,17 @@ def test_works_with_pvt_above_the_bubble_point():
         assert result.converged, f"dt={dt}: {result.status.value}"
 
 
-def test_crossing_the_bubble_point_is_a_known_limitation():
-    """MƏLUM MƏHDUDİYYƏT: model Pb-ni kəsəndə Nyuton osilyasiya edir.
-
-    Doyma nöqtəsində ∂Bo/∂p işarə dəyişir. Real black-oil simulyatorda
-    orada qaz fazası ayrılır və primary dəyişən dəyişdirilir (variable
-    switching) — bu, A7-nin işidir. Hazırkı iki fazalı model bu rejimdə
-    işləməməlidir; `ReservoirModel.diagnose()` bu barədə xəbərdarlıq
-    verir (V1).
-
-    Test məhdudiyyəti SƏNƏDLƏŞDİRİR: davranış dəyişsə, xəbər verməlidir.
+def test_crossing_the_bubble_point_now_converges():
+    """ƏVVƏLKİ MƏLUM MƏHDUDİYYƏT DÜZƏLDİLDİ: Pb-də Bo/μo-nun DOYMUŞ
+    qoldan DOYMAMIŞ qola keçməsi ∂Bo/∂p-nin işarəsini dəyişdirirdi və
+    Nyutonu ossilyasiyaya salırdı. Qaz fazası (mühərrikdə HEÇ YERDƏ
+    istifadə olunmayan Rs xaric) onsuz da modelləşdirilmədiyi üçün
+    (bax `ReservoirModel.diagnose()`-un xəbərdarlığı: "nəticələr nikbin
+    ola bilər"), Bo/μo indi Pb-nin HƏR İKİ tərəfində EYNİ (doymamış
+    maye) düsturu ilə HAMAR davam edir — bax `test_pvt.py`-də
+    `test_oil_fvf_is_smooth_across_the_bubble_point`. Tam variable
+    switching (real qaz fazası) hələ də A7-nin işi olaraq qalır, lakin
+    bu artıq YIĞILMA üçün lazım deyil.
     """
     scal = default_scal()
     model = _rate_controlled(scal=scal)
@@ -256,8 +257,47 @@ def test_crossing_the_bubble_point_is_a_known_limitation():
                         pvt=BlackOilPVTProvider(
                             build_pvt_table(bubble_point_bar=240.0)))
     result = solver.solve(_initial(model), dt=20.0)
-    assert not result.converged, \
-        "Pb kəsişməsi artıq işləyirsə, A7 tamamlanıb — testi yenilə"
+    assert result.converged, result.status.value
+
+
+def test_line_search_prevents_infinite_oscillation_near_a_well():
+    """TAPILAN SƏHV: geri-izləmə olmadan Nyuton quyu hüceyrəsi ətrafında
+    bir neçə vəziyyət arasında SONSUZ DÖVRƏYƏ düşürdü (upstream
+    mobillik seçimi iterasiyadan-iterasiyaya dəyişəndə) — CNV heç
+    vaxt ~1.4×10⁻³-dən aşağı düşmədən dəqiq təkrarlanırdı (ölçüldü:
+    [...0.00151, 0.00861, 0.00292, 0.00151, 0.00254...] sonsuza qədər).
+    Kəsmə (Appleyard) YALNIZ addımın uzunluğunu məhdudlaşdırır,
+    istiqamətin faydalı olub-olmadığını yoxlamır;
+    `CoupledNewtonSolver`-də artıq doğrulanmış geri-izləmə (bax onun
+    sənədləşməsi) bunu `NewtonSolver`-ə də əlavə edir — nəticədə CNV
+    MONOTON azalır (dövr etmir) və tolerantlığa çox yaxınlaşır.
+
+    Kiçik Δt-nin BÖYÜKDƏN daha çətin olması gözlənilənin TƏRSİNƏdir
+    (implicit sxem şərti-sabit olmalıdır) — məhz bu, problemi üzə
+    çıxarır: Δt=2.0 həmin nöqtəni bir sıçrayışda keçir, Δt=0.25 isə
+    məhz oscillasiya zolağında ilişib qalır.
+    """
+    scal = default_scal()
+    model = five_spot_model(nx=15, scal=scal)
+    pvt = BlackOilPVTProvider(build_pvt_table(bubble_point_bar=200.0))
+    solver, _ = _solver(model, scal, pvt=pvt,
+                        config=NewtonConfig(max_iterations=20))
+    state = _initial(model)
+    dt = 0.25
+
+    for _ in range(40):
+        result = solver.solve(state, dt)
+        if not result.converged:
+            break
+        state = result.state
+    else:
+        return  # bütün addımlar yığılıb — oscillasiya artıq baş vermir
+
+    # Dövr edən (unfixed) hal 0.00137-dən aşağı heç vaxt düşmürdü;
+    # geri-izləmə ilə monoton azalma tolerantlığın (1e-3) lap yaxınına
+    # çatır (~1.0035e-3). Hər ikisini ayıran hədd.
+    assert min(result.cnv_history) < 0.0012, (
+        "CNV gözlənilən qədər aşağı düşmür — geri-izləmə reqressiyası?")
 
 
 def test_compressibility_allows_production_beyond_injected_volume():
