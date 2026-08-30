@@ -1,5 +1,20 @@
 @echo off
 cd /d "%~dp0"
-call ..\venv\Scripts\activate
+
+if exist "..\venv\Scripts\activate.bat" (
+    call "..\venv\Scripts\activate.bat"
+) else if exist "venv\Scripts\activate.bat" (
+    call "venv\Scripts\activate.bat"
+) else (
+    echo.
+    echo XETA: venv tapilmadi.
+    echo Gozlenilen yerler:
+    echo   %~dp0..\venv
+    echo   %~dp0venv
+    echo.
+    pause
+    exit /b 1
+)
+
 python app.py
-pause
+if errorlevel 1 pause
