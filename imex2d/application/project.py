@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from ..domain.geological_model import GeologicalModel
+from ..domain.geology import GeologicalWell
 from ..domain.reservoir_model import ReservoirModel
 from .config import SimulationConfig
 
@@ -34,7 +35,18 @@ class Project:
     geological_models: Dict[str, GeologicalModel] = field(default_factory=dict)
     reservoir_models: Dict[str, ReservoirModel] = field(default_factory=dict)
     runs: Dict[str, SimulationRun] = field(default_factory=dict)
+    # Geologiya bölməsinin (2 ·) redaktə olunan quyu cədvəli — CSV-nin
+    # əvəzidir. Cədvəl boşdursa mənbə avtomatik "synthetic" sayılır (bax
+    # `geology_source`), ona görə ayrıca saxlanmır.
+    geology_wells: List[GeologicalWell] = field(default_factory=list)
+    geology_method: str = "Kriging (adi)"
+    geology_params: Dict[str, float] = field(default_factory=dict)
+    geology_defaults: Dict[str, float] = field(default_factory=lambda: {"sw": 0.30})
     _counter: int = 0
+
+    @property
+    def geology_source(self) -> str:
+        return "wells" if self.geology_wells else "synthetic"
 
     def add_geological_model(self, model: GeologicalModel) -> GeologicalModel:
         self.geological_models[model.name] = model

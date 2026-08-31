@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 
 class WellType(Enum):
@@ -46,6 +46,12 @@ class Well:
     perforations: List[Perforation] = field(default_factory=list)
     radius: float = 0.1
     active: bool = True
+    # Metrlə perforasiya intervalı — YALNIZ geologiya cədvəli ilə əlaqəli
+    # quyular üçün doldurulur. `perforations` (i,j,k) bunlardan HESABLANIR
+    # və mühərrikin gördüyü yeganə şeydir; bu iki sahə yalnız metr girişinin
+    # grid ölçüsü dəyişəndə itməməsi üçün saxlanılır (bax `depth_to_k`).
+    perf_top: Optional[float] = None
+    perf_bottom: Optional[float] = None
 
     @classmethod
     def vertical(cls, name, i, j, well_type=WellType.PRODUCER,

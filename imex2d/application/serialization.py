@@ -19,6 +19,7 @@ from typing import Optional
 import numpy as np
 
 from ..domain.geological_model import Fault, GeologicalModel, Horizon
+from ..domain.geology import GeologicalWell
 from ..domain.geometry import CellGeometry
 from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
@@ -35,8 +36,14 @@ from .config import (LinearSolverConfig, OutputConfig, SimulationConfig,
                      TimeSteppingConfig)
 from .project import Project, SimulationRun
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 FILE_EXTENSION = ".imx"
+
+# v1 → v2: geologiya quyu cədvəli (`Project.geology_wells` və
+# `Well.perf_top`/`perf_bottom`) əlavə olundu. Hər ikisi köhnə fayllarda
+# yoxdursa boş/None ilə doldurulur (aşağıda `.get()`), ona görə v1 faylı
+# dəyişikliksiz açılır — versiya yalnız GƏLƏCƏK (bu proqramın anlamadığı)
+# faylları rədd etmək üçün yoxlanılır, dəqiq bərabərliklə yox.
 
 _UNIT_SYSTEMS = {"METRIC": METRIC, "FIELD": FIELD}
 
@@ -126,7 +133,7 @@ class ProjectSerializer:
             raise ProjectFileError(f"Fayl formatı pozulub: {exc}") from exc
 
         version = payload.get("version")
-        if version != FORMAT_VERSION:
+        if not isinstance(version, int) or version > FORMAT_VERSION:
             raise ProjectFileError(
                 f"Fayl versiyası {version}, bu proqram {FORMAT_VERSION} versiyasını oxuyur.")
         return self.project_from_dict(payload["project"])
@@ -142,6 +149,10 @@ class ProjectSerializer:
                                  for m in project.reservoir_models.values()],
             "runs": [self.run_to_dict(r, include_snapshots)
                      for r in project.runs.values()],
+            "geology_wells": [w.to_dict() for w in project.geology_wells],
+            "geology_method": project.geology_method,
+            "geology_params": dict(project.geology_params),
+            "geology_defaults": dict(project.geology_defaults),
         }
 
     def project_from_dict(self, data: dict) -> Project:
@@ -154,7 +165,42 @@ class ProjectSerializer:
         for item in data.get("runs", []):
             run = self.run_from_dict(item)
             project.runs[run.run_id] = run
+
+        if "geology_wells" in data:
+            project.geology_wells = [GeologicalWell.from_dict(item)
+                                     for item in data["geology_wells"]]
+        else:
+            project.geology_wells = self._migrate_geology_wells(project)
+        project.geology_method = data.get("geology_method", project.geology_method)
+        project.geology_params = data.get("geology_params", project.geology_params)
+        project.geology_defaults = data.get("geology_defaults", project.geology_defaults)
         return project
+
+    @staticmethod
+    def _migrate_geology_wells(project: Project) -> list:
+        """v1 (`geology_wells` yoxdur) → v2 miqrasiyası.
+
+        Köhnə layihələrdə heç vaxt geologiya quyu cədvəli olmayıb (yalnız
+        CSV və ya sintetik generator). Son rezervuar modelinin quyuları
+        varsa, onların i/j indeksindən TƏXMİNİ X/Y hesablanıb geologiya
+        cədvəlinə bir dəfə köçürülür ki, istifadəçi boş cədvəllə
+        qarşılaşmasın. Petrofiziki sahələr `None` qalır (bunlar əvvəllər
+        heç vaxt quyu-səviyyəsində saxlanılmayıb, yalnız grid xəritəsi kimi).
+        """
+        if not project.reservoir_models:
+            return []
+        model = list(project.reservoir_models.values())[-1]
+        dx, dy = model.geometry.dx, model.geometry.dy
+        wells = []
+        for well in model.wells:
+            if not well.perforations:
+                continue
+            p = well.perforations[0]
+            wells.append(GeologicalWell(
+                name=well.name, in_model=True,
+                x=(p.i + 0.5) * dx, y=(p.j + 0.5) * dy,
+                note="köhnə layihədən miqrasiya edilib"))
+        return wells
 
     # ---------------------------------------------------- grid/geometry
     def _geometry_to_dict(self, geometry: CellGeometry) -> dict:
@@ -293,6 +339,8 @@ class ProjectSerializer:
                              for p in well.perforations],
             "radius": well.radius,
             "active": well.active,
+            "perf_top": well.perf_top,
+            "perf_bottom": well.perf_bottom,
         }
 
     @staticmethod
@@ -305,7 +353,9 @@ class ProjectSerializer:
                                 _phase_or_water(control.get("injected_phase"))),
             perforations=[Perforation(**p) for p in data.get("perforations", [])],
             radius=data.get("radius", 0.1),
-            active=data.get("active", True))
+            active=data.get("active", True),
+            perf_top=data.get("perf_top"),
+            perf_bottom=data.get("perf_bottom"))
 
     # -------------------------------------------------------------- pvt
     @staticmethod
