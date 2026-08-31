@@ -9,7 +9,8 @@ metodlarındadır.
 from __future__ import annotations
 from typing import List, Optional
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
                              QFileDialog, QFormLayout, QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QMessageBox,
@@ -23,8 +24,8 @@ import os
 from ..application.scenarios import WELL_PATTERNS
 from ..geology.interpolation import (INTERPOLATORS, InverseDistance,
                                      NearestNeighbour, OrdinaryKriging)
-from ..geology.well_data_io import (WellDataFormatError, read_well_csv,
-                                    write_example_csv)
+from ..domain.geology import GeologicalWell, validate_wells
+from ..domain.geometry import depth_to_k, xy_to_ij
 from ..domain.structure import FaultReference
 from ..io.fault_io import (FaultFormatError, read_eclipse_faults,
                           read_faults_csv)
@@ -36,6 +37,7 @@ from ..domain.pvt import PVTTable
 from ..domain.scal import (CapillaryParameters, CoreyParameters)
 from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation
 from ..rendering.theme import PALETTE
+from .geology_map import GeologyMapWidget
 
 
 def _spin(value, lo, hi, decimals=2, step=1.0, suffix=""):
@@ -267,47 +269,83 @@ class GridGeometryPanel(QWidget):
         return CartesianGrid(self.nx.value(), self.ny.value(), self.nz.value())
 
 
-class WellDataPanel(QWidget):
-    """Quyu məlumatı (CSV) → interpolyasiya parametrləri.
+class GeologyPanel(QWidget):
+    """Quyu cədvəli (2 ·) → interpolyasiya parametrləri.
 
-    Panel yalnız məlumatı yükləyir və interpolyator qurur; grid xassələrini
-    hesablamaq application qatının işidir (WellBasedGeologicalModelBuilder).
+    CSV yükləməsinin əvəzidir: istifadəçi quyuları birbaşa cədvəldə
+    redaktə edir. Panel heç bir hesablama aparmır — yalnız
+    `list[GeologicalWell]` istehsal/qəbul edir; interpolyasiyanı
+    `İnterpolyasiya et` düyməsi ilə application qatı işə salır
+    (`MainWindow._interpolate_geology`).
+
+    Cədvəl dəyişəndə interpolyasiya AVTOMATİK işə düşmür (böyük gridə
+    yavaşdır) — yalnız `changed` siqnalı ilə "nəticə köhnəlib" bildirilir.
     """
 
     changed = pyqtSignal()
+    interpolate_requested = pyqtSignal()
+
+    COLUMNS = ["Ad", "Modeldə", "X, m", "Y, m", "(i, j)", "Lay üstü, m",
+              "Lay altı, m", "φ", "k, mD", "Sw", "Qeyd"]
+    COL_NAME = 0
+    COL_IN_MODEL = 1
+    COL_X = 2
+    COL_Y = 3
+    COL_IJ = 4
+    COL_TOP = 5
+    COL_BOTTOM = 6
+    COL_PORO = 7
+    COL_PERM = 8
+    COL_SW = 9
+    COL_NOTE = 10
+    _NUMERIC_COLUMNS = {COL_X: "x", COL_Y: "y", COL_TOP: "top",
+                        COL_BOTTOM: "bottom", COL_PORO: "porosity",
+                        COL_PERM: "permeability", COL_SW: "water_saturation"}
 
     def __init__(self):
         super().__init__()
-        self.dataset = None
+        self._geometry = None          # CellGeometry, grid qurulanda gəlir
+        self._stale = False
+        self._well_counter = 0
         layout = QVBoxLayout(self)
 
-        self.enabled = QCheckBox("Quyu məlumatından geoloji model qur")
-        self.enabled.setEnabled(False)
-        self.enabled.stateChanged.connect(self.changed)
-        layout.addWidget(self.enabled)
+        toolbar = QHBoxLayout()
+        self.add_button = QPushButton("Quyu əlavə et")
+        self.duplicate_button = QPushButton("Dublikat")
+        self.delete_button = QPushButton("Sil")
+        self.centre_button = QPushButton("Grid mərkəzinə at")
+        for button in (self.add_button, self.duplicate_button,
+                      self.delete_button, self.centre_button):
+            toolbar.addWidget(button)
+        self.add_button.clicked.connect(self.add_row)
+        self.duplicate_button.clicked.connect(self._duplicate_selected)
+        self.delete_button.clicked.connect(self._delete_selected)
+        self.centre_button.clicked.connect(self._centre_selected)
+        layout.addLayout(toolbar)
 
-        buttons = QHBoxLayout()
-        self.load_button = QPushButton("CSV yüklə…")
-        self.example_button = QPushButton("Nümunə fayl yarat…")
-        self.load_button.clicked.connect(self.load_csv)
-        self.example_button.clicked.connect(self.create_example)
-        buttons.addWidget(self.load_button)
-        buttons.addWidget(self.example_button)
-        layout.addLayout(buttons)
+        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setMinimumHeight(160)
+        self.table.itemChanged.connect(self._on_item_changed)
+        layout.addWidget(self.table)
 
-        self.summary = QLabel("Məlumat yüklənməyib.")
-        self.summary.setWordWrap(True)
-        self.summary.setStyleSheet(
-            f"background:{PALETTE.panel_alt};border:1px solid {PALETTE.line};"
-            f"border-radius:3px;padding:6px;font-size:11px;color:{PALETTE.text}")
-        layout.addWidget(self.summary)
+        self.map_widget = GeologyMapWidget()
+        layout.addWidget(self.map_widget)
+
+        self.validation_view = QTextEdit()
+        self.validation_view.setReadOnly(True)
+        self.validation_view.setMaximumHeight(90)
+        self.validation_view.setStyleSheet("font-family:monospace;font-size:11px")
+        layout.addWidget(self.validation_view)
 
         form = QFormLayout()
         self.method = QComboBox()
         self.method.addItems(list(INTERPOLATORS.keys()))
         self.method.setCurrentText("Kriging (adi)")
         self.method.currentIndexChanged.connect(self._on_method_changed)
-        self.method.currentIndexChanged.connect(self.changed)
+        self.method.currentIndexChanged.connect(self._on_table_edited)
         form.addRow("Üsul", self.method)
 
         self.power = _spin(2.0, 0.5, 8.0, 2, 0.5)
@@ -322,21 +360,31 @@ class WellDataPanel(QWidget):
                 ("Nugget c₀", self.nugget)]
         for label, widget in rows:
             form.addRow(label, widget)
-            widget.valueChanged.connect(self.changed)
+            widget.valueChanged.connect(self._on_table_edited)
         layout.addLayout(form)
+
+        action_row = QHBoxLayout()
+        self.interpolate_button = QPushButton("İnterpolyasiya et")
+        self.interpolate_button.clicked.connect(self.interpolate_requested)
+        action_row.addWidget(self.interpolate_button)
+        self.stale_label = QLabel("")
+        self.stale_label.setStyleSheet("color:#e0a020;font-size:11px")
+        action_row.addWidget(self.stale_label, 1)
+        layout.addLayout(action_row)
 
         self.report = QTextEdit()
         self.report.setReadOnly(True)
-        self.report.setMinimumHeight(150)
+        self.report.setMinimumHeight(110)
         self.report.setStyleSheet("font-family:monospace;font-size:11px")
         layout.addWidget(self.report, 1)
 
-        note = QLabel("Sütunlar: well, x, y [, k, depth], PORO, PERMX [, NTG …]. "
-                      "Söndürülübsə sintetik model işlədilir.")
+        note = QLabel("Boş xana = məlumat yoxdur (sıfır DEYİL). Cədvəl boşdursa "
+                      "sintetik model işlədilir.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         layout.addWidget(note)
         self._on_method_changed()
+        self._refresh_map_and_validation()
 
     # ------------------------------------------------------------ slots
     def _on_method_changed(self):
@@ -346,47 +394,57 @@ class WellDataPanel(QWidget):
         for widget in (self.range_, self.sill, self.nugget):
             widget.setEnabled("Kriging" in method)
 
-    def load_csv(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Quyu məlumatı", "", "CSV (*.csv *.txt);;Bütün fayllar (*)")
-        if not path:
-            return
-        try:
-            self.dataset = read_well_csv(path)
-        except WellDataFormatError as error:
-            QMessageBox.warning(self, "Fayl oxunmadı", str(error))
-            return
-        except Exception as error:
-            QMessageBox.critical(self, "Fayl oxunmadı", f"Gözlənilməz xəta: {error}")
-            return
-        info = self.dataset.summary()
-        self.summary.setText(
-            f"{os.path.basename(path)}\n"
-            f"{info['quyu']} quyu · {info['nöqtə']} nöqtə · "
-            f"{'təbəqəli' if info['təbəqəli'] else 'təbəqəsiz'}\n"
-            f"Xassələr: {info['xassə']}\n{info['sahə']}")
-        self.enabled.setEnabled(True)
-        self.enabled.setChecked(True)
+    def _on_item_changed(self, item: QTableWidgetItem):
+        if item.column() == self.COL_IN_MODEL:
+            pass   # checkbox dəyişikliyi də buradan gəlir, əlavə iş lazım deyil
+        self._on_table_edited()
+
+    def _on_table_edited(self):
+        self._recompute_indices()
+        self._refresh_map_and_validation()
+        self.mark_stale()
         self.changed.emit()
 
-    def create_example(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Nümunə fayl", "quyular.csv", "CSV (*.csv)")
-        if not path:
+    def _selected_row(self) -> Optional[int]:
+        row = self.table.currentRow()
+        return row if row >= 0 else None
+
+    def _duplicate_selected(self):
+        row = self._selected_row()
+        if row is None:
             return
-        try:
-            write_example_csv(path, nz=3)
-        except Exception as error:
-            QMessageBox.critical(self, "Yazılmadı", str(error))
+        well = self._well_from_row(row)
+        if well is None:
             return
-        QMessageBox.information(
-            self, "Nümunə hazırdır",
-            f"{os.path.basename(path)} yaradıldı.\n\n"
-            "Onu 'CSV yüklə…' ilə açıb formatı görə bilərsən.")
+        well.name = self._unique_name(well.name + "-kopya")
+        self.add_row(well)
+
+    def _delete_selected(self):
+        row = self._selected_row()
+        if row is not None:
+            self.table.removeRow(row)
+            self._on_table_edited()
+
+    def _centre_selected(self):
+        row = self._selected_row()
+        if row is None or self._geometry is None:
+            return
+        x_max, y_max = self._geometry.areal_extent()
+        self.table.blockSignals(True)
+        self.table.setItem(row, self.COL_X, QTableWidgetItem(f"{x_max / 2.0:g}"))
+        self.table.setItem(row, self.COL_Y, QTableWidgetItem(f"{y_max / 2.0:g}"))
+        self.table.blockSignals(False)
+        self._on_table_edited()
 
     # ----------------------------------------------------------- public
-    def is_enabled(self) -> bool:
-        return self.enabled.isChecked() and self.dataset is not None
+    def set_geometry(self, geometry) -> None:
+        """Grid həndəsəsi (varsa) — (i, j) sütunu və sərhəd yoxlaması üçün."""
+        self._geometry = geometry
+        self._recompute_indices()
+        self._refresh_map_and_validation()
+
+    def method_text(self) -> str:
+        return self.method.currentText()
 
     def interpolator(self):
         method = self.method.currentText()
@@ -403,6 +461,164 @@ class WellDataPanel(QWidget):
 
     def set_report(self, text: str):
         self.report.setPlainText(text)
+
+    def mark_stale(self):
+        self._stale = True
+        self.stale_label.setText("Nəticə köhnəlib — 'İnterpolyasiya et' basın."
+                                 if self.wells() else "")
+
+    def mark_fresh(self):
+        self._stale = False
+        self.stale_label.setText("")
+
+    @property
+    def is_stale(self) -> bool:
+        return self._stale
+
+    def set_validation(self, issues) -> None:
+        if not issues:
+            self.validation_view.setPlainText("Xəta/xəbərdarlıq yoxdur.")
+            return
+        prefixes = {"error": "[XƏTA] ", "warning": "[XƏBƏRDARLIQ] ", "info": "[MƏLUMAT] "}
+        lines = [prefixes.get(issue.level, "") + issue.message for issue in issues]
+        self.validation_view.setPlainText("\n".join(lines))
+
+    def has_blocking_errors(self) -> bool:
+        issues = validate_wells(self.wells(), self._geometry, self.method_text())
+        return any(issue.level == "error" for issue in issues)
+
+    def add_row(self, well: Optional[GeologicalWell] = None):
+        if well is None:
+            self._well_counter += 1
+            well = GeologicalWell(name=self._unique_name(f"W-{self._well_counter}"),
+                                  in_model=True, x=0.0, y=0.0)
+        r = self.table.rowCount()
+        self.table.blockSignals(True)
+        self.table.insertRow(r)
+        self.table.setItem(r, self.COL_NAME, QTableWidgetItem(well.name))
+
+        check_item = QTableWidgetItem()
+        check_item.setFlags(check_item.flags() | Qt.ItemIsUserCheckable)
+        check_item.setCheckState(Qt.Checked if well.in_model else Qt.Unchecked)
+        self.table.setItem(r, self.COL_IN_MODEL, check_item)
+
+        self.table.setItem(r, self.COL_X, QTableWidgetItem(f"{well.x:g}"))
+        self.table.setItem(r, self.COL_Y, QTableWidgetItem(f"{well.y:g}"))
+
+        ij_item = QTableWidgetItem("—")
+        ij_item.setFlags(ij_item.flags() & ~Qt.ItemIsEditable)
+        ij_item.setForeground(QBrush(QColor(Qt.gray)))
+        self.table.setItem(r, self.COL_IJ, ij_item)
+
+        optional_columns = [(self.COL_TOP, "top"), (self.COL_BOTTOM, "bottom"),
+                           (self.COL_PORO, "porosity"), (self.COL_PERM, "permeability"),
+                           (self.COL_SW, "water_saturation")]
+        for column, attr in optional_columns:
+            value = getattr(well, attr)
+            self.table.setItem(r, column, QTableWidgetItem(
+                "" if value is None else f"{value:g}"))
+        self.table.setItem(r, self.COL_NOTE, QTableWidgetItem(well.note))
+        self.table.blockSignals(False)
+        self._on_table_edited()
+
+    def load(self, wells: List[GeologicalWell]):
+        self.table.blockSignals(True)
+        self.table.setRowCount(0)
+        self.table.blockSignals(False)
+        for well in wells:
+            self.add_row(well)
+        if not wells:
+            self._on_table_edited()
+
+    def wells(self) -> List[GeologicalWell]:
+        result = []
+        for row in range(self.table.rowCount()):
+            well = self._well_from_row(row)
+            if well is not None:
+                result.append(well)
+        return result
+
+    # -------------------------------------------------------- internal
+    def _unique_name(self, base: str) -> str:
+        existing = set()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, self.COL_NAME)
+            if item is not None:
+                existing.add(item.text().strip())
+        name, suffix = base, 1
+        while name in existing:
+            suffix += 1
+            name = f"{base}-{suffix}"
+        return name
+
+    def _well_from_row(self, row: int) -> Optional[GeologicalWell]:
+        name_item = self.table.item(row, self.COL_NAME)
+        if name_item is None:
+            return None
+        check_item = self.table.item(row, self.COL_IN_MODEL)
+        in_model = check_item is not None and check_item.checkState() == Qt.Checked
+        values = {}
+        for column, attr in self._NUMERIC_COLUMNS.items():
+            item = self.table.item(row, column)
+            text = (item.text().strip() if item is not None else "")
+            values[attr] = self._to_float(text)
+        note_item = self.table.item(row, self.COL_NOTE)
+        return GeologicalWell(
+            name=name_item.text().strip(),
+            in_model=in_model,
+            x=values["x"] or 0.0, y=values["y"] or 0.0,
+            top=values["top"], bottom=values["bottom"],
+            porosity=values["porosity"], permeability=values["permeability"],
+            water_saturation=values["water_saturation"],
+            note=note_item.text() if note_item is not None else "")
+
+    @staticmethod
+    def _to_float(text: str) -> Optional[float]:
+        text = text.strip().replace(",", ".")
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    def _recompute_indices(self):
+        self.table.blockSignals(True)
+        try:
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, self.COL_IJ)
+                if item is None:
+                    continue
+                if self._geometry is None:
+                    item.setText("grid qurulduqdan sonra")
+                    continue
+                well = self._well_from_row(row)
+                if well is None:
+                    continue
+                x_max, y_max = self._geometry.areal_extent()
+                if not (0.0 <= well.x <= x_max and 0.0 <= well.y <= y_max):
+                    item.setText("kənar")
+                    continue
+                i, j = xy_to_ij(well.x, well.y, self._geometry)
+                item.setText(f"({i}, {j})")
+        finally:
+            self.table.blockSignals(False)
+
+    def _refresh_map_and_validation(self):
+        wells = self.wells()
+        if self._geometry is not None:
+            x_max, y_max = self._geometry.areal_extent()
+        else:
+            x_max = max((w.x for w in wells), default=1.0) or 1.0
+            y_max = max((w.y for w in wells), default=1.0) or 1.0
+        selected = None
+        row = self._selected_row()
+        if row is not None:
+            item = self.table.item(row, self.COL_NAME)
+            selected = item.text().strip() if item is not None else None
+        self.map_widget.set_data(wells, x_max, y_max, selected)
+        issues = validate_wells(wells, self._geometry, self.method_text())
+        self.set_validation(issues)
 
 
 class FaultPanel(QWidget):
@@ -775,13 +991,40 @@ class PvtPanel(QWidget):
 
 
 class WellPanel(QWidget):
+    """Quyu rejimi (7 ·) — geologiya cədvəlinə (2 ·) bağlıdır.
+
+    `in_model = True` olan hər geologiya quyusu buraya avtomatik sətir kimi
+    düşür (`set_geology_context`). İstifadəçi burada YALNIZ rejimi (Tip,
+    İdarə, Qiymət, rw) və perforasiya intervalını (METRLƏ) təyin edir —
+    `Ad`/`i`/`j`/`k` geologiya cədvəlindən və qrid həndəsəsindən HESABLANIR,
+    redaktə olunmur.
+
+    Bayraq (`in_model`) söndürüləndə sətir cədvəldən yoxa çıxır, AMMA rejim
+    məlumatı `_retained`-də saxlanılır — istifadəçi yenidən işarələsə,
+    əvvəlki BHP/rate geri qayıdır (bax `_sync_rows`).
+    """
+
     changed = pyqtSignal()
 
-    COLUMNS = ["Ad", "i", "j", "K üst", "K alt", "Tip", "İdarə", "Qiymət", "rw"]
+    COLUMNS = ["Ad", "i", "j", "Perf üst, m", "Perf alt, m", "k",
+              "Tip", "İdarə", "Qiymət", "rw"]
+    COL_NAME = 0
+    COL_I = 1
+    COL_J = 2
+    COL_PERF_TOP = 3
+    COL_PERF_BOTTOM = 4
+    COL_K = 5
+    COL_TYPE = 6
+    COL_MODE = 7
+    COL_TARGET = 8
+    COL_RW = 9
 
     def __init__(self):
         super().__init__()
-        self.layer_count = 1
+        self._geology_by_name: dict = {}
+        self._geometry = None
+        self._retained: dict = {}
+        self._last_in_model_names: set = set()
         layout = QVBoxLayout(self)
         row = QHBoxLayout()
         self.pattern = QComboBox()
@@ -796,141 +1039,216 @@ class WellPanel(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setMinimumHeight(210)
-        self.table.itemChanged.connect(lambda *_: self.changed.emit())
+        self.table.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self.table)
 
-        row = QHBoxLayout()
-        self.add_button = QPushButton("+ Quyu")
-        self.remove_button = QPushButton("− Sil")
-        self.add_button.clicked.connect(lambda: self.add_row())
-        self.remove_button.clicked.connect(self.remove_selected)
-        row.addWidget(self.add_button)
-        row.addWidget(self.remove_button)
-        row.addStretch()
-        layout.addLayout(row)
+        self.warning_label = QLabel("")
+        self.warning_label.setWordWrap(True)
+        self.warning_label.setStyleSheet("color:#e0a020;font-size:11px")
+        layout.addWidget(self.warning_label)
 
         hint = QLabel("BHP → bar,   RATE → m³/gün (rezervuar həcmi)\n"
-                      "K üst / K alt → perforasiya intervalı (1-dən başlayır). "
-                      "Su zonasındakı təbəqələri bağlamaq üçün K alt-ı azalt.")
+                      "Ad/i/j/k geologiya cədvəlindən avtomatik gəlir. "
+                      "Perf üst/alt boşdursa bütün lay perforasiya olunur.")
         hint.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         layout.addWidget(hint)
 
-    def set_layer_count(self, layer_count: int):
-        """Grid dəyişəndə perforasiya intervalının yuxarı həddi yenilənir."""
-        self.layer_count = max(int(layer_count), 1)
-
-    def clamp_to_grid(self, nx: int, ny: int, nz: int) -> int:
-        """Grid kiçiləndə quyu indekslərini avtomatik hüdud daxilinə salır.
-
-        Səbəb: NX 41-dən 21-ə düşəndə cədvəldəki i = 40 mövcud olmayan
-        hüceyrəyə işarə edir və model bloklanır. İstifadəçinin hər dəfə
-        quyu sxemini yenidən tətbiq etməsi lazım gəlirdi.
-
-        Qaytarır: düzəldilmiş xana sayı.
-        """
-        self.set_layer_count(nz)
-        limits = {1: nx - 1, 2: ny - 1, 3: nz, 4: nz}
-        minimums = {1: 0, 2: 0, 3: 1, 4: 1}
-        corrected = 0
-
-        self.table.blockSignals(True)
-        try:
-            for row in range(self.table.rowCount()):
-                for column, maximum in limits.items():
-                    item = self.table.item(row, column)
-                    if item is None:
-                        continue
-                    try:
-                        value = int(float(item.text()))
-                    except ValueError:
-                        continue
-                    clamped = min(max(value, minimums[column]), maximum)
-                    if clamped != value:
-                        item.setText(str(clamped))
-                        corrected += 1
-                # K üst > K alt olarsa yerlərini dəyiş
-                top, bottom = self.table.item(row, 3), self.table.item(row, 4)
-                if top is not None and bottom is not None:
-                    try:
-                        if int(float(top.text())) > int(float(bottom.text())):
-                            top.setText(bottom.text())
-                            corrected += 1
-                    except ValueError:
-                        pass
-        finally:
-            self.table.blockSignals(False)
-        return corrected
-
-    def add_row(self, name="WELL", i=0, j=0, kind="PROD", mode="BHP",
-                target=150.0, radius=0.1, k_top=1, k_bottom=None):
-        k_bottom = self.layer_count if k_bottom is None else k_bottom
-        r = self.table.rowCount()
-        self.table.blockSignals(True)
-        self.table.insertRow(r)
-        for c, text in enumerate([name, str(i), str(j),
-                                  str(int(k_top)), str(int(k_bottom))]):
-            self.table.setItem(r, c, QTableWidgetItem(text))
-        type_box = QComboBox()
-        type_box.addItems(["PROD", "INJ"])
-        type_box.setCurrentText(kind)
-        type_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
-        self.table.setCellWidget(r, 5, type_box)
-        mode_box = QComboBox()
-        mode_box.addItems(["BHP", "RATE"])
-        mode_box.setCurrentText(mode)
-        self.table.setCellWidget(r, 6, mode_box)
-        self.table.setItem(r, 7, QTableWidgetItem(f"{target:g}"))
-        self.table.setItem(r, 8, QTableWidgetItem(f"{radius:g}"))
-        self.table.blockSignals(False)
+    # ------------------------------------------------------------ slots
+    def _on_item_changed(self, item: QTableWidgetItem):
+        if item.column() in (self.COL_PERF_TOP, self.COL_PERF_BOTTOM):
+            self._recompute_ij_k()
         self.changed.emit()
 
-    def remove_selected(self):
-        r = self.table.currentRow()
-        if r >= 0:
-            self.table.removeRow(r)
-            self.changed.emit()
+    # ----------------------------------------------------------- public
+    def set_geology_context(self, wells: List[GeologicalWell], geometry) -> None:
+        """Geologiya cədvəli və ya grid dəyişəndə çağırılır."""
+        self._geology_by_name = {w.name: w for w in wells}
+        self._geometry = geometry
+        self._sync_rows(wells)
+        self._recompute_ij_k()
+        self.changed.emit()
 
     def load(self, wells: List[Well]):
+        """Fayldan bərpa: rejimi (və perf metrlərini) birbaşa yazır."""
         self.table.blockSignals(True)
         self.table.setRowCount(0)
-        self.table.blockSignals(False)
-        for well in wells:
-            perforations = well.perforations or [Perforation(0, 0, 0)]
-            layers = [p.k for p in perforations]
-            self.add_row(well.name, perforations[0].i, perforations[0].j,
-                         well.well_type.value, well.control.mode.value,
-                         well.control.target, well.radius,
-                         k_top=min(layers) + 1, k_bottom=max(layers) + 1)
+        try:
+            for well in wells:
+                self._add_row(well.name, {
+                    "kind": well.well_type.value, "mode": well.control.mode.value,
+                    "target": well.control.target, "rw": well.radius,
+                    "perf_top": well.perf_top, "perf_bottom": well.perf_bottom})
+        finally:
+            self.table.blockSignals(False)
+        self._recompute_ij_k()
 
     def values(self) -> List[Well]:
         wells: List[Well] = []
-        for r in range(self.table.rowCount()):
-            try:
-                name = self.table.item(r, 0).text().strip() or f"W{r + 1}"
-                i = int(float(self.table.item(r, 1).text()))
-                j = int(float(self.table.item(r, 2).text()))
-                k_top = int(float(self.table.item(r, 3).text()))
-                k_bottom = int(float(self.table.item(r, 4).text()))
-                kind = self.table.cellWidget(r, 5).currentText()
-                mode = self.table.cellWidget(r, 6).currentText()
-                target = float(self.table.item(r, 7).text())
-                radius = float(self.table.item(r, 8).text())
-            except (AttributeError, ValueError):
+        for row in range(self.table.rowCount()):
+            name_item = self.table.item(row, self.COL_NAME)
+            if name_item is None:
                 continue
+            name = name_item.text().strip()
+            perf_top = self._to_float(self.table.item(row, self.COL_PERF_TOP).text())
+            perf_bottom = self._to_float(self.table.item(row, self.COL_PERF_BOTTOM).text())
+            try:
+                kind = self.table.cellWidget(row, self.COL_TYPE).currentText()
+                mode = self.table.cellWidget(row, self.COL_MODE).currentText()
+            except AttributeError:
+                continue
+            target = self._to_float(self.table.item(row, self.COL_TARGET).text()) or 0.0
+            rw = self._to_float(self.table.item(row, self.COL_RW).text()) or 0.1
 
-            first = max(min(k_top, k_bottom), 1)
-            last = min(max(k_top, k_bottom), self.layer_count)
-            if last < first:
-                last = first
+            i, j, first, last = self._resolve_ijk(name, perf_top, perf_bottom)
             wells.append(Well(
-                name=name,
-                well_type=WellType(kind),
+                name=name, well_type=WellType(kind),
                 control=WellControl(ControlMode(mode), target),
-                perforations=[Perforation(i, j, k - 1)
-                              for k in range(first, last + 1)],
-                radius=radius,
-            ))
+                perforations=[Perforation(i, j, k) for k in range(first, last + 1)],
+                radius=rw, perf_top=perf_top, perf_bottom=perf_bottom))
         return wells
+
+    # -------------------------------------------------------- internal
+    @staticmethod
+    def _to_float(text: str) -> Optional[float]:
+        text = (text or "").strip().replace(",", ".")
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _default_state() -> dict:
+        return {"kind": "PROD", "mode": "BHP", "target": 150.0, "rw": 0.1,
+                "perf_top": None, "perf_bottom": None}
+
+    def _find_row(self, name: str) -> Optional[int]:
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, self.COL_NAME)
+            if item is not None and item.text().strip() == name:
+                return row
+        return None
+
+    def _row_state(self, row: int) -> dict:
+        return {
+            "kind": self.table.cellWidget(row, self.COL_TYPE).currentText(),
+            "mode": self.table.cellWidget(row, self.COL_MODE).currentText(),
+            "target": self._to_float(self.table.item(row, self.COL_TARGET).text()),
+            "rw": self._to_float(self.table.item(row, self.COL_RW).text()),
+            "perf_top": self._to_float(self.table.item(row, self.COL_PERF_TOP).text()),
+            "perf_bottom": self._to_float(self.table.item(row, self.COL_PERF_BOTTOM).text()),
+        }
+
+    def _add_row(self, name: str, state: dict):
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        name_item = QTableWidgetItem(name)
+        name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+        self.table.setItem(r, self.COL_NAME, name_item)
+
+        for column in (self.COL_I, self.COL_J, self.COL_K):
+            item = QTableWidgetItem("—")
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            item.setForeground(QBrush(QColor(Qt.gray)))
+            self.table.setItem(r, column, item)
+
+        for column, key in ((self.COL_PERF_TOP, "perf_top"),
+                            (self.COL_PERF_BOTTOM, "perf_bottom")):
+            value = state.get(key)
+            self.table.setItem(r, column, QTableWidgetItem(
+                "" if value is None else f"{value:g}"))
+
+        type_box = QComboBox()
+        type_box.addItems(["PROD", "INJ"])
+        type_box.setCurrentText(state.get("kind", "PROD"))
+        type_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
+        self.table.setCellWidget(r, self.COL_TYPE, type_box)
+
+        mode_box = QComboBox()
+        mode_box.addItems(["BHP", "RATE"])
+        mode_box.setCurrentText(state.get("mode", "BHP"))
+        mode_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
+        self.table.setCellWidget(r, self.COL_MODE, mode_box)
+
+        self.table.setItem(r, self.COL_TARGET,
+                           QTableWidgetItem(f"{state.get('target') or 150.0:g}"))
+        self.table.setItem(r, self.COL_RW,
+                           QTableWidgetItem(f"{state.get('rw') or 0.1:g}"))
+
+    def _sync_rows(self, wells: List[GeologicalWell]):
+        in_model_names = {w.name for w in wells if w.in_model}
+        newly_off = self._last_in_model_names - in_model_names
+        newly_on = in_model_names - self._last_in_model_names
+        self.table.blockSignals(True)
+        try:
+            for name in newly_off:
+                row = self._find_row(name)
+                if row is not None:
+                    self._retained[name] = self._row_state(row)
+                    self.table.removeRow(row)
+            for name in newly_on:
+                if self._find_row(name) is None:
+                    state = self._retained.pop(name, None) or self._default_state()
+                    self._add_row(name, state)
+        finally:
+            self.table.blockSignals(False)
+        self._last_in_model_names = in_model_names
+
+    def _resolve_ijk(self, name: str, perf_top: Optional[float],
+                     perf_bottom: Optional[float]):
+        geo = self._geology_by_name.get(name)
+        if geo is None or self._geometry is None:
+            return 0, 0, 0, 0
+        i, j = xy_to_ij(geo.x, geo.y, self._geometry)
+        nz = self._geometry.grid.nz
+        k_top = (depth_to_k(geo.x, geo.y, perf_top, self._geometry)
+                if perf_top is not None else 0)
+        k_bottom = (depth_to_k(geo.x, geo.y, perf_bottom, self._geometry)
+                   if perf_bottom is not None else nz - 1)
+        k_top = 0 if k_top is None else k_top
+        k_bottom = nz - 1 if k_bottom is None else k_bottom
+        first, last = (k_top, k_bottom) if k_top <= k_bottom else (k_bottom, k_top)
+        return i, j, first, last
+
+    def _recompute_ij_k(self):
+        self.table.blockSignals(True)
+        warnings = []
+        try:
+            for row in range(self.table.rowCount()):
+                name_item = self.table.item(row, self.COL_NAME)
+                if name_item is None:
+                    continue
+                name = name_item.text().strip()
+                i_item = self.table.item(row, self.COL_I)
+                j_item = self.table.item(row, self.COL_J)
+                k_item = self.table.item(row, self.COL_K)
+                if self._geometry is None:
+                    i_item.setText("—")
+                    j_item.setText("—")
+                    k_item.setText("grid qurulduqdan sonra")
+                    continue
+                geo = self._geology_by_name.get(name)
+                if geo is None:
+                    i_item.setText("?")
+                    j_item.setText("?")
+                    k_item.setText("geologiyada yoxdur")
+                    continue
+                perf_top = self._to_float(self.table.item(row, self.COL_PERF_TOP).text())
+                perf_bottom = self._to_float(self.table.item(row, self.COL_PERF_BOTTOM).text())
+                i, j, first, last = self._resolve_ijk(name, perf_top, perf_bottom)
+                i_item.setText(str(i))
+                j_item.setText(str(j))
+                k_item.setText(f"{first + 1}–{last + 1}")
+                if (perf_top is not None
+                        and depth_to_k(geo.x, geo.y, perf_top, self._geometry) is None):
+                    warnings.append(f"'{name}': perforasiya üstü lay qalınlığından kənardadır.")
+                if (perf_bottom is not None
+                        and depth_to_k(geo.x, geo.y, perf_bottom, self._geometry) is None):
+                    warnings.append(f"'{name}': perforasiya altı lay qalınlığından kənardadır.")
+        finally:
+            self.table.blockSignals(False)
+        self.warning_label.setText("\n".join(warnings))
 
 
 class NumericalPanel(QWidget):

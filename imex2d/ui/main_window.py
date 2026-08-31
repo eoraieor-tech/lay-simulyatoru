@@ -34,12 +34,14 @@ from ..application.model_builder import ReservoirModelBuilder
 from ..application.project import Project
 from ..application.serialization import (FILE_EXTENSION, ProjectFileError,
                                          ProjectSerializer)
+from ..application.geology_adapter import wells_to_dataset
 from ..application.geology_service import (GeologicalGridSpec,
                                           WellBasedGeologicalModelBuilder)
 from ..application.scenarios import WELL_PATTERNS, SyntheticGeologicalModelBuilder
 from ..application.simulation_service import (ModelValidationError,
                                               SimulationService)
 from ..domain.diagnostics import DiagnosticReport, Severity
+from ..domain.geology import GeologicalWell, validate_wells
 from ..domain.grid import CartesianGrid
 from ..domain.geometry import CellGeometry
 from ..domain.reservoir_model import ReservoirModel
@@ -65,9 +67,9 @@ from ..version import EXPECTED_TABS, VERSION, summary, title
 from ..simulation.analytical import buckley_leverett
 from ..simulation.impes_engine import ImpesEngine
 from ..simulation.implicit.engine import FullyImplicitEngine
-from .panels import (FaultPanel, GridGeometryPanel, NumericalPanel,
-                     PvtPanel, RockFluidPanel, ScalPanel, ScalSourcePanel,
-                     WellDataPanel, WellPanel)
+from .panels import (FaultPanel, GeologyPanel, GridGeometryPanel,
+                     NumericalPanel, PvtPanel, RockFluidPanel, ScalPanel,
+                     ScalSourcePanel, WellPanel)
 from .worker import MatchingWorker, SensitivityWorker, SimulationWorker
 
 
@@ -110,6 +112,8 @@ class MainWindow(QMainWindow):
 
         self.reservoir_model: Optional[ReservoirModel] = None
         self.imported_geology = None
+        self._geology_model_from_wells = None
+        self._dirty = False
         self.result = None
         self.worker: Optional[SimulationWorker] = None
         self.colorbar = None
@@ -139,14 +143,33 @@ class MainWindow(QMainWindow):
         self._player = QTimer(self)
         self._player.timeout.connect(self._next_frame)
 
-        self.setWindowTitle(title())
         self.resize(1560, 940)
         self._build_menu()
         self._build_ui()
+        self._refresh_title()
         self._ready = True
-        self.well_panel.load(WELL_PATTERNS["Five-spot (1/4)"](self.grid_panel.grid()))
+        default_wells = WELL_PATTERNS["Five-spot (1/4)"](self.grid_panel.grid())
+        self.well_panel.load(default_wells)
+        self.geology_panel.load(
+            self._wells_to_geology_rows(default_wells, self._current_geometry()))
+        self._sync_geology_geometry()
+        self.geology_panel.mark_fresh()
+        self._mark_clean()
         self.rebuild_model()
         self._verify_build()
+
+    # ---------------------------------------------------- pəncərə başlığı
+    def _refresh_title(self):
+        """`*` — geologiya cədvəlində yadda saxlanılmamış dəyişiklik var."""
+        self.setWindowTitle(title() + (" *" if self._dirty else ""))
+
+    def _mark_dirty(self):
+        self._dirty = True
+        self._refresh_title()
+
+    def _mark_clean(self):
+        self._dirty = False
+        self._refresh_title()
 
     # ------------------------------------------------------------ menyu
     def _build_menu(self):
@@ -205,7 +228,7 @@ class MainWindow(QMainWindow):
         self.toolbox.setMinimumWidth(400)
 
         self.grid_panel = GridGeometryPanel()
-        self.geology_panel = WellDataPanel()
+        self.geology_panel = GeologyPanel()
         self.rock_panel = RockFluidPanel()
         self.scal_panel = ScalPanel()
         self.scal_source_panel = ScalSourcePanel()
@@ -228,10 +251,19 @@ class MainWindow(QMainWindow):
         self.toolbox.addItem(self.well_panel, "7 · QUYULAR (rezervuar modeli)")
         self.toolbox.addItem(self.numerical_panel, "8 · ƏDƏDİ PARAMETRLƏR")
 
-        for panel in (self.grid_panel, self.geology_panel, self.rock_panel,
+        # `grid_panel.changed`: `_sync_geology_geometry` BİRİNCİ qoşulur ki,
+        # (i,j,k) təzələnsin, SONRA `rebuild_model` köhnəlməmiş indekslərlə
+        # işləsin (bağlantı sırası = çağırılma sırası).
+        self.grid_panel.changed.connect(self._sync_geology_geometry)
+        # `geology_panel` bilərəkdən aşağıdakı dövrədə YOXDUR: cədvəl
+        # dəyişəndə model avtomatik yenidən qurulmur (böyük gridə yavaşdır)
+        # — yalnız "İnterpolyasiya et" düyməsi (`_interpolate_geology`) qurur.
+        for panel in (self.grid_panel, self.rock_panel,
                       self.fault_panel, self.scal_panel, self.scal_source_panel,
                       self.pvt_panel, self.well_panel, self.numerical_panel):
             panel.changed.connect(self.rebuild_model)
+        self.geology_panel.changed.connect(self._on_geology_table_changed)
+        self.geology_panel.interpolate_requested.connect(self._interpolate_geology)
         self.well_panel.apply_button.clicked.connect(self._apply_pattern)
 
         container = QWidget()
@@ -1275,15 +1307,6 @@ class MainWindow(QMainWindow):
                 LOG.info("Grid ölçüsü dəyişdirildi — GRDECL modeli ləğv olundu.")
                 self.imported_geology = None
         try:
-            corrected = self.well_panel.clamp_to_grid(
-                self.grid_panel.nx.value(), self.grid_panel.ny.value(),
-                self.grid_panel.nz.value())
-            if corrected:
-                LOG.info("Quyu cədvəlində %d dəyər grid hüdudlarına salındı.",
-                         corrected)
-                self.statusBar().showMessage(
-                    f"Quyu indekslərindən {corrected} ədədi yeni grid ölçüsünə "
-                    f"uyğunlaşdırıldı.")
             geology = self._build_geological_model()
             self.project.add_geological_model(geology)
             model = self.model_builder.build(
@@ -1315,7 +1338,13 @@ class MainWindow(QMainWindow):
                 if self.scal_source_panel.is_enabled() else None)
 
     def _build_geological_model(self):
-        """Geoloji modelin mənbəyi: quyu məlumatı və ya sintetik generator."""
+        """Geoloji modelin mənbəyi: quyu cədvəli və ya sintetik generator.
+
+        `İnterpolyasiya et` düyməsi ilə hesablanan model `_geology_model_from_wells`-
+        də keşlənir — cədvəl dəyişəndə (`geology_panel.changed`) bura TOXUNULMUR,
+        yalnız düymə basılanda (`_interpolate_geology`) yenilənir. Beləliklə
+        cədvəldəki hər redaktə böyük gridi yenidən interpolyasiya etmir.
+        """
         grid_values = self.grid_panel.values()
         rock_values = self.rock_panel.geology_values()
 
@@ -1328,28 +1357,113 @@ class MainWindow(QMainWindow):
                 f"qayıtmaq üçün grid ölçüsünü dəyişin.)")
             return self.imported_geology
 
-        if not self.geology_panel.is_enabled():
+        if not self.geology_panel.wells():
             self.geology_panel.set_report(
-                "Sintetik model işlədilir — quyu məlumatı qoşulmayıb.")
+                "Sintetik model işlədilir — geologiya cədvəli boşdur.")
             return self.geology_builder.build(**grid_values, **rock_values)
+
+        if self._geology_model_from_wells is None:
+            self.geology_panel.set_report(
+                "Quyu cədvəli dolduruldu, amma hələ interpolyasiya edilməyib.\n"
+                "'İnterpolyasiya et' düyməsini basın. Hazırda sintetik model işlədilir.")
+            return self.geology_builder.build(**grid_values, **rock_values)
+
+        return self._geology_model_from_wells
+
+    def _wells_to_geology_rows(self, wells, geometry: CellGeometry) -> list:
+        """İndeks-əsaslı quyuları (ssenari generatoru) metrə çevirib
+        geologiya sətirlərinə çevirir — koordinat/rejim birlikdə.
+
+        Yalnız MÖVQE köçürülür (petrofizika YOX) — ssenari generatoru
+        heç vaxt φ/k/Sw dəyəri verməyib, bunu istifadəçi əl ilə doldurur.
+        """
+        rows = []
+        for well in wells:
+            if not well.perforations:
+                continue
+            p = well.perforations[0]
+            rows.append(GeologicalWell(
+                name=well.name, in_model=True,
+                x=(p.i + 0.5) * geometry.dx, y=(p.j + 0.5) * geometry.dy))
+        return rows
+
+    def _current_geometry(self) -> CellGeometry:
+        grid_values = self.grid_panel.values()
+        grid = CartesianGrid(grid_values["nx"], grid_values["ny"], grid_values["nz"])
+        return CellGeometry(grid, grid_values["dx"], grid_values["dy"],
+                            grid_values["dz"], top_depth=grid_values["top_depth"])
+
+    def _sync_geology_geometry(self):
+        """Grid dəyişəndə (2·) və (7·) bölmələrinin (i,j,k) sütunları yenilənir."""
+        geometry = self._current_geometry()
+        self.geology_panel.set_geometry(geometry)
+        self.well_panel.set_geology_context(self.geology_panel.wells(), geometry)
+
+    def _on_geology_table_changed(self):
+        if not getattr(self, "_ready", False):
+            return
+        self._mark_dirty()
+        self.well_panel.set_geology_context(self.geology_panel.wells(), self._current_geometry())
+
+    def _interpolate_geology(self):
+        """'İnterpolyasiya et' düyməsi — yeganə yer ki, geologiya cədvəli
+        grid xassələrinə çevrilir. `geology_service.py` TOXUNULMUR."""
+        grid_values = self.grid_panel.values()
+        rock_values = self.rock_panel.geology_values()
+        geometry = self._current_geometry()
+        wells = self.geology_panel.wells()
+        method = self.geology_panel.method_text()
+        issues = validate_wells(wells, geometry, method,
+                                reservoir_well_names=[w.name for w in self.well_panel.values()])
+        self.geology_panel.set_validation(issues)
+        if any(issue.level == "error" for issue in issues):
+            QMessageBox.warning(
+                self, "İnterpolyasiya edilmədi",
+                "Geologiya cədvəlində xəta var — aşağıdakı yoxlama panelinə baxın.")
+            return
 
         spec = GeologicalGridSpec(
             nx=grid_values["nx"], ny=grid_values["ny"], nz=grid_values["nz"],
             dx=grid_values["dx"], dy=grid_values["dy"], dz=grid_values["dz"],
             top_depth=grid_values["top_depth"],
             dip_x=grid_values["dip_x"], dip_y=grid_values["dip_y"])
+        dataset, skipped = wells_to_dataset(wells, method)
         builder = WellBasedGeologicalModelBuilder(self.geology_panel.interpolator())
-        geology, report = builder.build(
-            self.geology_panel.dataset, spec,
-            ky_over_kx=rock_values["ky_over_kx"],
-            kv_over_kh=rock_values["kv_over_kh"],
-            name="Quyu məlumatından geoloji model")
-        self.geology_panel.set_report(report.as_text())
-        return geology
+        try:
+            geology, report = builder.build(
+                dataset, spec, ky_over_kx=rock_values["ky_over_kx"],
+                kv_over_kh=rock_values["kv_over_kh"],
+                name="Quyu cədvəlindən geoloji model")
+        except ValueError as exc:
+            QMessageBox.critical(self, "İnterpolyasiya edilmədi", str(exc))
+            return
+
+        text = report.as_text()
+        if skipped:
+            text += "\n\nBuraxılan xassələr:\n" + "\n".join(
+                f"  {message}" for message in skipped.values())
+        self.geology_panel.set_report(text)
+        self._geology_model_from_wells = geology
+        self.geology_panel.mark_fresh()
+        self.rebuild_model()
 
     def _apply_pattern(self):
+        """Ssenari daxildə İNDEKSLƏ işləyir (`five_spot` və s. dəyişmir) —
+        yalnız tətbiq ediləndə metrə çevrilib geologiya cədvəlini doldurur."""
+        existing = self.geology_panel.wells()
+        if existing:
+            reply = QMessageBox.question(
+                self, "Ssenari tətbiq edilsin?",
+                f"Mövcud {len(existing)} quyu əvəz olunacaq. Davam edilsin?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
         pattern = WELL_PATTERNS[self.well_panel.pattern.currentText()]
-        self.well_panel.load(pattern(self.grid_panel.grid()))
+        wells = pattern(self.grid_panel.grid())
+        geometry = self._current_geometry()
+        self.well_panel.load(wells)
+        self.geology_panel.load(self._wells_to_geology_rows(wells, geometry))
+        self._sync_geology_geometry()
 
     def refresh_tree(self):
         self.tree.clear()
@@ -1696,12 +1810,21 @@ class MainWindow(QMainWindow):
             return
         if not path.endswith(FILE_EXTENSION):
             path += FILE_EXTENSION
+        self.project.geology_wells = self.geology_panel.wells()
+        self.project.geology_method = self.geology_panel.method_text()
+        self.project.geology_params = dict(
+            power=self.geology_panel.power.value(),
+            search_radius=self.geology_panel.search_radius.value(),
+            range_a=self.geology_panel.range_.value(),
+            sill_c=self.geology_panel.sill.value(),
+            nugget_c0=self.geology_panel.nugget.value())
         try:
             self.serializer.save(self.project, path, include_snapshots)
         except Exception as exc:
             QMessageBox.critical(self, "Yadda saxlanmadı", str(exc))
             return
         self.project_path = path
+        self._mark_clean()
         size = os.path.getsize(path) / 1024.0
         self.statusBar().showMessage(
             f"Yazıldı: {os.path.basename(path)}  ({size:.0f} KB, "
@@ -1723,9 +1846,34 @@ class MainWindow(QMainWindow):
 
         self.project = project
         self.project_path = path
+        self._ready = False
+        try:
+            self.geology_panel.load(project.geology_wells)
+            if project.geology_method:
+                self.geology_panel.method.setCurrentText(project.geology_method)
+            params = project.geology_params
+            if params:
+                self.geology_panel.power.setValue(params.get("power", self.geology_panel.power.value()))
+                self.geology_panel.search_radius.setValue(
+                    params.get("search_radius", self.geology_panel.search_radius.value()))
+                self.geology_panel.range_.setValue(params.get("range_a", self.geology_panel.range_.value()))
+                self.geology_panel.sill.setValue(params.get("sill_c", self.geology_panel.sill.value()))
+                self.geology_panel.nugget.setValue(params.get("nugget_c0", self.geology_panel.nugget.value()))
+        finally:
+            self._ready = True
+        self._sync_geology_geometry()
+        self._geology_model_from_wells = project.geological_models.get(
+            "Quyu cədvəlindən geoloji model")
+        self.geology_panel.mark_fresh()
+        self._mark_clean()
         if project.reservoir_models:
             self.reservoir_model = list(project.reservoir_models.values())[-1]
             self._load_model_into_panels(self.reservoir_model)
+            # `_load_model_into_panels` `well_panel.load(model.wells)` ilə
+            # cədvəli TAM sıfırlayır (saxlanılmış rejim üçün) — bundan
+            # sonra geologiya ilə yenidən uzlaşdırmaq lazımdır (in_model
+            # olub faylda quyusu olmayanlar da sətir kimi görünsün).
+            self._sync_geology_geometry()
         latest = project.latest_run()
         self.result = latest.result if latest else None
         if self.result and self.result.snapshots:
@@ -1790,7 +1938,6 @@ class MainWindow(QMainWindow):
                 self.numerical_panel.owc.setValue(ic.oil_water_contact)
 
             self.pvt_panel.enabled.setChecked(model.pvt_table is not None)
-            self.well_panel.set_layer_count(grid.nz)
             self.well_panel.load(model.wells)
         finally:
             self._ready = True
@@ -1910,11 +2057,12 @@ class MainWindow(QMainWindow):
             self.grid_panel.thickness_mode.setCurrentIndex(0)   # DZ rejimi
             self.grid_panel.set_layer_thicknesses(geometry.dz)
             self.grid_panel.top_depth.setValue(geometry.top_depth)
-            self.well_panel.set_layer_count(grid.nz)
-            self.well_panel.load(
-                WELL_PATTERNS["Five-spot (1/4)"](grid))
+            default_wells = WELL_PATTERNS["Five-spot (1/4)"](grid)
+            self.well_panel.load(default_wells)
+            self.geology_panel.load(self._wells_to_geology_rows(default_wells, geometry))
         finally:
             self._ready = True
+        self._sync_geology_geometry()
 
     def import_opm_case(self):
         """OPM Flow (Eclipse formatlı) halının nəticələrini idxal edir

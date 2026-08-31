@@ -131,12 +131,82 @@ Bunu boşaltmaq CSV importunun mövcud sınağını sındırardı, ona görə
 faktiki minimum bütün üsullar üçün 2-yə qaldırıldı (`method_minimum()`,
 bax kodun içindəki şərh). 17 test yazıldı, hər yoxlama üçün ən azı biri.
 
+## Mərhələ 5 — 2-ci bölmənin UI-si
+
+`imex2d/application/geology_adapter.py` (`wells_to_dataset`) + yeni
+`imex2d/ui/geology_map.py` (`GeologyMapWidget`, sadə `QPainter` xəritəsi:
+grid düzbucaqlısı + quyu nöqtələri, rəng modeldə/məlumat-yalnız/kənar üzrə)
++ `imex2d/ui/panels.py`-də `WellDataPanel` → `GeologyPanel` (sinif adı
+dəyişdi, `self.geology_panel` atribut adı EYNİ qaldı — `test_ui_wiring.py`
+bunu tələb edir). Cədvəl: `Ad | Modeldə | X,m | Y,m | (i,j) | Lay üstü,m |
+Lay altı,m | φ | k,mD | Sw | Qeyd`. Alət paneli (Quyu əlavə et / Dublikat /
+Sil / Grid mərkəzinə at) + yoxlama paneli (`validate_wells` nəticəsi) +
+"İnterpolyasiya et" düyməsi + "Nəticə köhnəlib" göstəricisi.
+
+`main_window.py`-də `geology_panel.changed` BİLƏRƏKDƏN `rebuild_model`-ə
+qoşulmayıb (yalnız `interpolate_requested` → `_interpolate_geology`) —
+cədvəl redaktəsi böyük gridi avtomatik yenidən interpolyasiya etmir.
+Hesablanan model `_geology_model_from_wells`-də keşlənir; cədvəl boşdursa
+və ya hələ interpolyasiya edilməyibsə `_build_geological_model()` sintetik
+modelə düşür (izahlı mesajla, çökmür).
+
+Pəncərə başlığının `*`-si `geology_panel.changed` → `_mark_dirty()` ilə
+idarə olunur (yalnız 2-ci bölmə redaktəsi, tapşırıqda göstərildiyi kimi).
+
+**Diqqətəlayiq addım:** startup zamanı (`__init__`) əvvəllər YALNIZ 7-ci
+bölmə default five-spot alırdı, geologiya cədvəli boş qalırdı. Bu artıq
+mümkün DEYİL — 7-ci bölmənin i/j/k-sı indi TAM geologiya bağlantısından
+hesablanır, boş geologiya cədvəli ilə hər iki default quyu (0,0) hüceyrəsinə
+düşərdi (bax aşağı, Mərhələ 6). Ona görə startup-da default five-spot HƏM
+`well_panel`-ə, HƏM `geology_panel`-ə (yalnız X/Y, petrofizikasız) yazılır.
+`geology_source` nəticədə startup-da "wells" olur, AMMA `_geology_model_from_wells`
+hələ `None` olduğu üçün grid xassələri yenə SİNTETİKDİR — status mesajı
+bunu düzgün əks etdirir. Defolt davranış (sintetik xassələr) qorunur,
+yalnız daxili mexanizm dəyişib.
+
+## Mərhələ 6 — 7-ci bölmə ilə birləşmə + ssenari generatoru
+
+`WellPanel` tam yenidən yazıldı: `Ad | i | j | Perf üst,m | Perf alt,m | k
+| Tip | İdarə | Qiymət | rw`. `Ad`/`i`/`j`/`k` REDAKTƏSİZ (boz) — `Ad`
+geologiya adına bağlıdır, `i`/`j` `xy_to_ij`, `k` `depth_to_k` ilə
+hesablanır. `set_geology_context(wells, geometry)` sətirləri `in_model`
+dəstinə görə avtomatik əlavə/silir; silinən sətirin rejimi `_retained`
+lüğətində qalır — yenidən işarələnəndə geri qayıdır (tapşırığın tələbi).
+
+`clamp_to_grid`/`set_layer_count`/`add_button`/`remove_button` silindi —
+mənasız qaldı, çünki indeks artıq HEÇ VAXT əl ilə redaktə olunmur (yalnız
+metrdən hesablanır), grid ölçüsü dəyişəndə köhnəlmə problemi öz-özünə
+aradan qalxır.
+
+Ssenari generatoru (`_apply_pattern`): daxili `five_spot()` və s. İNDEKSLƏ
+işləməyə davam edir (dəyişmədi). Tətbiq ediləndə nəticə metrə çevrilib
+(`_wells_to_geology_rows`) HƏM `well_panel`, HƏM `geology_panel`-ə yazılır.
+Mövcud geologiya sətirləri varsa əvvəlcə təsdiq soruşulur (`QMessageBox`).
+
+Perforasiya lay qalınlığından kənardadırsa (`depth_to_k` → `None`)
+xəbərdarlıq `WellPanel.warning_label`-də göstərilir (bloklamır).
+
+**Uçdan-uca sınaq** (`QT_QPA_PLATFORM` OFFSCREEN YOX — VTK offscreen-də
+segfault verir, real Windows platforması ilə skript sınandı): startup →
+default five-spot iki bölmədə də düzgün göründü, INJ-1/PROD-1 küncləri
+(0,0)/(40,40) dəqiq tutdu; petrofizika əlavəsi + 3-cü quyu + interpolyasiya
+işlədi; perforasiya metr redaktəsi k-nı yenilədi; `in_model` söndürülüb-
+yandırılanda rejim qorundu; boş ad + kənar koordinat "İnterpolyasiya et"-i
+blokladı; `.imx` saxla/aç dövrəsi bütün quyuları və `geology_source`-u
+qorudu.
+
+**Kənara çıxma (commit strukturu):** `GeologyPanel` və `WellPanel` eyni
+faylda (`panels.py`) sıx bağlı şəkildə yazıldı və birlikdə sınandı — ona
+görə Mərhələ 5 və 6 AYRI-AYRI commit əvəzinə BİR birləşmiş UI commiti kimi
+yazılır ("ən mühafizəkar" seçim: yarımçıq/qeyri-ardıcıl aralıq vəziyyəti
+commit etməkdənsə, tam sınanmış vahid dəyişiklik).
+
 ## Mərhələ planı (bu fayl hər mərhələdən sonra yenilənəcək)
 
 - [x] 1 — təhlil
 - [x] 2 — `GeologicalWell` + serialization + miqrasiya + testlər
 - [x] 3 — `xy_to_ij` / `depth_to_k` + testlər
 - [x] 4 — `validate_wells` + testlər
-- [ ] 5 — 2-ci bölmənin UI-si (+ `wells_to_dataset` adapteri)
-- [ ] 6 — 7-ci bölmə ilə birləşmə + ssenari generatoru
+- [x] 5 — 2-ci bölmənin UI-si (+ `wells_to_dataset` adapteri)
+- [x] 6 — 7-ci bölmə ilə birləşmə + ssenari generatoru
 - [ ] 7 — yekun: golden + tam test dəsti + `run.bat`
