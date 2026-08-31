@@ -180,7 +180,7 @@ def test_builds_a_valid_geological_model():
     try:
         model = GrdeclImporter().build(read_grdecl(path))
         assert model.grid.nx == 5 and model.grid.nz == 3
-        assert model.geometry.dx == 50.0 and model.geometry.dz == 10.0
+        assert model.geometry.dx == 50.0 and np.allclose(model.geometry.dz, 10.0)
         assert model.validate() == []
         for key in ("PORO", "PERMX", "PERMY", "PERMZ"):
             assert key in model.property_maps
@@ -368,7 +368,7 @@ def test_round_trip_preserves_geometry_and_properties():
 
     assert restored.geometry.dx == model.geometry.dx
     assert restored.geometry.dy == model.geometry.dy
-    assert restored.geometry.dz == model.geometry.dz
+    assert np.allclose(restored.geometry.dz, model.geometry.dz)
     assert np.allclose(restored.geometry.cell_depths(),
                        model.geometry.cell_depths(), atol=1e-3)
     assert np.allclose(restored.property_maps["PORO"].values,

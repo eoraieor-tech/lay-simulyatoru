@@ -33,13 +33,15 @@ class PeacemanWellModel:
         out: List[WellConnection] = []
         kx_all = model.rock.permx.values
         ky_all = model.rock.permy.values
-        dx, dy, dz = model.geometry.dx, model.geometry.dy, model.geometry.dz
+        dx, dy = model.geometry.dx, model.geometry.dy
+        dz_all = model.geometry.dz_per_cell()
         c_darcy = model.units.darcy_constant
 
         for well in model.active_wells():
             for perf in well.open_perforations():
                 cell = model.grid.index(perf.i, perf.j, perf.k)
                 kx, ky = kx_all[cell], ky_all[cell]
+                dz = dz_all[cell]
                 wi = self._well_index(kx, ky, dx, dy, dz, well.radius,
                                       perf.skin, c_darcy)
                 out.append(WellConnection(

@@ -108,6 +108,29 @@ def test_grid_and_geometry_survive_round_trip():
     assert restored.ncell == model.ncell
 
 
+def test_variable_layer_thickness_survives_round_trip():
+    """Hər təbəqənin öz DZ-i saxlanılmalıdır — tək orta ədədə sıxılmamalı."""
+    from imex2d.application.model_builder import ReservoirModelBuilder
+    from imex2d.application.scenarios import five_spot
+
+    dz = [4.0, 6.0, 10.0]
+    geology = SyntheticGeologicalModelBuilder().build(
+        nx=5, ny=5, dx=25.0, dy=25.0, dz=dz, porosity=0.2,
+        permx_base=150.0, nz=3, top_depth=2000.0)
+    model = ReservoirModelBuilder().build(
+        geology, five_spot(geology.grid), scal=default_scal(),
+        name="Dəyişən DZ testi")
+
+    project = Project("Dəyişən DZ layihəsi")
+    project.add_geological_model(geology)
+    project.add_reservoir_model(model)
+
+    restored = _round_trip(project, include_snapshots=False)[0]
+    restored_model = restored.reservoir_models[model.name]
+    assert np.allclose(restored_model.geometry.dz, dz)
+    assert not np.allclose(restored_model.geometry.dz, restored_model.geometry.dz[0])
+
+
 def test_heterogeneous_properties_survive_round_trip():
     project, model = _rich_project(with_result=False)
     restored = _round_trip(project)[0].reservoir_models[model.name]

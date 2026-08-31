@@ -554,3 +554,26 @@ def test_old_two_phase_engine_is_unaffected_by_the_well_limit():
     from imex2d.simulation.implicit.newton import NewtonSolver
 
     assert not hasattr(NewtonSolver, "max_stable_dt")
+
+
+def test_well_index_scales_with_its_own_layer_thickness():
+    """Peaceman WI = 2π·C·√(Kx·Ky)·h/(...) — h hər perforasiyanın ÖZ
+    təbəqəsinin qalınlığıdır. Fərqli qalınlıqlı iki təbəqədə eyni
+    (kx, ky, radius, skin) ilə perfore olunmuş quyularda WI nisbəti
+    dz nisbətinə bərabər olmalıdır."""
+    from imex2d.domain.wells import Perforation, Well, WellControl, WellType
+
+    geology = SyntheticGeologicalModelBuilder().build(
+        nx=3, ny=3, dx=25.0, dy=25.0, dz=[5.0, 15.0], porosity=0.2,
+        permx_base=150.0, nz=2, top_depth=2000.0)
+    wells = [
+        Well("P-THIN", WellType.PRODUCER,
+            WellControl(ControlMode.BHP, 200.0), [Perforation(1, 1, 0)]),
+        Well("P-THICK", WellType.PRODUCER,
+            WellControl(ControlMode.BHP, 200.0), [Perforation(1, 1, 1)]),
+    ]
+    model = ReservoirModelBuilder().build(geology, wells, scal=default_scal())
+    connections = {c.well_name: c for c in PeacemanWellModel().build_connections(model)}
+
+    ratio = connections["P-THICK"].well_index / connections["P-THIN"].well_index
+    assert abs(ratio - 3.0) < 1e-9   # 15 m / 5 m

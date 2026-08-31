@@ -415,7 +415,7 @@ def test_unit_scale_gives_the_true_geometric_ratio():
 
     plan = max(model.grid.nx * model.geometry.dx,
                model.grid.ny * model.geometry.dy)
-    thickness = model.grid.nz * model.geometry.dz
+    thickness = float(model.geometry.dz.sum())
     assert abs(aspect[2] / aspect[0] - thickness / plan) < 1e-6
 
 

@@ -133,7 +133,8 @@ class EclipseDeckWriter:
         grid, geometry = model.grid, model.geometry
         rock = model.rock
         depths = geometry.cell_depths().reshape(grid.shape)
-        tops = depths[0] - geometry.dz * 0.5
+        dz_cell = geometry.dz_per_cell()
+        tops = depths[0] - dz_cell.reshape(grid.shape)[0] * 0.5
 
         parts = [
             "GRID",
@@ -143,7 +144,7 @@ class EclipseDeckWriter:
             "",
             _array_block("DY", np.full(model.ncell, geometry.dy), 3),
             "",
-            _array_block("DZ", np.full(model.ncell, geometry.dz), 3),
+            _array_block("DZ", dz_cell, 3),
             "",
             _array_block("TOPS", tops.ravel(), 3),
             "",

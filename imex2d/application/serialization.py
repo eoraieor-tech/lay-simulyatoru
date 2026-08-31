@@ -159,7 +159,7 @@ class ProjectSerializer:
     # ---------------------------------------------------- grid/geometry
     def _geometry_to_dict(self, geometry: CellGeometry) -> dict:
         return {
-            "dx": geometry.dx, "dy": geometry.dy, "dz": geometry.dz,
+            "dx": geometry.dx, "dy": geometry.dy, "dz": geometry.dz.tolist(),
             "top_depth": geometry.top_depth,
             "top_depth_map": (None if geometry.top_depth_map is None
                               else _array(geometry.top_depth_map)),

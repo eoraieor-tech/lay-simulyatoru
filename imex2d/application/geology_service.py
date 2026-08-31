@@ -12,7 +12,7 @@ interfeysini bilir. Alqoritm konstruktora inject edilir.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence, Union
 
 import numpy as np
 
@@ -54,7 +54,7 @@ class GeologicalGridSpec:
     nz: int = 1
     dx: float = 20.0
     dy: float = 20.0
-    dz: float = 10.0
+    dz: Union[float, Sequence[float]] = 10.0
     top_depth: float = 2000.0
     dip_x: float = 0.0
     dip_y: float = 0.0

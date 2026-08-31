@@ -252,8 +252,8 @@ class CrossSectionRenderer:
             xlabel = f"Y, m    (I = {i + 1})"
 
         depths = model.geometry.cell_depths().reshape(grid.shape)
-        top = float(depths.min() - model.geometry.dz * 0.5)
-        base = float(depths.max() + model.geometry.dz * 0.5)
+        top = float(depths.min() - model.geometry.dz[0] * 0.5)
+        base = float(depths.max() + model.geometry.dz[-1] * 0.5)
 
         image = ax.imshow(section, origin="upper", aspect="auto", cmap=cmap,
                           vmin=vmin, vmax=vmax, interpolation="nearest",

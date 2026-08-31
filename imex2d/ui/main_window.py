@@ -1759,7 +1759,7 @@ class MainWindow(QMainWindow):
             self.grid_panel.dx.setValue(geometry.dx)
             self.grid_panel.dy.setValue(geometry.dy)
             self.grid_panel.thickness_mode.setCurrentIndex(0)   # DZ rejimi
-            self.grid_panel.dz.setValue(geometry.dz)
+            self.grid_panel.set_layer_thicknesses(geometry.dz)
             self.grid_panel.top_depth.setValue(geometry.top_depth)
 
             self.rock_panel.porosity.setValue(float(model.rock.porosity.values.mean()))
@@ -1908,7 +1908,7 @@ class MainWindow(QMainWindow):
             self.grid_panel.dx.setValue(geometry.dx)
             self.grid_panel.dy.setValue(geometry.dy)
             self.grid_panel.thickness_mode.setCurrentIndex(0)   # DZ rejimi
-            self.grid_panel.dz.setValue(geometry.dz)
+            self.grid_panel.set_layer_thicknesses(geometry.dz)
             self.grid_panel.top_depth.setValue(geometry.top_depth)
             self.well_panel.set_layer_count(grid.nz)
             self.well_panel.load(

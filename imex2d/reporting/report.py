@@ -207,12 +207,17 @@ class ReportGenerator:
     def _summary_lines(model: ReservoirModel) -> List[str]:
         grid, geometry = model.grid, model.geometry
         rock = model.rock
+        dz = geometry.dz
+        if np.allclose(dz, dz[0]):
+            dz_text = f"{float(dz[0]):g}"
+        else:
+            dz_text = f"{float(dz.min()):g}–{float(dz.max()):g}"
         lines = [
             "GRID",
             f"  Ölçü            {grid.nx} x {grid.ny} x {grid.nz}  "
             f"({model.ncell} hüceyrə)",
             f"  Hüceyrə ölçüsü  {geometry.dx:g} x {geometry.dy:g} x "
-            f"{geometry.dz:g} m",
+            f"{dz_text} m",
             f"  Dərinlik        {float(np.min(geometry.cell_depths())):.0f} – "
             f"{float(np.max(geometry.cell_depths())):.0f} m",
             "",

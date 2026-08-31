@@ -188,10 +188,12 @@ class VtkReservoirScene:
         padded = np.pad(centres, ((0, 0), (0, 1), (0, 1)), mode="edge")
         areal[:, :ny + 1, :nx + 1] = padded
 
-        # düyün səviyyələri: hüceyrə mərkəzindən ±dz/2
+        # düyün səviyyələri: hüceyrə mərkəzindən ±dz/2 (hər təbəqənin
+        # öz qalınlığı ilə — dz artıq (nz,) massivdir)
+        half_dz = geometry.dz / 2.0
         levels = np.empty((nz + 1, ny + 1, nx + 1))
-        levels[:nz] = areal - geometry.dz / 2.0
-        levels[nz] = areal[nz - 1] + geometry.dz / 2.0
+        levels[:nz] = areal - half_dz[:, None, None]
+        levels[nz] = areal[nz - 1] + half_dz[-1]
 
         x = np.arange(nx + 1) * geometry.dx
         y = np.arange(ny + 1) * geometry.dy
@@ -529,8 +531,8 @@ class VtkReservoirScene:
         # ümumi qalınlığının 25 %-i qədərdir ki, istənilən qalınlıqda
         # nisbətli görünsün.
         model_thickness = max(float(depths.max() - depths.min()),
-                              geometry.dz)
-        surface = float(depths.min()) - geometry.dz * 0.5
+                              float(geometry.dz.mean()))
+        surface = float(depths.min()) - float(geometry.dz[0]) * 0.5
         top = surface - model_thickness * 0.25
 
         for well in model.active_wells():
@@ -605,7 +607,7 @@ class VtkReservoirScene:
 
         actor = vtk.vtkBillboardTextActor3D()
         actor.SetInput(f" {name}")
-        actor.SetPosition(x, y, z + geometry.dz * 0.6)
+        actor.SetPosition(x, y, z + float(geometry.dz.mean()) * 0.6)
         properties = actor.GetTextProperty()
         properties.SetColor(1.0, 1.0, 1.0)
         properties.SetFontSize(15)
@@ -672,7 +674,7 @@ class VtkReservoirScene:
         nz, ny, nx = grid.shape
         exaggeration = max(self.settings.vertical_exaggeration, 1e-6)
         depths = geometry.cell_depths().reshape(grid.shape)
-        half = geometry.dz * 0.5
+        half = float(geometry.dz.mean()) * 0.5
 
         polygons, multipliers = [], []
         for fault in model.fault_references:

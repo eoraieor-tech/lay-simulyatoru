@@ -75,21 +75,41 @@ class GridGeometryPanel(QWidget):
         self.thickness_mode.addItem("Baza dərinliyi ilə", "BASE")
         self.thickness_mode.currentIndexChanged.connect(self._on_mode_changed)
         self.thickness_mode.currentIndexChanged.connect(self.changed)
+        self.per_layer = QCheckBox("Hər təbəqə üçün ayrı qalınlıq")
+        self.per_layer.toggled.connect(self._on_per_layer_toggled)
+        self.per_layer.toggled.connect(self.changed)
+        self.dz_table = QTableWidget(0, 1)
+        self.dz_table.setHorizontalHeaderLabels(["Qalınlıq (m)"])
+        self.dz_table.horizontalHeader().setStretchLastSection(True)
+        self.dz_table.verticalHeader().setDefaultSectionSize(24)
+        self.dz_table.setMaximumHeight(160)
+        self.dz_table.setVisible(False)
         self.dip_x = _spin(0.0, -20.0, 20.0, 2, 0.5, "m/hüc")
         self.dip_y = _spin(0.0, -20.0, 20.0, 2, 0.5, "m/hüc")
-        rows = [("NX", self.nx), ("NY", self.ny), ("DX", self.dx),
-                ("DY", self.dy), ("NZ (təbəqə sayı)", self.nz),
-                ("Qalınlıq necə verilir", self.thickness_mode),
-                ("Təbəqə qalınlığı DZ", self.dz),
-                ("Tavan dərinliyi", self.top_depth),
-                ("Baza dərinliyi", self.base_depth),
-                ("Maillik X üzrə", self.dip_x),
-                ("Maillik Y üzrə", self.dip_y)]
-        for label, widget in rows:
+
+        top_rows = [("NX", self.nx), ("NY", self.ny), ("DX", self.dx),
+                    ("DY", self.dy), ("NZ (təbəqə sayı)", self.nz),
+                    ("Qalınlıq necə verilir", self.thickness_mode),
+                    ("Təbəqə qalınlığı DZ", self.dz)]
+        bottom_rows = [("Tavan dərinliyi", self.top_depth),
+                       ("Baza dərinliyi", self.base_depth),
+                       ("Maillik X üzrə", self.dip_x),
+                       ("Maillik Y üzrə", self.dip_y)]
+        for label, widget in top_rows:
             form.addRow(label, widget)
             signal = getattr(widget, "valueChanged", None)
             if signal is not None:
                 signal.connect(self.changed)
+        form.addRow(self.per_layer)
+        form.addRow("Təbəqə qalınlıqları", self.dz_table)
+        for label, widget in bottom_rows:
+            form.addRow(label, widget)
+            signal = getattr(widget, "valueChanged", None)
+            if signal is not None:
+                signal.connect(self.changed)
+
+        self._sync_table_rows(self.nz.value())
+
         self.info = QLabel()
         self.info.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         form.addRow(self.info)
@@ -105,21 +125,85 @@ class GridGeometryPanel(QWidget):
         Hər üçü sərbəst olsaydı, ziddiyyət yaranardı. Ona görə istifadəçi
         seçir: qalınlığı birbaşa verir, yoxsa baza dərinliyindən
         hesablatdırır — geoloji işdə karotajdan məhz tavan və daban
-        oxunur, qalınlıq isə onlardan çıxır.
+        oxunur, qalınlıq isə onlardan çıxır. Baza dərinliyi rejimi tək
+        orta qalınlıq təyin etdiyi üçün hər-təbəqə cədvəli ilə birgə
+        işlədilmir.
         """
         by_base = self.thickness_mode.currentData() == "BASE"
-        self.dz.setEnabled(not by_base)
+        self.per_layer.setEnabled(not by_base)
+        if by_base and self.per_layer.isChecked():
+            self.per_layer.setChecked(False)
+        self.dz.setEnabled(not by_base and not self.per_layer.isChecked())
         self.base_depth.setEnabled(by_base)
         self._refresh_info()
 
+    def _on_per_layer_toggled(self, checked: bool) -> None:
+        if checked:
+            self._sync_table_rows(self.nz.value())
+        by_base = self.thickness_mode.currentData() == "BASE"
+        self.dz.setEnabled(not checked and not by_base)
+        self.dz_table.setVisible(checked)
+
+    def _sync_table_rows(self, n: int) -> None:
+        """Cədvəlin sətir sayını NZ-yə uyğunlaşdırır, mövcud dəyərləri saxlayır."""
+        current = self.dz_table.rowCount()
+        if n == current:
+            return
+        if n > current:
+            default = (self.dz_table.cellWidget(current - 1, 0).value()
+                      if current > 0 else self.dz.value())
+            self.dz_table.setRowCount(n)
+            for row in range(current, n):
+                spin = _spin(default, 0.1, 500, 2, 1, "m")
+                spin.valueChanged.connect(self.changed)
+                self.dz_table.setCellWidget(row, 0, spin)
+                self.dz_table.setVerticalHeaderItem(
+                    row, QTableWidgetItem(f"Təbəqə {row + 1}"))
+        else:
+            self.dz_table.setRowCount(n)
+
     def layer_thickness(self) -> float:
-        """Bir təbəqənin qalınlığı — seçilmiş rejimdən asılı olaraq."""
+        """Bir təbəqənin qalınlığı — seçilmiş rejimdən asılı olaraq (uniform)."""
         if self.thickness_mode.currentData() != "BASE":
             return self.dz.value()
         span = self.base_depth.value() - self.top_depth.value()
         if span <= 0.0:
             return self.dz.minimum()
         return max(span / max(self.nz.value(), 1), self.dz.minimum())
+
+    def _per_layer_active(self) -> bool:
+        return (self.per_layer.isChecked()
+                and self.thickness_mode.currentData() != "BASE")
+
+    def layer_thicknesses(self) -> list:
+        """Hər təbəqənin qalınlığı, uzunluq NZ — uniform yoxsa cədvəldən."""
+        n = self.nz.value()
+        if self._per_layer_active():
+            self._sync_table_rows(n)
+            return [self.dz_table.cellWidget(row, 0).value() for row in range(n)]
+        return [self.layer_thickness()] * n
+
+    def set_layer_thicknesses(self, dz) -> None:
+        """Fayldan/modeldən gələn qalınlığı panelə yazır (skalyar və ya massiv)."""
+        try:
+            values = [float(v) for v in dz]
+        except TypeError:
+            values = [float(dz)]
+        if not values:
+            return
+        self.nz.setValue(len(values))
+        uniform = all(abs(v - values[0]) < 1e-9 for v in values)
+        if uniform:
+            self.dz.setValue(values[0])
+            if self.per_layer.isChecked():
+                self.per_layer.setChecked(False)
+        else:
+            self._sync_table_rows(len(values))
+            for row, value in enumerate(values):
+                self.dz_table.cellWidget(row, 0).setValue(value)
+            if not self.per_layer.isChecked():
+                self.per_layer.setChecked(True)
+        self._refresh_info()
 
     def _refresh_info(self):
         # Qoruyucu: siqnal panel tam qurulmamış da gələ bilər.
@@ -128,32 +212,46 @@ class GridGeometryPanel(QWidget):
         lx = self.nx.value() * self.dx.value()
         ly = self.ny.value() * self.dy.value()
         n = self.nx.value() * self.ny.value() * self.nz.value()
-        dz = self.layer_thickness()
-        thickness = self.nz.value() * dz
+        per_layer_active = self._per_layer_active()
+
+        if per_layer_active:
+            thicknesses = self.layer_thicknesses()
+            thickness = sum(thicknesses)
+            if len(set(thicknesses)) <= 1:
+                dz_text = f"{thicknesses[0]:.2f}"
+            else:
+                dz_text = f"{min(thicknesses):.2f}–{max(thicknesses):.2f}"
+        else:
+            dz = self.layer_thickness()
+            thickness = self.nz.value() * dz
+            dz_text = f"{dz:.2f}"
 
         top = self.top_depth.value()
         dip = ((self.nx.value() - 1) * self.dip_x.value()
                + (self.ny.value() - 1) * self.dip_y.value())
         base = top + max(dip, 0.0) + thickness
 
-        if self.thickness_mode.currentData() == "BASE":
-            self.dz.blockSignals(True)
-            self.dz.setValue(dz)
-            self.dz.blockSignals(False)
-        else:
-            self.base_depth.blockSignals(True)
-            self.base_depth.setValue(top + thickness)
-            self.base_depth.blockSignals(False)
+        if not per_layer_active:
+            if self.thickness_mode.currentData() == "BASE":
+                self.dz.blockSignals(True)
+                self.dz.setValue(self.layer_thickness())
+                self.dz.blockSignals(False)
+            else:
+                self.base_depth.blockSignals(True)
+                self.base_depth.setValue(top + thickness)
+                self.base_depth.blockSignals(False)
 
         self.info.setText(
             f"Hüceyrə sayı: {n}     Sahə: {lx:.0f} × {ly:.0f} m     "
-            f"DZ: {dz:.2f} m     Ümumi qalınlıq: {thickness:.1f} m\n"
+            f"DZ: {dz_text} m     Ümumi qalınlıq: {thickness:.1f} m\n"
             f"Dərinlik: {top:.0f} – {base:.0f} m     "
             f"Həcm: {lx * ly * thickness / 1e6:.2f} mln m³")
 
     def values(self) -> dict:
+        thicknesses = self.layer_thicknesses()
+        dz_value = thicknesses if self._per_layer_active() else thicknesses[0]
         return dict(nx=self.nx.value(), ny=self.ny.value(), dx=self.dx.value(),
-                    dy=self.dy.value(), dz=self.layer_thickness(),
+                    dy=self.dy.value(), dz=dz_value,
                     nz=self.nz.value(), top_depth=self.top_depth.value(),
                     dip_x=self.dip_x.value(), dip_y=self.dip_y.value())
 
@@ -162,7 +260,7 @@ class GridGeometryPanel(QWidget):
         top = self.top_depth.value()
         dipped = top + ((self.nx.value() - 1) * self.dip_x.value()
                         + (self.ny.value() - 1) * self.dip_y.value())
-        thickness = self.nz.value() * self.layer_thickness()
+        thickness = sum(self.layer_thicknesses())
         return min(top, dipped), max(top, dipped) + thickness
 
     def grid(self) -> CartesianGrid:

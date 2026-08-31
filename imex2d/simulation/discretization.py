@@ -30,12 +30,12 @@ class TwoPointFluxDiscretization:
         conn = model.connections()
         geom = model.geometry
         area = geom.face_areas(conn)
-        half = geom.face_half_distances(conn)
+        half_a, half_b = geom.face_half_distances(conn)
         perm = self._directional_permeability(model, conn)
 
         k_a = np.maximum(perm[0], 1e-9)
         k_b = np.maximum(perm[1], 1e-9)
-        trans = model.units.darcy_constant * area / (half / k_a + half / k_b)
+        trans = model.units.darcy_constant * area / (half_a / k_a + half_b / k_b)
         trans = self._apply_fault_multipliers(model, conn, trans)
 
         return DiscretizedGrid(

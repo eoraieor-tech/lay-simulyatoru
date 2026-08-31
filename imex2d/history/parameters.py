@@ -226,8 +226,9 @@ def standard_parameters(model: ReservoirModel) -> List[ParameterDefinition]:
         # dəyişdirmək mənasızdır (ya hamısı su, ya hamısı neft zonası).
         # Belə halda hədləri bir hüceyrə qalınlığı qədər genişləndiririk
         # ki, parametr heç olmasa "kontakt var / yox" seçimini versin.
-        if high - low < model.geometry.dz:
-            margin = model.geometry.dz
+        mean_dz = float(np.mean(model.geometry.dz))
+        if high - low < mean_dz:
+            margin = mean_dz
             low, high = low - margin, high + margin
         definitions.append(ParameterDefinition(
             "OWC", _set_contact, minimum=low, maximum=high,

@@ -219,7 +219,7 @@ class VolumeRenderer:
         # görüntü nisbətinə tətbiq olunur (bax `_style`) — əks halda
         # hüceyrələr uzadılmış, ox etiketləri isə həqiqi qalır və ikisi
         # bir-birinə zidd olur.
-        cell_size = np.array([geometry.dx, geometry.dy, geometry.dz])
+        dz_grid = geometry.dz_per_cell().reshape(grid.shape)
         polygons, face_values, shades = [], [], []
 
         for (axis, direction), corner_indices in _FACES.items():
@@ -235,10 +235,15 @@ class VolumeRenderer:
                 continue
 
             k, j, i = np.nonzero(exposed)
+            dz_k = dz_grid[k, j, i]
             origin = np.column_stack([i * geometry.dx, j * geometry.dy,
-                                      depths[k, j, i] - geometry.dz * 0.5])
-            corners = _CORNERS[list(corner_indices)] * cell_size
-            quad = origin[:, None, :] + corners[None, :, :]
+                                      depths[k, j, i] - dz_k * 0.5])
+            # təbəqə qalınlığı dəyişkən ola bilər -> hər üz öz dz-i ilə
+            # miqyaslanır (x/y ölçüsü sabit, z ölçüsü hüceyrəyə görə)
+            cell_size = np.column_stack([
+                np.full_like(dz_k, geometry.dx), np.full_like(dz_k, geometry.dy), dz_k])
+            corners = _CORNERS[list(corner_indices)]
+            quad = origin[:, None, :] + corners[None, :, :] * cell_size[:, None, :]
             polygons.extend(quad)
             face_values.extend(grid_values[k, j, i])
 
@@ -266,7 +271,7 @@ class VolumeRenderer:
         grid, geometry = model.grid, model.geometry
         depths = geometry.cell_depths().reshape(grid.shape)
         nz, ny, nx = grid.shape
-        half_thickness = geometry.dz * 0.5
+        half_thickness = float(geometry.dz.mean()) * 0.5
 
         polygons, multipliers, labels = [], [], []
         for fault in model.fault_references:
@@ -376,7 +381,7 @@ class VolumeRenderer:
     def _draw_wells(ax, model: ReservoirModel, exaggeration: float) -> None:
         geometry = model.geometry
         depths = geometry.cell_depths().reshape(model.grid.shape)
-        top = float(depths.min()) - geometry.dz * 0.5
+        top = float(depths.min()) - float(geometry.dz[0]) * 0.5
 
         for well in model.active_wells():
             perforations = well.open_perforations()
@@ -407,8 +412,8 @@ class VolumeRenderer:
         length_y = grid.ny * geometry.dy
 
         # modelin HƏQİQİ dərinlik intervalı: hüceyrə mərkəzləri ± yarım DZ
-        top = float(depths.min()) - geometry.dz * 0.5
-        base = float(depths.max()) + geometry.dz * 0.5
+        top = float(depths.min()) - float(geometry.dz[0]) * 0.5
+        base = float(depths.max()) + float(geometry.dz[-1]) * 0.5
         thickness = base - top
 
         ax.set_xlim(0, length_x)
@@ -419,7 +424,7 @@ class VolumeRenderer:
         # ─── dərinlik oxu TƏBƏQƏ SƏRHƏDLƏRİNDƏ işarələnir ───────────
         # İxtiyari addımlar (2050, 2150 …) təbəqələrlə üst-üstə düşmür
         # və hansı hüceyrənin harada bitdiyini görmək olmur.
-        boundaries = top + np.arange(grid.nz + 1) * geometry.dz
+        boundaries = top + np.concatenate(([0.0], np.cumsum(geometry.dz)))
         if boundaries.size <= 12:
             ax.zaxis.set_major_locator(FixedLocator(boundaries))
         else:
