@@ -272,6 +272,34 @@ sınandı (`window.toolbox.setCurrentIndex(i)` + `app.processEvents()`
 hər i üçün) — heç bir tabda xəta qalmadı. Tam test dəsti (624) və golden
 yenidən keçdi.
 
+### İkinci həqiqi bug (istifadəçi bildirdi: "quyu əlavə etmək istəyəndə bağlandı")
+
+`GeologyPanel.__init__`-də `self.add_button.clicked.connect(self.add_row)`
+birbaşa qoşulmuşdu. `QPushButton.clicked` siqnalı `bool checked` arqumenti
+göndərir; `add_row(self, well=None)` bir SEÇİMLİ parametr qəbul etdiyi
+üçün PyQt5 bu bool-u `well`-ə ötürür → `well.name` sətrində
+`AttributeError: 'bool' object has no attribute 'name'` — bu, `clicked`
+callback-i daxilində tutulmadan atılır və proqram bağlanır (dəqiq
+istifadəçinin təsvir etdiyi kimi). Digər düymələr (`duplicate_button`,
+`delete_button`, `centre_button`) təhlükəsiz idi, çünki bağlı olduqları
+metodlar HEÇ bir əlavə parametr qəbul etmir (PyQt yalnız slotun qəbul
+etdiyi qədər arqument ötürür).
+
+**Düzəliş:** `_on_add_clicked(self): self.add_row()` — sıfır-arqumentli
+"wrapper" metod əlavə edilib, düymə ona qoşulub (`lambda: self.add_row()`
+DEYİL — bu, `test_ui_static.py`-dəki statik "erkən çağırış" yoxlamasını
+yalançı-müsbətlə pozurdu, çünki `ast.walk` lambda daxilindəki çağırışı da
+`__init__`-in "birbaşa" çağırışı kimi görür). Əlavə olaraq `add_row`-un
+`blockSignals`/`insertRow`/`setItem` ardıcıllığı `try/finally` ilə
+bağlandı ki, gələcəkdə bənzər bir xəta cədvəli daimi "siqnalsız" vəziyyətdə
+qoymasın.
+
+**Necə tapıldı:** proqramlı şəkildə HƏR düymənin `.click()`-i çağırılıb
+(modal `QMessageBox`-lar aftomatik bağlanaraq), nəinki yalnız tab
+keçidləri. Əvvəlki sınaq YALNIZ tab açılışlarını yoxlamışdı (bax yuxarı,
+paintEvent bugu), buna görə bu bug ötürülmüşdü. Golden və tam test dəsti
+(624) yenidən keçdi.
+
 ### Bilinən məhdudiyyətlər / sonraya buraxılan işlər
 
 - **`top`/`bottom` grid səthinə köçmür:** quyu `top`/`bottom` dəyərləri

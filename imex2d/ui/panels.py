@@ -317,7 +317,7 @@ class GeologyPanel(QWidget):
         for button in (self.add_button, self.duplicate_button,
                       self.delete_button, self.centre_button):
             toolbar.addWidget(button)
-        self.add_button.clicked.connect(self.add_row)
+        self.add_button.clicked.connect(self._on_add_clicked)
         self.duplicate_button.clicked.connect(self._duplicate_selected)
         self.delete_button.clicked.connect(self._delete_selected)
         self.centre_button.clicked.connect(self._centre_selected)
@@ -409,6 +409,11 @@ class GeologyPanel(QWidget):
         row = self.table.currentRow()
         return row if row >= 0 else None
 
+    def _on_add_clicked(self):
+        """`add_button.clicked` `bool checked` göndərir — `add_row(well=None)`
+        birbaşa qoşulsaydı, bu bool `well` parametrinə düşərdi."""
+        self.add_row()
+
     def _duplicate_selected(self):
         row = self._selected_row()
         if row is None:
@@ -494,31 +499,33 @@ class GeologyPanel(QWidget):
                                   in_model=True, x=0.0, y=0.0)
         r = self.table.rowCount()
         self.table.blockSignals(True)
-        self.table.insertRow(r)
-        self.table.setItem(r, self.COL_NAME, QTableWidgetItem(well.name))
+        try:
+            self.table.insertRow(r)
+            self.table.setItem(r, self.COL_NAME, QTableWidgetItem(well.name))
 
-        check_item = QTableWidgetItem()
-        check_item.setFlags(check_item.flags() | Qt.ItemIsUserCheckable)
-        check_item.setCheckState(Qt.Checked if well.in_model else Qt.Unchecked)
-        self.table.setItem(r, self.COL_IN_MODEL, check_item)
+            check_item = QTableWidgetItem()
+            check_item.setFlags(check_item.flags() | Qt.ItemIsUserCheckable)
+            check_item.setCheckState(Qt.Checked if well.in_model else Qt.Unchecked)
+            self.table.setItem(r, self.COL_IN_MODEL, check_item)
 
-        self.table.setItem(r, self.COL_X, QTableWidgetItem(f"{well.x:g}"))
-        self.table.setItem(r, self.COL_Y, QTableWidgetItem(f"{well.y:g}"))
+            self.table.setItem(r, self.COL_X, QTableWidgetItem(f"{well.x:g}"))
+            self.table.setItem(r, self.COL_Y, QTableWidgetItem(f"{well.y:g}"))
 
-        ij_item = QTableWidgetItem("—")
-        ij_item.setFlags(ij_item.flags() & ~Qt.ItemIsEditable)
-        ij_item.setForeground(QBrush(QColor(Qt.gray)))
-        self.table.setItem(r, self.COL_IJ, ij_item)
+            ij_item = QTableWidgetItem("—")
+            ij_item.setFlags(ij_item.flags() & ~Qt.ItemIsEditable)
+            ij_item.setForeground(QBrush(QColor(Qt.gray)))
+            self.table.setItem(r, self.COL_IJ, ij_item)
 
-        optional_columns = [(self.COL_TOP, "top"), (self.COL_BOTTOM, "bottom"),
-                           (self.COL_PORO, "porosity"), (self.COL_PERM, "permeability"),
-                           (self.COL_SW, "water_saturation")]
-        for column, attr in optional_columns:
-            value = getattr(well, attr)
-            self.table.setItem(r, column, QTableWidgetItem(
-                "" if value is None else f"{value:g}"))
-        self.table.setItem(r, self.COL_NOTE, QTableWidgetItem(well.note))
-        self.table.blockSignals(False)
+            optional_columns = [(self.COL_TOP, "top"), (self.COL_BOTTOM, "bottom"),
+                               (self.COL_PORO, "porosity"), (self.COL_PERM, "permeability"),
+                               (self.COL_SW, "water_saturation")]
+            for column, attr in optional_columns:
+                value = getattr(well, attr)
+                self.table.setItem(r, column, QTableWidgetItem(
+                    "" if value is None else f"{value:g}"))
+            self.table.setItem(r, self.COL_NOTE, QTableWidgetItem(well.note))
+        finally:
+            self.table.blockSignals(False)
         self._on_table_edited()
 
     def load(self, wells: List[GeologicalWell]):
