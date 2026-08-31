@@ -102,3 +102,54 @@ class CellGeometry:
 
     def areal_extent(self) -> tuple:
         return (self.grid.nx * self.dx, self.grid.ny * self.dy)
+
+
+def xy_to_ij(x: float, y: float, geometry: CellGeometry) -> tuple:
+    """Metr koordinatını hüceyrə indeksinə çevirir.
+
+    Origin (0, 0) qəbul edilir — bu kod bazasında koordinat sistemi
+    həmişə grid-in aşağı-sol küncündən başlayır (bax `LOCAL`
+    `coordinate_system`), ayrıca origin sahəsi yoxdur.
+
+    `x == x_max` sərhədində `i = nx` çıxmasın deyə yuxarı hədd `nx - 1`-ə
+    kəsilir (tapşırıqda tələb olunan qayda); aşağı hədddə də simmetrik
+    olaraq `0`-a kəsilir ki, grid-dən kənar mənfi X/Y mənfi indeksə yox,
+    ən yaxın kənar hüceyrəyə düşsün (özü `validate_wells`-də ayrıca
+    "sərhəddən kənar" xətası kimi bildirilir — bu funksiya heç vaxt
+    xəta atmır, yalnız ən yaxın hüceyrəni qaytarır).
+    """
+    grid = geometry.grid
+    i = int((x - 0.0) / geometry.dx) if geometry.dx > 0 else 0
+    j = int((y - 0.0) / geometry.dy) if geometry.dy > 0 else 0
+    i = min(max(i, 0), grid.nx - 1)
+    j = min(max(j, 0), grid.ny - 1)
+    return i, j
+
+
+def depth_to_k(x: float, y: float, depth: float, geometry: CellGeometry):
+    """Dərinliyi (m) verilmiş `(x, y)` sütununda təbəqə indeksinə çevirir.
+
+    Lay üfüqi deyil — hər `(i, j)` sütununun tavan dərinliyi
+    `top_depth_map`-dan (varsa) və ya sabit `top_depth`-dən götürülür,
+    sonra kumulyativ `dz` ilə təbəqə sərhədləri qurulur. Dərinlik grid-in
+    diapazonundan kənardadırsa `None` qaytarır — çağıran bunu "grid
+    qurulduqdan sonra" mesajı kimi göstərməlidir, xəta atılmır.
+    """
+    i, j = xy_to_ij(x, y, geometry)
+    grid = geometry.grid
+    if geometry.top_depth_map is None:
+        column_top = geometry.top_depth
+    else:
+        areal = np.asarray(geometry.top_depth_map, float).ravel()
+        if areal.size == grid.nx * grid.ny:
+            column_top = float(areal.reshape(grid.ny, grid.nx)[j, i])
+        elif areal.size == grid.ncell:
+            column_top = float(areal.reshape(grid.shape)[0, j, i])
+        else:
+            column_top = geometry.top_depth
+
+    edges = np.concatenate(([0.0], np.cumsum(geometry.dz)))
+    if depth < column_top + edges[0] or depth > column_top + edges[-1]:
+        return None
+    k = int(np.searchsorted(edges, depth - column_top, side="right")) - 1
+    return int(min(max(k, 0), grid.nz - 1))
