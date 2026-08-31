@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from PyQt5.QtCore import QRectF, Qt
+from PyQt5.QtCore import QPointF, QRectF, Qt
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt5.QtWidgets import QWidget
 
@@ -83,6 +83,7 @@ class GeologyMapWidget(QWidget):
             painter.setPen(QPen(pen_color, 1.5))
             painter.setBrush(QBrush(color if well.in_model or not in_bounds
                                     else Qt.transparent))
-            painter.drawEllipse(sx - _RADIUS, sy - _RADIUS, 2 * _RADIUS, 2 * _RADIUS)
+            painter.drawEllipse(QRectF(sx - _RADIUS, sy - _RADIUS,
+                                       2 * _RADIUS, 2 * _RADIUS))
             painter.setPen(QPen(QColor(PALETTE.text), 1))
-            painter.drawText(sx + _RADIUS + 2, sy + 3, well.name)
+            painter.drawText(QPointF(sx + _RADIUS + 2, sy + 3), well.name)

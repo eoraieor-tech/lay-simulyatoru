@@ -245,6 +245,33 @@ amma alət çağırışları arasında iş meneceri onu dayandırır). Ona gör�
   yenilənməsi. Bunlar VİZUAL layout məsələləridir, skriptlə tam yoxlanıla
   bilmədi (yalnız MƏNTİQ yoxlanıldı, PİKSEL-səviyyəli görünüş yox).
 
+### Sonradan tapılan həqiqi bug (istifadəçi bildirdi, düzəldildi)
+
+İstifadəçi bildirdi: proqramda 2-ci bölməni AÇMAQ (toolbox səhifəsini
+göstərmək) proqramı bağlayırdı. Səbəb: `GeologyMapWidget.paintEvent`-də
+`painter.drawEllipse(sx - _RADIUS, ...)` və `painter.drawText(sx + ..., ...)`
+XAM PYTHON `float` DƏYƏRLƏRİ ilə çağırılırdı — PyQt5-in bu overload-ları
+(4 mövqeli float arqument) qəbul ETMİR, yalnız `QRectF`/`QPointF` və ya
+tam `int` qəbul edir. Nəticə: hər dəfə xəritə RƏNGLƏNƏNDƏ (yəni panel
+göstəriləndə) Python `TypeError` PyQt5-in virtual metod override-ı
+daxilində tutulmadan atılır, PyQt5 bunu `qFatal`/abort kimi işləyir və
+bütün proqram bağlanır.
+
+**Niyə mən bunu tutmadım:** əvvəlki skriptli sınaqlarımda `set_data()`
+çağırırdım (bu, `self.update()` ilə YALNIZ təzələməni PLANLAŞDIRIR), amma
+heç vaxt `app.processEvents()` və ya real `.show()` ilə faktiki
+`paintEvent`-i işə salmırdım — ona görə bug görünməz qaldı. Dərs: PyQt
+widget sınağı `update()`-dən sonra HƏMİŞƏ `app.processEvents()` və ya
+`.repaint()` ilə tamamlanmalıdır, əks halda paint kodu heç vaxt icra
+olunmur.
+
+**Düzəliş:** `imex2d/ui/geology_map.py` — `drawEllipse` üçün `QRectF`,
+`drawText` üçün `QPointF` işlədildi. Sonra bütün toolbox (8) və görüntü
+(12) tablarını proqramlı şəkildə açıb-bağlayan bir skriptlə YENİDƏN
+sınandı (`window.toolbox.setCurrentIndex(i)` + `app.processEvents()`
+hər i üçün) — heç bir tabda xəta qalmadı. Tam test dəsti (624) və golden
+yenidən keçdi.
+
 ### Bilinən məhdudiyyətlər / sonraya buraxılan işlər
 
 - **`top`/`bottom` grid səthinə köçmür:** quyu `top`/`bottom` dəyərləri
