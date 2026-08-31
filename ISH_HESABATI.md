@@ -201,7 +201,94 @@ görə Mərhələ 5 və 6 AYRI-AYRI commit əvəzinə BİR birləşmiş UI commi
 yazılır ("ən mühafizəkar" seçim: yarımçıq/qeyri-ardıcıl aralıq vəziyyəti
 commit etməkdənsə, tam sınanmış vahid dəyişiklik).
 
-## Mərhələ planı (bu fayl hər mərhələdən sonra yenilənəcək)
+## Mərhələ 7 — yekun
+
+**Tam test dəsti:** `pytest -q` → **624 keçdi, 1 keçildi (skip)**, 0 uğursuz.
+Skip olunan test bu işdən əvvəl də mövcud idi və bu işə aid deyil (yavaş
+test, `IMEX_SKIP_SLOW` ilə əlaqəli — toxunulmayıb). Bu işlə əlaqəli yeni
+testlər: `test_geology_wells.py` (14), `test_geology_geometry.py` (12),
+`test_validate_wells.py` (17), `test_geology_adapter.py` (6) — cəmi 49.
+
+**Golden:** `python tools/golden.py` (yazma REJİMİ İŞLƏDİLMƏDİ) → üç keys
+də (`five_spot`, `bl_1d`, `five_spot_small`) **UYĞUNDUR**. Gözlənilən
+nəticə — bu iş yalnız daxiletmə yolunu dəyişir, `geology_service.py` və
+simulyasiya mühərriki toxunulmayıb.
+
+**`run.bat` sınağı — qismən, alət mühiti məhdudiyyəti ilə:** Bu mühitdə
+(sandboxlanmış alət icrası) uzunmüddətli GUI prosesini bir neçə alət
+çağırışı arasında canlı saxlamaq mümkün olmadı (`cmd.exe /c run.bat`
+Bash alətində sükutla heç nə icra etmir — köhnə davranış, mənim işimlə
+əlaqəli deyil; PowerShell `Start-Process` isə prosesi düzgün başladır,
+amma alət çağırışları arasında iş meneceri onu dayandırır). Ona görə
+əvəzinə üç səviyyəli yoxlama aparıldı:
+  1. `venv\Scripts\python.exe app.py` (run.bat-ın aktivləşdirdiyi EYNİ venv)
+     — İKİ DƏFƏ təmiz başladı, jurnalda "12 tab" doğrulaması keçdi, xəta yoxdur.
+  2. PowerShell `Start-Process` ilə `run.bat`-ın ÖZÜ işə salındı — jurnalda
+     "IMEX-2D v69 başladıldı" sətri göründü (yəni `cd`/venv aktivləşdirmə/
+     `python app.py` zənciri düzgün işləyir), sonra alət mühiti prosesi
+     kəsdi (`^C`) — bu, `run.bat`-ın özündə DEYİL, mənim test roll-umda idi.
+  3. Real Qt platforması ilə (OFFSCREEN YOX) ssenari üzrə skriptli sınaq:
+     `MainWindow` qurulması, default five-spot-un HƏM 2-ci, HƏM 7-ci
+     bölmədə düzgün göründüyü (INJ-1/PROD-1 küncləri (0,0)/(40,40) dəqiq),
+     petrofizika daxil edilib interpolyasiya, perforasiya metr redaktəsi,
+     `in_model` söndürülüb-yandırılanda rejimin qorunması, boş ad/kənar
+     koordinatın "İnterpolyasiya et"-i bloklaması, `.imx` saxla/aç dövrəsi.
+     Hamısı gözlənilən nəticəni verdi (bax Mərhələ 6).
+  4. `QT_QPA_PLATFORM=offscreen` ilə TAM `MainWindow` qurulması SEGFAULT
+     verir — səbəb VTK-nin (3D görüntü tabı) offscreen rejimdə OpenGL
+     kontekst ala bilməməsidir. Bu, MƏNİM DƏYİŞİKLİYİMLƏ ƏLAQƏLİ DEYİL —
+     VTK-nin real ekran/GPU tələb etməsi əvvəldən mövcud məhdudiyyətdir.
+
+  **Tövsiyə:** qayıdanda `run.bat`-ı əl ilə açıb ən azı bunlara bax: (a)
+  2-ci bölmənin kiçik xəritəsi düzgün göstərilir, (b) "Grid mərkəzinə at"
+  düyməsi, (c) 7-ci bölmədə Perf üst/alt redaktəsi ilə k sütununun canlı
+  yenilənməsi. Bunlar VİZUAL layout məsələləridir, skriptlə tam yoxlanıla
+  bilmədi (yalnız MƏNTİQ yoxlanıldı, PİKSEL-səviyyəli görünüş yox).
+
+### Bilinən məhdudiyyətlər / sonraya buraxılan işlər
+
+- **`top`/`bottom` grid səthinə köçmür:** quyu `top`/`bottom` dəyərləri
+  `TOP`/`BOTTOM` adı ilə interpolyasiya olunur və hesabatda göstərilir,
+  AMMA nəticə `CellGeometry.top_depth_map`-a avtomatik yazılmır — bunun
+  üçün `geology_service.py`-ə toxunmaq lazım olardı, bu isə bölmə 9-un
+  qadağasına ziddir (bax Mərhələ 1). Gələcək iş: `_surface()`-ə real
+  interpolyasiya olunmuş səthi qəbul etmək imkanı əlavə etmək.
+- **Xəritə statikdir:** `GeologyMapWidget` nöqtəni klikləyib sətri seçmə
+  imkanı vermir (yalnız cədvəldə seçilən sətir xəritədə fərqli rənglə
+  göstərilir, əksi yox). Vaxt məhdudiyyətinə görə minimal saxlanıldı.
+- **CSV idxalı** (`imex2d/geology/well_data_io.py`) toxunulmadan qalıb,
+  UI-dən ayrılıb — tapşırığın 13-cü bəndinə uyğun olaraq bilərəkdən indi
+  geri qoşulmayıb.
+- **PyQt widget-lərinin avtomatlaşdırılmış testi yoxdur** — layihənin
+  mövcud konvensiyası (`test_ui_wiring.py`/`test_ui_static.py`) Qt
+  ekranı tələb etməyən AST-əsaslı statik yoxlamalardır; mən də bu
+  qaydaya uyğunlaşdım. `GeologyPanel`/`WellPanel`-in davranışı yuxarıdakı
+  skriptli sınaqla (commit mesajında təsvir olunan) doğrulandı, amma bu
+  sınaq test dəstinə ƏLAVƏ OLUNMAYIB (təkrarlana bilən avtomatik test
+  deyil, real Qt platforması və müvəqqəti fayl tələb edir).
+
+### Öz təşəbbüsümlə verilmiş əsas qərarlar (xülasə)
+
+Hamısı yuxarıda müvafiq mərhələdə ətraflı izah olunub, burada siyahı kimi:
+1. `.imx` sxemi tapşırıqdakı kimi deyil, mövcud `Project`-based struktura
+   uyğunlaşdırıldı (Mərhələ 1).
+2. `FORMAT_VERSION` "3" yox, `1 → 2`; yoxlama `>` (Mərhələ 1/2).
+3. Geologiya quyu cədvəli `GeologicalModel`-də deyil, `Project`-də saxlanılır
+   (Mərhələ 1).
+4. `xy_to_ij`/`depth_to_k` imzası `grid` əvəzinə mövcud `CellGeometry`
+   qəbul edir (Mərhələ 3).
+5. Metod-üzrə minimum quyu sayı "IDW ≥ 1" yox, faktiki "IDW ≥ 2" (paylaşılan
+   `WellDataset.validate()`-in tələbinə görə) (Mərhələ 4).
+6. Xassə-üzrə az-quyu yoxlaması `error` yox, `warning` (bölmə 3-ün "digər
+   xassələr hesablanır" tələbini qorumaq üçün) (Mərhələ 4).
+7. `top`/`bottom` interpolyasiya olunur, amma grid səthinə avtomatik
+   köçmür (Mərhələ 1/7, yuxarı bax).
+8. Startup-da default five-spot HƏM geologiya, HƏM quyu cədvəlinə yazılır
+   (əvvəllər yalnız quyu cədvəlinə) — 7-ci bölmənin i/j-si artıq TAM
+   geologiya bağlantısından asılı olduğu üçün zəruri oldu (Mərhələ 5).
+9. Mərhələ 5 və 6 ayrı-ayrı yox, bir commit kimi yazıldı (Mərhələ 6).
+
+## Mərhələ planı
 
 - [x] 1 — təhlil
 - [x] 2 — `GeologicalWell` + serialization + miqrasiya + testlər
@@ -209,4 +296,4 @@ commit etməkdənsə, tam sınanmış vahid dəyişiklik).
 - [x] 4 — `validate_wells` + testlər
 - [x] 5 — 2-ci bölmənin UI-si (+ `wells_to_dataset` adapteri)
 - [x] 6 — 7-ci bölmə ilə birləşmə + ssenari generatoru
-- [ ] 7 — yekun: golden + tam test dəsti + `run.bat`
+- [x] 7 — yekun: golden (UYĞUNDUR) + tam test dəsti (624 keçdi) + `run.bat` (qismən, yuxarı bax)
