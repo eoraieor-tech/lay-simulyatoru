@@ -603,6 +603,16 @@ class MainWindow(QMainWindow):
                       "aydınlaşdırır.")
         hint.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         layout.addWidget(hint)
+
+        # `addItem("VTK …")` yuxarıda combo-nu boşdan ilk elementə keçirir
+        # və bunu edərkən `currentIndexChanged`-i DƏRHAL atəşləyir — bu isə
+        # `connect()`-dən ƏVVƏL baş verir (VTK ilk element olduğu üçün).
+        # Nəticədə ilk seçim heç vaxt `_on_engine_changed`-ə çatmır: yığın
+        # matplotlib kətanında qalır və VTK interaktoru işə salınmır, halbuki
+        # combo "VTK" göstərir. `Initialize()` isə yalnız pəncərə göründükdən
+        # sonra təhlükəsizdir, ona görə sinxronizasiyanı bir dəfə, hadisə
+        # dövrü pəncərəni göstərdikdən sonra həyata keçiririk.
+        QTimer.singleShot(0, self._on_engine_changed)
         return page
 
     def _on_engine_changed(self):
