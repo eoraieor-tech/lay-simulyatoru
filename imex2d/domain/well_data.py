@@ -27,6 +27,11 @@ class WellSample:
 class WellDataset:
     samples: List[WellSample] = field(default_factory=list)
     source: str = ""
+    #: Giriş oxuyucusunun (məs. `read_well_csv`) topladığı vahid/çevirmə
+    #: xəbərdarlıqları — məs. "PERMX: vahid göstərilməyib, mühərrik vahidi
+    #: (mD) qəbul edildi." Bu SİYAHI HEÇ VAXT `validate()`-i pozmur (sərt
+    #: xəta deyil), yalnız İSTİFADƏÇİYƏ göstərilmək üçündür.
+    warnings: List[str] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.samples)

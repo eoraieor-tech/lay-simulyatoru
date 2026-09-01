@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from .validation import validate_pressure, validate_well_rate
+
 
 class WellType(Enum):
     PRODUCER = "PROD"
@@ -36,6 +38,19 @@ class WellControl:
     mode: ControlMode = ControlMode.BHP
     target: float = 150.0
     injected_phase: Phase = Phase.WATER
+
+    def validate(self) -> List[str]:
+        """`target` mənası `mode`-dan asılıdır: BHP üçün mütləq təzyiq
+        (bar), RATE üçün HƏMİŞƏ müsbət debit böyüklüyü (m³/gün) — bax
+        `simulation/implicit/standard_well.py:_signed_rate_target`."""
+        if self.mode is ControlMode.BHP:
+            return validate_pressure([self.target], label="BHP hədəfi").errors
+        return validate_well_rate(self.target, label="debit hədəfi").errors
+
+    def validate_warnings(self) -> List[str]:
+        if self.mode is ControlMode.BHP:
+            return validate_pressure([self.target], label="BHP hədəfi").warnings
+        return validate_well_rate(self.target, label="debit hədəfi").warnings
 
 
 @dataclass

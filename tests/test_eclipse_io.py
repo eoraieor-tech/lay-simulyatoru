@@ -4,6 +4,7 @@ import os
 import tempfile
 
 import numpy as np
+import pytest
 
 from helpers import default_scal, make_service, short_config
 from imex2d.application.model_builder import ReservoirModelBuilder
@@ -218,6 +219,100 @@ PERMX
         model = GrdeclImporter().build(read_grdecl(path, report), report)
         assert abs(model.geometry.dx - 50.0) < 1e-9
         assert any("DX" in w.message for w in report.warnings)
+    finally:
+        os.unlink(path)
+
+
+def test_field_unit_declaration_produces_a_warning():
+    """Phase 1: `FIELD` bəyan edilmiş deck HƏLƏ DƏ metrik kimi oxunur —
+    bu, açıq xəbərdarlıqla bildirilməlidir (audit: əvvəllər HEÇ NƏ
+    bildirilmirdi, ft dəyəri səssizcə metr kimi oxunurdu)."""
+    path = _write("""RUNSPEC
+DIMENS
+  2 2 1 /
+FIELD
+GRID
+DX
+  4*50 /
+DY
+  4*50 /
+DZ
+  4*10 /
+PORO
+  4*0.2 /
+PERMX
+  4*100 /
+""")
+    try:
+        report = DiagnosticReport()
+        GrdeclImporter().build(read_grdecl(path, report), report)
+        assert any("FIELD" in w.message for w in report.warnings)
+    finally:
+        os.unlink(path)
+
+
+def test_field_deck_length_keywords_are_actually_converted_to_metres():
+    """Phase 1 (giriş boru xətti): `FIELD` bəyan edilmiş deck-də DX/DY/DZ
+    ft-dədir — indi bunlar SƏSSİZCƏ metr kimi qəbul EDİLMİR, faktiki
+    metrə ÇEVRİLİR. 100 ft = 30.48 m (dəqiq)."""
+    from imex2d.domain import unit_conversions as uc
+    path = _write("""RUNSPEC
+DIMENS
+  2 2 1 /
+FIELD
+GRID
+DX
+  4*100 /
+DY
+  4*100 /
+DZ
+  4*32.8084 /
+PORO
+  4*0.2 /
+PERMX
+  4*100 /
+""")
+    try:
+        model = GrdeclImporter().build(read_grdecl(path))
+        assert model.geometry.dx == pytest.approx(uc.ft_to_m(100.0), rel=1e-9)
+        assert model.geometry.dx == pytest.approx(30.48, rel=1e-6)
+        assert np.allclose(model.geometry.dz, uc.ft_to_m(32.8084), rtol=1e-6)
+    finally:
+        os.unlink(path)
+
+
+def test_field_deck_permeability_is_not_converted_since_eclipse_mD_is_universal():
+    """PERMX Eclipse-də METRIC/FIELD/LAB-ın HAMISINDA mD-dir — `FIELD`
+    bəyan edilsə də dəyər DƏYİŞMƏMƏLİDİR."""
+    path = _write("""RUNSPEC
+DIMENS
+  2 2 1 /
+FIELD
+GRID
+DX
+  4*100 /
+DY
+  4*100 /
+DZ
+  4*10 /
+PORO
+  4*0.2 /
+PERMX
+  4*250 /
+""")
+    try:
+        model = GrdeclImporter().build(read_grdecl(path))
+        assert np.allclose(model.property_maps["PERMX"].values, 250.0)
+    finally:
+        os.unlink(path)
+
+
+def test_metric_or_unlabelled_deck_produces_no_unit_warning():
+    path = _write(_minimal_deck())
+    try:
+        report = DiagnosticReport()
+        GrdeclImporter().build(read_grdecl(path, report), report)
+        assert not any("FIELD" in w.message or "LAB" in w.message for w in report.warnings)
     finally:
         os.unlink(path)
 

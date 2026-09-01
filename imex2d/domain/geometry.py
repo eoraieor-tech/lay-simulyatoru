@@ -11,6 +11,7 @@ from typing import Optional, Union, Sequence
 import numpy as np
 
 from .grid import CartesianGrid, Connections
+from .validation import validate_cell_volumes, validate_grid_dimensions, validate_thickness
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,26 @@ class CellGeometry:
 
     def areal_extent(self) -> tuple:
         return (self.grid.nx * self.dx, self.grid.ny * self.dy)
+
+    def validate(self) -> list:
+        """Dejenerativ həndəsəni aşkarlayır — sıfır/mənfi ölçü, sıfır/
+        mənfi hüceyrə həcmi (audit: bu yoxlama əvvəllər HEÇ YERDƏ yox
+        idi, bax `GEOSTATISTICS.md`-dən sonrakı Phase 1 hesabatı).
+
+        YENİ, AYRICA metoddur — `__post_init__`-ə ƏLAVƏ EDİLMƏYİB ki,
+        mövcud konstruksiya yolları (672 test) DƏYİŞMƏSİN. Çağıran
+        (məs. `GeologicalModel.validate()`) bunu İSTƏYƏ görə çağırır.
+        """
+        issues = []
+        grid_result = validate_grid_dimensions(self.grid.nx, self.grid.ny, self.grid.nz,
+                                               self.dx, self.dy)
+        issues.extend(grid_result.errors)
+        thickness_result = validate_thickness(self.dz, label="DZ")
+        issues.extend(thickness_result.errors)
+        if not thickness_result.errors and not grid_result.errors:
+            volume_result = validate_cell_volumes(self.volumes(), label="hüceyrə həcmi")
+            issues.extend(volume_result.errors)
+        return issues
 
 
 def xy_to_ij(x: float, y: float, geometry: CellGeometry) -> tuple:

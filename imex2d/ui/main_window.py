@@ -1942,7 +1942,12 @@ class MainWindow(QMainWindow):
             self.grid_panel.top_depth.setValue(geometry.top_depth)
 
             self.rock_panel.porosity.setValue(float(model.rock.porosity.values.mean()))
+            # `model.rock.permx`/`model.fluids.*` HƏMİŞƏ mühərrik vahidindədir
+            # (mD/cP) — vahid seçicini dəyər ilə BİRLİKDƏ defolta qaytarırıq
+            # ki, panel köhnə (vahidsiz) davranışı ilə eyni ədədi göstərsin.
+            self.rock_panel.permx_unit.setCurrentText("mD")
             self.rock_panel.permx.setValue(float(model.rock.permx.values.mean()))
+            self.rock_panel.viscosity_unit.setCurrentText("cP")
             self.rock_panel.mu_w.setValue(model.fluids.water_viscosity)
             self.rock_panel.mu_o.setValue(model.fluids.oil_viscosity)
             self.rock_panel.bo.setValue(model.fluids.oil_fvf)
@@ -1961,6 +1966,7 @@ class MainWindow(QMainWindow):
                 widget.setValue(value)
 
             ic = model.initial_conditions
+            self.numerical_panel.initial_pressure_unit.setCurrentText("bar")
             self.numerical_panel.initial_pressure.setValue(ic.datum_pressure)
             self.numerical_panel.initial_sw.setValue(ic.water_saturation)
             self.numerical_panel.datum_depth.setValue(ic.datum_depth)

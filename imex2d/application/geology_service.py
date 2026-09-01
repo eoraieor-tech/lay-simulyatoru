@@ -3,11 +3,19 @@
     Karotaj interpretasiyası (xaricdə)
         ↓  CSV
     WellDataset
-        ↓  interpolyasiya (IDW / Kriging / ən yaxın qonşu)
+        ↓  xassə növü: KƏSİLMƏZ → interpolyasiya (IDW/Kriging)
+        ↓             KATEQORİK → Sequential Indicator Simulation (Phase 4.1)
     GeologicalModel  →  ReservoirModel  →  Simulyasiya
 
 Bu qat interpolyasiya alqoritmini TANIMIR — yalnız IPropertyInterpolator
 interfeysini bilir. Alqoritm konstruktora inject edilir.
+
+KRİTİK ELMİ QAYDA (Phase 4.1): heç bir KATEQORİK xassə (bax
+`geology/property_types.py`) `interpolate_property()`-dən (kəsilməz
+Kriging/IDW) KEÇMİR. Bu, `_interpolate_volume` daxilində AÇIQ yoxlanılır
+(bax `build()`) — kateqorik sütun aşkarlansa, KƏSİLMƏZ yol heç
+ÇAĞIRILMIR, bunun əvəzinə `_simulate_categorical_field()` (SIS,
+`geology/facies.py`) işə düşür.
 """
 
 from __future__ import annotations
@@ -16,18 +24,77 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from ..domain.facies_field import FaciesField
 from ..domain.geological_model import GeologicalModel
-from ..domain.geometry import CellGeometry
+from ..domain.geometry import CellGeometry, depth_to_k, xy_to_ij
 from ..domain.grid import CartesianGrid
 from ..domain.properties import PropertyMap
 from ..domain.structure import RegionSet
 from ..domain.well_data import WellDataset
 from ..geology.cross_validation import CrossValidationResult, k_fold, leave_one_out
+from ..geology.distribution_analysis import log_transform_is_justified
+from ..geology.facies import (FaciesVariogramParams, observed_proportions, simulate_sis)
+from ..geology.hard_data import resolve_hard_data
 from ..geology.interpolation import interpolate_property
+from ..geology.property_types import PropertyType, classify_property
+from ..geology.sgs import (DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL, FaciesPropertyConfig,
+                           PropertyVariogramParams, simulate_sgs, simulate_sgs_facies_conditioned)
 from ..interfaces.interpolation import IPropertyInterpolator
 
 #: `cross_validate_all`-un baxdığı xassələr — PORO və PERM* istiqamətləri.
 _CROSS_VALIDATED_PROPERTIES = ("PORO", "PERMX", "PERMY", "PERMZ")
+
+
+@dataclass
+class FaciesBuildConfig:
+    """Bir kateqorik sütunun (məs. FACIES) necə simulyasiya olunacağı.
+
+    `proportions` verilməyibsə (`None`) sərt datadan MÜŞAHİDƏ OLUNAN
+    nisbətlər avtomatik hesablanır — bu, İSTİFADƏÇİNİN AÇIQ seçimi
+    DEYİL, ona görə `report.warnings`-ə AÇIQ qeyd düşülür (bax
+    `WellBasedGeologicalModelBuilder._simulate_categorical_field`).
+    """
+    proportions: Optional[Dict[int, float]] = None
+    category_names: Optional[Dict[int, str]] = None
+    variograms: Optional[Dict[int, FaciesVariogramParams]] = None
+    seed: int = 0
+    realization_id: int = 0
+    search_radius: Optional[float] = None
+    max_neighbors: Optional[int] = 24
+    min_neighbors: int = 1
+    on_conflict: str = "raise"
+
+
+@dataclass
+class ContinuousSGSConfig:
+    """Bir KƏSİLMƏZ sütunun (PORO/PERMX/...) Sequential Gaussian
+    Simulation (Phase 5) ilə (deterministik Kriging ƏVƏZİNƏ) necə
+    simulyasiya olunacağı. Konfiqurasiya edilməyən sütunlar ƏVVƏLKİ
+    (deterministik Kriging/IDW) yolu ilə davam edir — bu, TAM opt-in-dir.
+
+    `facies_field_name` verilibsə (məs. `"FACIES"`), simulyasiya
+    `model.facies_fields[facies_field_name]`-ə ŞƏRTLƏNİR (bax
+    `geology/sgs.simulate_sgs_facies_conditioned`) — hər fasiya üçün
+    (istəyə görə) AYRI `facies_configs` konfiqurasiyası.
+
+    `log_space`/`bounds` verilməyəndə (`None`) MÜVAFİQ olaraq
+    `distribution_analysis.log_transform_is_justified()` (data-əsaslı)
+    və `DEFAULT_RULES[source]`-in hədləri İSTİFADƏ OLUNUR (mövcud
+    kəsilməz yolla EYNİ hədlər, TƏKRARLANMIR).
+    """
+    variogram: Optional[PropertyVariogramParams] = None
+    log_space: Optional[bool] = None
+    bounds: Optional[Tuple[Optional[float], Optional[float]]] = None
+    seed: int = 0
+    realization_id: int = 0
+    search_radius: Optional[float] = None
+    max_neighbors: Optional[int] = 24
+    min_neighbors: int = 1
+    on_conflict: str = "raise"
+    conflict_tolerance: float = 0.0
+    facies_field_name: Optional[str] = None
+    facies_configs: Optional[Dict[int, FaciesPropertyConfig]] = None
+    min_hard_data_for_own_model: int = DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL
 
 
 @dataclass
@@ -107,7 +174,10 @@ class WellBasedGeologicalModelBuilder:
     def build(self, dataset: WellDataset, spec: GeologicalGridSpec,
               ky_over_kx: float = 1.0, kv_over_kh: float = 0.1,
               name: str = "Quyu məlumatından geoloji model",
-              allow_cross_layer_fallback: bool = False):
+              allow_cross_layer_fallback: bool = False,
+              facies_config: Optional[Dict[str, FaciesBuildConfig]] = None,
+              property_type_overrides: Optional[Dict[str, PropertyType]] = None,
+              sgs_config: Optional[Dict[str, ContinuousSGSConfig]] = None):
         """`allow_cross_layer_fallback` — bir K-təbəqəsində (dataset laylı
         olanda) heç bir quyu nöqtəsi yoxdursa nə edilsin.
 
@@ -117,6 +187,19 @@ class WellBasedGeologicalModelBuilder:
         `report.warnings`-ə açıq xəbərdarlıq yazılır ki, istifadəçi bunun
         bilərəkdən ekstrapolyasiya olduğunu bilsin (bax M0 sınaqları,
         `tests/test_layer_aware_kriging_leak.py`).
+
+        `facies_config` — hər KATEQORİK sütun (bax `geology/property_
+        types.py`) üçün `FaciesBuildConfig` (Phase 4.1). Kateqorik sütun
+        HEÇ VAXT `_interpolate_volume`-dan (kəsilməz Kriging/IDW) KEÇMİR
+        — bunun əvəzinə `_simulate_categorical_field` (SIS) çağırılır və
+        nəticə `model.facies_fields`-ə (PropertyMap-DAN AYRICA) yazılır.
+
+        `sgs_config` — hər KƏSİLMƏZ sütun üçün (istəyə görə)
+        `ContinuousSGSConfig` (Phase 5). Konfiqurasiya edilməyən kəsilməz
+        sütun ƏVVƏLKİ deterministik Kriging/IDW yolu ilə davam edir —
+        SGS TAM opt-in-dir, mövcud davranışı DƏYİŞMİR. Kateqorik sütunlar
+        HƏMİŞƏ kəsilməzlərdən ƏVVƏL emal olunur ki, `sgs_config`-in
+        `facies_field_name` istinadı artıq qurulmuş olsun.
         """
         issues = dataset.validate()
         if issues:
@@ -132,11 +215,26 @@ class WellBasedGeologicalModelBuilder:
 
         targets = self._cell_centres(grid, spec)
         available = dataset.property_names()
+        categorical_sources = [s for s in available
+                               if classify_property(s, property_type_overrides)
+                               is PropertyType.CATEGORICAL]
+        continuous_sources = [s for s in available if s not in categorical_sources]
 
-        for source in available:
+        for source in categorical_sources:
+            config = (facies_config or {}).get(source)
+            facies_field = self._simulate_categorical_field(
+                dataset, source, targets, grid, geometry, config, report)
+            model.add_facies_field(facies_field)
+
+        for source in continuous_sources:
             rule = self.rules.get(source, PropertyRule(source))
-            values = self._interpolate_volume(dataset, source, rule, targets, grid,
-                                              allow_cross_layer_fallback, report, geometry)
+            sgs = (sgs_config or {}).get(source)
+            if sgs is not None:
+                values = self._simulate_continuous_sgs_field(
+                    dataset, source, targets, grid, geometry, sgs, report, model)
+            else:
+                values = self._interpolate_volume(dataset, source, rule, targets, grid,
+                                                  allow_cross_layer_fallback, report, geometry)
             model.add_property(PropertyMap.from_array(rule.target, values,
                                                       grid.ncell))
             report.add(rule.target, source, rule.log_transform, values)
@@ -163,6 +261,210 @@ class WellBasedGeologicalModelBuilder:
         j = np.arange(grid.ny)
         jj, ii = np.meshgrid(j, i, indexing="ij")
         return spec.top_depth + ii * spec.dip_x + jj * spec.dip_y
+
+    def _simulate_categorical_field(self, dataset: WellDataset, source: str,
+                                    targets: np.ndarray, grid: CartesianGrid,
+                                    geometry: CellGeometry,
+                                    config: Optional[FaciesBuildConfig],
+                                    report: "InterpolationReport") -> FaciesField:
+        """KATEQORİK sütunu Sequential Indicator Simulation ilə (Phase
+        4.1) simulyasiya edir — `_interpolate_volume`-un (kəsilməz
+        Kriging/IDW) ƏVƏZİNƏ, ONUN YERİNƏ DEYİL (bu sütun `build()`-də
+        heç vaxt `_interpolate_volume`-a ötürülmür).
+
+        Bütün laylar BİR simulyasiyada (tam 3D X,Y,Z kondisioner +
+        hədəf) işlənir — hər lay üçün AYRICA (əvvəlki `allow_cross_layer_
+        fallback` kimi) DEYİL, çünki şaquli variogram (`range_v`) artıq
+        laylar arası davamlılığı DOĞRU modelləşdirir (bax FACIES.md).
+        """
+        config = config or FaciesBuildConfig()
+        raw_samples = [s for s in dataset.samples if source in s.values]
+        resolved_samples = resolve_hard_data(raw_samples, source, grid, geometry,
+                                             on_conflict=config.on_conflict)
+        if not resolved_samples:
+            raise ValueError(f"'{source}' üçün istifadə edilə bilən sərt data tapılmadı.")
+
+        depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
+
+        # Sərt datanı öz EV HÜCEYRƏSİNİN mərkəzinə "sancırıq" (snap).
+        # SƏBƏB: real quyu demək olar HEÇ VAXT dəqiq hüceyrə mərkəzində
+        # deyil — `simulate_sis`-in sərt-data hörməti dəqiq KOORDİNAT
+        # üst-üstə düşməsinə əsaslanır (bax `facies._find_hard_data_
+        # matches`), ona görə kondisioner nöqtəni HƏDƏF massivindəki
+        # (`full_targets`) EYNİ hüceyrənin mərkəzi ilə eyniləşdiririk —
+        # əks halda "sərt data honored" QORUNMUR (yalnız TƏSADÜFƏN quyu
+        # mərkəzdə olanda işləyərdi). `resolve_hard_data` artıq eyni
+        # hüceyrəyə düşən ziddiyyətli nümunələri BLOKLAYIB, ona görə bu
+        # sancma YENİ ziddiyyət yaratmır.
+        xs, ys, zs, codes = [], [], [], []
+        skipped = 0
+        for sample in resolved_samples:
+            i, j = xy_to_ij(sample.x, sample.y, geometry)
+            if sample.layer is not None:
+                k = sample.layer
+            elif sample.depth is not None:
+                k = depth_to_k(sample.x, sample.y, sample.depth, geometry)
+            else:
+                k = None
+            if k is None:
+                skipped += 1
+                continue
+            xs.append((i + 0.5) * geometry.dx)
+            ys.append((j + 0.5) * geometry.dy)
+            zs.append(float(depths_grid[k, j, i]))
+            codes.append(int(sample.values[source]))
+        if skipped:
+            report.warn(
+                f"'{source}': {skipped} nümunə nə lay, nə dərinlik daşıyır — 3D mövqeyi "
+                "müəyyən edilə bilmədi, simulyasiyaya daxil edilmədi.")
+        if not codes:
+            raise ValueError(f"'{source}' üçün 3D mövqeyi müəyyən edilə bilən sərt data yoxdur.")
+
+        points = np.column_stack([xs, ys, zs])
+        codes_array = np.asarray(codes, int)
+
+        proportions = config.proportions
+        if proportions is None:
+            proportions = observed_proportions(codes_array)
+            report.warn(
+                f"'{source}': fasiya nisbətləri verilməyib — quyu datasından MÜŞAHİDƏ "
+                "OLUNAN nisbətlər işlədildi (istifadəçi AÇIQ seçim ETMƏYİB): "
+                + ", ".join(f"{k}={v:.3f}" for k, v in sorted(proportions.items())))
+            proportion_source = "observed"
+        else:
+            proportion_source = "user"
+
+        full_targets = np.concatenate(
+            [np.column_stack([targets, depths_grid[k].ravel()]) for k in range(grid.nz)], axis=0)
+
+        realization = simulate_sis(
+            points, codes_array, full_targets, proportions, variograms=config.variograms,
+            seed=config.seed, realization_id=config.realization_id,
+            search_radius=config.search_radius, max_neighbors=config.max_neighbors,
+            min_neighbors=config.min_neighbors)
+        for message in realization.warnings:
+            report.warn(f"'{source}' (SIS): {message}")
+
+        variogram_metadata = {k: {"model": v.model, "nugget": v.nugget, "sill": v.sill,
+                                  "range_": v.range_, "range_v": v.range_v,
+                                  "azimuth_deg": v.azimuth_deg, "range_minor": v.range_minor}
+                              for k, v in (config.variograms or {}).items()}
+
+        return FaciesField(
+            name=source,
+            codes=realization.codes,
+            category_names=dict(config.category_names or {}),
+            realization_id=realization.realization_id,
+            seed=realization.seed,
+            requested_proportions=realization.requested_proportions,
+            realized_proportions=realization.realized_proportions,
+            variogram_metadata=variogram_metadata,
+            conditioning_data_stats={
+                "n_hard_points": int(codes_array.size),
+                "n_wells": len({s.well for s in resolved_samples}),
+                "n_skipped_unplaceable": skipped,
+                "proportion_source": proportion_source,
+                "negative_probability_events": realization.diagnostics.negative_probability_events,
+                "excess_probability_events": realization.diagnostics.excess_probability_events,
+                "nan_fallback_cells": realization.diagnostics.nan_fallback_cells,
+                "zero_sum_fallback_cells": realization.diagnostics.zero_sum_fallback_cells,
+                "n_cells_simulated": realization.diagnostics.n_cells_simulated,
+            },
+            warnings=list(realization.warnings))
+
+    def _simulate_continuous_sgs_field(self, dataset: WellDataset, source: str,
+                                       targets: np.ndarray, grid: CartesianGrid,
+                                       geometry: CellGeometry, config: ContinuousSGSConfig,
+                                       report: "InterpolationReport",
+                                       model: GeologicalModel) -> np.ndarray:
+        """KƏSİLMƏZ sütunu Sequential Gaussian Simulation ilə (Phase 5)
+        simulyasiya edir — `_interpolate_volume`-un (deterministik
+        Kriging) YERİNƏ, YALNIZ `sgs_config`-də AÇIQ tələb olunanda.
+
+        `_simulate_categorical_field`-lə EYNİ hüceyrə-mərkəzinə-sancma
+        (snap) qaydası (bax orada tapılan HƏQİQİ səhv) VƏ EYNİ 3D
+        (X,Y,Z) tərtib məntiqi işlədilir — TƏKRARLANMIR (kod paylaşımı
+        praktik olaraq mümkün olduğu qədər, iki metodun fərqli sərt-data
+        həll strategiyası (`resolve_hard_data(tolerance=...)`) səbəbilə
+        tam ortaq funksiyaya çıxarılmayıb).
+        """
+        raw_samples = [s for s in dataset.samples if source in s.values]
+        resolved_samples = resolve_hard_data(raw_samples, source, grid, geometry,
+                                             on_conflict=config.on_conflict,
+                                             tolerance=config.conflict_tolerance)
+        if not resolved_samples:
+            raise ValueError(f"'{source}' üçün istifadə edilə bilən sərt data tapılmadı.")
+
+        depths_grid = geometry.cell_depths().reshape(grid.shape)
+
+        xs, ys, zs, values, cell_indices, used_samples = [], [], [], [], [], []
+        skipped = 0
+        for sample in resolved_samples:
+            i, j = xy_to_ij(sample.x, sample.y, geometry)
+            if sample.layer is not None:
+                k = sample.layer
+            elif sample.depth is not None:
+                k = depth_to_k(sample.x, sample.y, sample.depth, geometry)
+            else:
+                k = None
+            if k is None:
+                skipped += 1
+                continue
+            used_samples.append(sample)
+            xs.append((i + 0.5) * geometry.dx)
+            ys.append((j + 0.5) * geometry.dy)
+            zs.append(float(depths_grid[k, j, i]))
+            values.append(float(sample.values[source]))
+            cell_indices.append((i, j, k))
+        if skipped:
+            report.warn(f"'{source}': {skipped} nümunə nə lay, nə dərinlik daşıyır — "
+                       "3D mövqeyi müəyyən edilə bilmədi, simulyasiyaya daxil edilmədi.")
+        if not values:
+            raise ValueError(f"'{source}' üçün 3D mövqeyi müəyyən edilə bilən sərt data yoxdur.")
+
+        points = np.column_stack([xs, ys, zs])
+        values_array = np.asarray(values, float)
+        log_space = (config.log_space if config.log_space is not None
+                    else log_transform_is_justified(values_array))
+        rule = self.rules.get(source, PropertyRule(source))
+        bounds = config.bounds if config.bounds is not None else (rule.minimum, rule.maximum)
+
+        full_targets = np.concatenate(
+            [np.column_stack([targets, depths_grid[k].ravel()]) for k in range(grid.nz)], axis=0)
+        common_kwargs = dict(seed=config.seed, realization_id=config.realization_id,
+                             search_radius=config.search_radius,
+                             max_neighbors=config.max_neighbors,
+                             min_neighbors=config.min_neighbors)
+
+        if config.facies_field_name:
+            facies_field = model.facies_fields.get(config.facies_field_name)
+            if facies_field is None:
+                raise ValueError(
+                    f"'{source}': facies_field_name={config.facies_field_name!r} "
+                    "model.facies_fields-də yoxdur (kateqorik sütun əvvəlcə emal olunmalıdır).")
+            facies_at_points = np.array([
+                int(sample.values[config.facies_field_name])
+                if config.facies_field_name in sample.values
+                else int(facies_field.codes[np.ravel_multi_index(cell, grid.shape)])
+                for sample, cell in zip(used_samples, cell_indices)], int)
+            realization = simulate_sgs_facies_conditioned(
+                points, values_array, facies_at_points, full_targets, facies_field.codes,
+                facies_configs=config.facies_configs, facies_reference=config.facies_field_name,
+                min_hard_data_for_own_model=config.min_hard_data_for_own_model, **common_kwargs)
+        else:
+            realization = simulate_sgs(points, values_array, full_targets, log_space=log_space,
+                                       bounds=bounds, variogram=config.variogram, **common_kwargs)
+
+        for message in realization.warnings:
+            report.warn(f"'{source}' (SGS): {message}")
+        diag = realization.diagnostics
+        if diag.n_cells_simulated:
+            report.warn(
+                f"'{source}' (SGS) diaqnostika: {diag.bound_corrections} hədd kəsilməsi "
+                f"({diag.rate(diag.bound_corrections) * 100:.1f}%), "
+                f"{diag.nan_fallback_cells} NaN-geri-dönüş "
+                f"({diag.rate(diag.nan_fallback_cells) * 100:.1f}%).")
+        return realization.values
 
     @staticmethod
     def _sample_depth(sample, current_k: int, layer_mean_depth: np.ndarray) -> float:

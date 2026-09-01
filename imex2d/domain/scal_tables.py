@@ -27,6 +27,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from .validation import check_extrapolation_range
+
 
 @dataclass
 class SaturationTable:
@@ -115,6 +117,15 @@ class SaturationTable:
             return issues
         if self.pc is not None and self.pc.size != self.sw.size:
             issues.append(f"{label}: Pc sütununun uzunluğu uyğun deyil.")
+        # NaN/sonsuz: `<=`/`np.diff` müqayisələri NaN üçün HƏMİŞƏ False
+        # qaytarır — aşağıdakı monotonluq/həd yoxlamalarından SƏSSİZCƏ
+        # keçməsin deyə burada AYRICA, aydın mesajla tutulur.
+        for name in ("sw", "krw", "kro"):
+            column = getattr(self, name)
+            if np.any(~np.isfinite(column)):
+                issues.append(f"{label}: '{name}' sütununda NaN/sonsuz dəyər var.")
+        if self.pc is not None and self.pc.size == self.sw.size and np.any(~np.isfinite(self.pc)):
+            issues.append(f"{label}: 'pc' sütununda NaN/sonsuz dəyər var.")
         if np.any(np.diff(self.sw) <= 0):
             issues.append(f"{label}: Sw artan sıralı olmalıdır.")
         if self.sw[0] < -1e-9 or self.sw[-1] > 1.0 + 1e-9:
@@ -130,6 +141,16 @@ class SaturationTable:
         if self.swc >= 1.0 - self.sor:
             issues.append(f"{label}: hərəkətli doyumluluq intervalı boşdur.")
         return issues
+
+    def check_query_range(self, sw_values) -> List[str]:
+        """`sw_values` cədvəlin ölçdüyü [min Sw, maks Sw] intervalından
+        kənara çıxırsa bildirir — `interpolate_krw`/`kro`/`pc` (`np.interp`)
+        sərhədə KƏSİR (clamp), bu ekstrapolyasiyanın SƏSSİZ olmasının
+        qarşısını alır (bax `domain/validation.check_extrapolation_range`)."""
+        if self.sw.size < 2:
+            return []
+        return check_extrapolation_range(sw_values, float(self.sw[0]), float(self.sw[-1]),
+                                         f"{self.name or 'SCAL'}: Sw sorğusu")
 
     def summary(self) -> str:
         return (f"{self.name or 'SCAL'}: {self.sw.size} sətir, "

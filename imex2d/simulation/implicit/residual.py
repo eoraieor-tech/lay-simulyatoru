@@ -23,6 +23,7 @@ from typing import Optional
 import numpy as np
 
 from ...domain.reservoir_model import ReservoirModel
+from ...domain.unit_conversions import PRESSURE_TO_PA, STANDARD_GRAVITY_M_S2
 from ...domain.wells import ControlMode
 from ...interfaces.providers import (ICapillaryPressureProvider, IPVTProvider,
                                      IRelativePermeabilityProvider)
@@ -30,8 +31,10 @@ from ..discretization import DiscretizedGrid
 from ..well_model import WellConnection
 from .state import ReservoirState, VARIABLES_PER_CELL
 
-GRAVITY = 9.80665
-PA_TO_BAR = 1.0e-5
+#: Mərkəzləşdirilmiş sabitlər (bax `domain/unit_conversions.py`) — dəyərlər
+#: ƏVVƏLKİ lokal literallarla BİT-BƏ-BİT eynidir, ədədi nəticə DƏYİŞMİR.
+GRAVITY = STANDARD_GRAVITY_M_S2
+PA_TO_BAR = 1.0 / PRESSURE_TO_PA["bar"]
 
 WATER = 0
 OIL = 1

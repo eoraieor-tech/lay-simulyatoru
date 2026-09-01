@@ -21,6 +21,7 @@ from __future__ import annotations
 import numpy as np
 
 from ...domain.pvt import PVTTable
+from ...domain.unit_conversions import convert_temperature
 
 BAR_TO_PSI = 14.5037744
 SM3M3_TO_SCFSTB = 5.61458
@@ -120,14 +121,23 @@ def build_pvt_table(api: float = 32.0,
                     pressure_max: float = 400.0,
                     n_points: int = 40,
                     bubble_point_bar: float = None,
-                    rock_compressibility: float = 4.5e-5) -> PVTTable:
+                    rock_compressibility: float = 4.5e-5,
+                    temperature_unit: str = "C") -> PVTTable:
     """Korrelyasiyalardan tam PVT cədvəli qurur (iki fazalı: neft-su).
 
     `gas_gravity` qaz fazası üçün DEYİL — Standing (Rs) və
     Vazquez-Beggs (Bo) korrelyasiyaları həll olmuş qazın nisbi
     sıxlığını arqument kimi tələb edir, ona görə iki fazalı modeldə də
     lazımdır.
+
+    `temperature_unit` — `temperature_c` parametrinin FAKTİKİ vahidi
+    ("C"/"F"/"K"; defolt "C" — ad `temperature_c` olsa da, korrelyasiyalar
+    daxildə onsuz da Fahrenheit-ə çevirir, `C_TO_F` ilə). Defolt DƏYİŞMİR
+    — yalnız "C"-dən fərqli vahid verildikdə çevirmə tətbiq olunur.
+    Korrelyasiyaların ÖZÜ (aşağı) TOXUNULMAYIB.
     """
+    if temperature_unit != "C":
+        temperature_c = convert_temperature(temperature_c, temperature_unit, "C")
     pressure = np.linspace(pressure_min, pressure_max, int(n_points))
 
     rs_saturated = standing_solution_gor(pressure, api, gas_gravity, temperature_c)

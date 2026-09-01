@@ -14,6 +14,7 @@ from ..domain.properties import FluidProperties, PropertyMap, RockProperties
 from ..domain.pvt import PVTTable
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.scal import CapillaryParameters, CoreyParameters
+from ..domain.unit_conversions import to_engine_units
 from ..domain.units import DEFAULT_UNITS, UnitSystem
 from ..domain.wells import Well
 
@@ -38,12 +39,20 @@ class ReservoirModelBuilder:
               scal_tables=None,
               fault_references: Optional[List] = None,
               rock_compressibility: float = 4.5e-5,
+              rock_compressibility_unit: str = "bar",
               name: Optional[str] = None,
               units: UnitSystem = DEFAULT_UNITS) -> ReservoirModel:
-
+        """`rock_compressibility_unit` — `rock_compressibility`-nin HANSI
+        vahiddə verildiyi (təzyiq vahidi, sıxılma = 1/[bu vahid]). Defolt
+        `"bar"` — mühərrikin öz vahidi, ona görə `rock_compressibility_unit`
+        DƏYİŞMƏYƏNDƏ dəyər ƏVVƏLKİ kimi HEÇ ÇEVRİLMİR (bax
+        `to_engine_units`, `unit==target` olanda `convert()` no-op-dur)."""
         issues = geological_model.validate()
         if issues:
             raise ValueError("Geoloji model natamamdır: " + "; ".join(issues))
+
+        rock_compressibility = to_engine_units(
+            rock_compressibility, rock_compressibility_unit, "compressibility")
 
         maps: Dict[str, PropertyMap] = dict(geological_model.property_maps)
         permx = geological_model.require(self.PERMX_KEY)

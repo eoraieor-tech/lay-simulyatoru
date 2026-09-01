@@ -23,12 +23,16 @@ from typing import Optional
 import numpy as np
 
 from ...domain.reservoir_model import ReservoirModel
+from ...domain.unit_conversions import PRESSURE_TO_PA, STANDARD_GRAVITY_M_S2
 from ...interfaces.providers import (ICapillaryPressureProvider,
                                      IInitializationProvider, InitialState,
                                      IPVTProvider)
 
-GRAVITY = 9.80665          # m/s2
-PA_TO_BAR = 1.0e-5
+#: Mərkəzləşdirilmiş sabitlər (bax `domain/unit_conversions.py`) —
+#: dəyərlər ƏVVƏLKİ lokal literallarla BİT-BƏ-BİT eynidir (yoxlanılıb:
+#: `1.0/PRESSURE_TO_PA["bar"] == 1.0e-5`), ona görə ədədi nəticə DƏYİŞMİR.
+GRAVITY = STANDARD_GRAVITY_M_S2          # m/s2
+PA_TO_BAR = 1.0 / PRESSURE_TO_PA["bar"]
 
 
 class EquilibriumInitializationProvider(IInitializationProvider):

@@ -16,6 +16,7 @@ from ..domain.geometry import CellGeometry
 from ..domain.grid import CartesianGrid
 from ..domain.properties import PropertyMap
 from ..domain.structure import RegionSet
+from ..domain.unit_conversions import to_engine_units
 from ..logging_setup import get_logger
 from .grdecl import GrdeclDeck, GrdeclError
 
@@ -25,6 +26,12 @@ DEFAULT_CELL_SIZE = 100.0
 DEFAULT_THICKNESS = 10.0
 DEFAULT_TOP_DEPTH = 2000.0
 
+#: Eclipse-in hər vahid sistemində UZUNLUĞUN native vahidi (METRIC/FIELD/
+#: LAB-ın RUNSPEC-də bəyan olunan üç dəsti). Keçiricilik (mD) VƏ lözlük
+#: (cP) HƏR ÜÇÜNDƏ EYNİDİR (Eclipse-in özünəməxsus konvensiyası) — ona
+#: görə bu cədvəldə YOXDUR, çevrilməyə EHTİYAC yoxdur.
+LENGTH_UNIT_BY_DECK_SYSTEM = {"METRIC": "m", "FIELD": "ft", "LAB": "cm"}
+
 
 class GrdeclImporter:
     """Oxunmuş deck-dən geoloji model qurur."""
@@ -33,10 +40,13 @@ class GrdeclImporter:
               report: Optional[DiagnosticReport] = None,
               name: str = "GRDECL modeli") -> GeologicalModel:
         report = report if report is not None else DiagnosticReport()
+        unit_system = self._declared_unit_system(deck)
+        length_unit = LENGTH_UNIT_BY_DECK_SYSTEM[unit_system]
+        self._check_declared_units(unit_system, report)
         nx, ny, nz = deck.dimensions
         grid = CartesianGrid(nx, ny, nz)
 
-        geometry = self._geometry(deck, grid, report)
+        geometry = self._geometry(deck, grid, report, length_unit)
         model = GeologicalModel(name=name, grid=grid, geometry=geometry,
                                 regions=self._regions(deck, grid, report),
                                 coordinate_system="ECLIPSE")
@@ -49,26 +59,68 @@ class GrdeclImporter:
             raise GrdeclError("Qurulan model natamamdır: " + "; ".join(issues))
         return model
 
+    @staticmethod
+    def _declared_unit_system(deck: GrdeclDeck) -> str:
+        """RUNSPEC-də bəyan edilmiş vahid sistemi. Heç biri yoxdursa,
+        Eclipse-in öz defoltu (METRIC) qəbul edilir — bu, bu oxucunun
+        DEFOLT davranışı ilə üst-üstə düşdüyü üçün YEGANƏ sükutla
+        qəbul edilən haldır."""
+        if "FIELD" in deck.keywords_seen:
+            return "FIELD"
+        if "LAB" in deck.keywords_seen:
+            return "LAB"
+        return "METRIC"
+
+    @staticmethod
+    def _check_declared_units(unit_system: str, report: DiagnosticReport) -> None:
+        """`FIELD`/`LAB` bəyan edilibsə NƏYİN çevrildiyini, NƏYİN YOX
+        olduğunu AÇIQ bildirir — heç vaxt sükutla METRIC kimi oxumur
+        (bax Phase 1 audit: əvvəllər BÜTÜN dəyərlər sükutla METRIC
+        sayılırdı, bu, ft dəyərinin metr kimi oxunması demək idi).
+
+        Uzunluq (DX/DY/DZ/TOPS/COORD/ZCORN): FIELD→ft, LAB→cm-dən "m"-ə
+        FAKTİKİ ÇEVRİLİR (bax `_uniform`/`_top_surface`/`_from_corner_point`).
+        Keçiricilik (PERMX/PERMY/PERMZ): ÇEVRİLMİR — bu, çevirmənin
+        YAZILMAMASI deyil, Eclipse-in ÜÇ vahid sistemində də (METRIC/
+        FIELD/LAB) keçiriciliyin HƏMİŞƏ mD olması faktına görə EHTİYAC
+        YOXLUĞUDUR. Təzyiq/PVT açar sözləri bu oxucuda HƏLƏ ÜMUMİYYƏTLƏ
+        YOXDUR — gələcəkdə əlavə ediləndə FIELD/LAB üçün AYRICA çevirmə
+        YAZILMALIDIR, bu funksiya onu HƏLƏ ETMİR.
+        """
+        if unit_system == "METRIC":
+            return
+        label = {"FIELD": "FIELD (ft/psi/mD)", "LAB": "LAB (sm/atm/mD)"}[unit_system]
+        report.warning(
+            f"Fayl {label} vahid sistemini bəyan edir. Uzunluq (DX/DY/DZ/TOPS/"
+            "COORD/ZCORN) mühərrik vahidinə (m) ÇEVRİLDİ. Keçiricilik (PERMX/"
+            "PERMY/PERMZ) çevrilmədi — Eclipse-də bu üç sistemdə də mD-dir, "
+            "çevrilməyə EHTİYAC YOXDUR. Bu oxucu təzyiq/PVT açar sözlərini "
+            "HƏLƏ oxumur.", "GRDECL",
+            "Gələcəkdə uzunluqdan başqa yeni açar söz əlavə edilsə, onun da "
+            "vahidi FIELD/LAB üçün yoxlanılmalıdır — bax UNITS.md.")
+
     # ═══════════════════════════════════════════════════ həndəsə
     def _geometry(self, deck: GrdeclDeck, grid: CartesianGrid,
-                  report: DiagnosticReport) -> CellGeometry:
+                  report: DiagnosticReport, length_unit: str = "m") -> CellGeometry:
         if deck.has("COORD") and deck.has("ZCORN"):
-            return self._from_corner_point(deck, grid, report)
-        return self._from_block_centred(deck, grid, report)
+            return self._from_corner_point(deck, grid, report, length_unit)
+        return self._from_block_centred(deck, grid, report, length_unit)
 
     def _from_block_centred(self, deck: GrdeclDeck, grid: CartesianGrid,
-                            report: DiagnosticReport) -> CellGeometry:
-        """DX/DY/DZ/TOPS — birbaşa uyğunluq."""
-        dx = self._uniform(deck, "DX", DEFAULT_CELL_SIZE, report, "m")
-        dy = self._uniform(deck, "DY", dx, report, "m")
-        dz = self._uniform(deck, "DZ", DEFAULT_THICKNESS, report, "m")
+                            report: DiagnosticReport, length_unit: str = "m"
+                            ) -> CellGeometry:
+        """DX/DY/DZ/TOPS — birbaşa uyğunluq (deck vahidindən "m"-ə çevrilir)."""
+        dx = self._uniform(deck, "DX", DEFAULT_CELL_SIZE, report, length_unit)
+        dy = self._uniform(deck, "DY", dx, report, length_unit)
+        dz = self._uniform(deck, "DZ", DEFAULT_THICKNESS, report, length_unit)
 
-        surface, top_depth = self._top_surface(deck, grid, dz, report)
+        surface, top_depth = self._top_surface(deck, grid, dz, report, length_unit)
         return CellGeometry(grid=grid, dx=dx, dy=dy, dz=dz,
                             top_depth=top_depth, top_depth_map=surface)
 
     def _from_corner_point(self, deck: GrdeclDeck, grid: CartesianGrid,
-                           report: DiagnosticReport) -> CellGeometry:
+                           report: DiagnosticReport, length_unit: str = "m"
+                           ) -> CellGeometry:
         """COORD/ZCORN — bərabər bloka APPROKSİMASİYA.
 
         `CellGeometry` hazırda dəyişkən hüceyrə ölçüsü saxlamır, ona görə
@@ -77,6 +129,9 @@ class GrdeclImporter:
         """
         coord = deck.get("COORD")
         zcorn = deck.get("ZCORN")
+        if length_unit != "m":
+            coord = to_engine_units(coord, length_unit, "length")
+            zcorn = to_engine_units(zcorn, length_unit, "length")
         nx, ny, nz = grid.nx, grid.ny, grid.nz
 
         expected_coord = 6 * (nx + 1) * (ny + 1)
@@ -111,13 +166,15 @@ class GrdeclImporter:
                             top_depth_map=top_layer.ravel())
 
     def _top_surface(self, deck: GrdeclDeck, grid: CartesianGrid, dz: float,
-                     report: DiagnosticReport) -> Tuple[Optional[np.ndarray],
-                                                        float]:
+                     report: DiagnosticReport, length_unit: str = "m"
+                     ) -> Tuple[Optional[np.ndarray], float]:
         tops = deck.get("TOPS")
         if tops is None:
             report.info(f"TOPS verilməyib — tavan {DEFAULT_TOP_DEPTH:.0f} m "
                         f"qəbul edildi.", "GRDECL")
             return None, DEFAULT_TOP_DEPTH
+        if length_unit != "m":
+            tops = to_engine_units(tops, length_unit, "length")
 
         areal = grid.nx * grid.ny
         surface = tops[:areal] if tops.size >= areal else None
@@ -129,11 +186,14 @@ class GrdeclImporter:
 
     @staticmethod
     def _uniform(deck: GrdeclDeck, keyword: str, fallback: float,
-                 report: DiagnosticReport, unit: str) -> float:
-        """Hüceyrə ölçüsü massivdirsə, orta qiymət götürülür."""
+                 report: DiagnosticReport, length_unit: str = "m") -> float:
+        """Hüceyrə ölçüsü massivdirsə, orta qiymət götürülür (deck-in öz
+        uzunluq vahidindən — `length_unit` — mühərrik vahidinə, "m",
+        ÇEVRİLİR). `fallback` artıq "m"-dədir (verilməmiş DX/DY/DZ üçün
+        bu modulun özünün defoltu), ona görə HEÇ vaxt çevrilmir."""
         values = deck.get(keyword)
         if values is None:
-            report.info(f"{keyword} verilməyib — {fallback:g} {unit} "
+            report.info(f"{keyword} verilməyib — {fallback:g} m "
                         f"qəbul edildi.", "GRDECL")
             return float(fallback)
         finite = values[np.isfinite(values)]
@@ -142,10 +202,13 @@ class GrdeclImporter:
         if not np.allclose(finite, finite[0]):
             report.warning(
                 f"{keyword} hüceyrədən hüceyrəyə dəyişir "
-                f"({finite.min():.1f}–{finite.max():.1f} {unit}); "
-                f"orta qiymət {finite.mean():.1f} işlədilir.", "GRDECL",
+                f"({finite.min():.1f}–{finite.max():.1f} {length_unit}); "
+                f"orta qiymət {finite.mean():.1f} {length_unit} işlədilir.", "GRDECL",
                 "Dəyişkən hüceyrə ölçüsü hələ dəstəklənmir")
-        return float(finite.mean())
+        mean_value = float(finite.mean())
+        if length_unit != "m":
+            mean_value = to_engine_units(mean_value, length_unit, "length")
+        return mean_value
 
     # ═══════════════════════════════════════════════════ xassələr
     def _add_properties(self, deck: GrdeclDeck, model: GeologicalModel,

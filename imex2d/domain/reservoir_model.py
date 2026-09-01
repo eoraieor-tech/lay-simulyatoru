@@ -24,6 +24,7 @@ from .pvt import PVTTable
 from .scal import CapillaryParameters, CoreyParameters
 from .structure import FaultReference, HorizonReference, RegionSet
 from .units import DEFAULT_UNITS, UnitSystem
+from .validation import validate_query_range
 from .wells import ControlMode, Well
 
 
@@ -109,6 +110,7 @@ class ReservoirModel:
         self._check_initial_saturation(report)
         self._check_wells(report)
         self._check_faults(report)
+        self._check_pvt_scal_ranges(report)
         return report
 
     # ------------------------------------------------------ yoxlamalar
@@ -204,6 +206,43 @@ class ReservoirModel:
                         f"təzyiqindən ({bubble:.0f} bar) aşağıdır — quyudibində "
                         f"qaz ayrılacaq.", well.name,
                         "Qaz fazası modelləşdirilmir, nəticələr nikbin ola bilər")
+
+    def _check_pvt_scal_ranges(self, report: DiagnosticReport) -> None:
+        """Simulyasiya BAŞLAMAZDAN ƏVVƏL PVT/SCAL cədvəllərinin gözlənilən
+        işləmə diapazonunu (ilkin təzyiq, quyu BHP hədəfləri, ilkin Sw)
+        əhatə etdiyini yoxlayır — Phase 1 (giriş boru xətti).
+
+        Newton həlqəsi bunu HƏR İTERASİYADA YOXLAMIR (performans/davranış
+        riski, bax UNITS.md) — YALNIZ burada, model qurularkən bir dəfə.
+        Yüngül kənarlaşma xəbərdarlıqdır (cədvəl sərhədə kəsir, nəticə
+        dəyişmir); HƏDDİNDƏN ARTIQ kənarlaşma (adətən vahid qarışıqlığı
+        əlaməti) sərt xətadır (bax `validate_query_range`).
+        """
+        if self.pvt_table is not None and self.pvt_table.size >= 2:
+            pressures = [float(self.initial_conditions.datum_pressure)]
+            pressures += [float(w.control.target) for w in self.active_wells()
+                         if w.control.mode is ControlMode.BHP]
+            result = validate_query_range(
+                pressures, float(self.pvt_table.pressure[0]),
+                float(self.pvt_table.pressure[-1]), "PVT təzyiq sorğusu")
+            for message in result.errors:
+                report.error(message, "PVT")
+            for message in result.warnings:
+                report.warning(message, "PVT")
+
+        tables = getattr(self.scal_tables, "tables", None)
+        if tables:
+            sw = float(self.initial_conditions.water_saturation)
+            for region, table in sorted(tables.items()):
+                if table.sw.size < 2:
+                    continue
+                result = validate_query_range(
+                    [sw], float(table.sw[0]), float(table.sw[-1]),
+                    f"SCAL (region {region}) Sw sorğusu")
+                for message in result.errors:
+                    report.error(message, "SCAL")
+                for message in result.warnings:
+                    report.warning(message, "SCAL")
 
     def _reference_pressure(self) -> float:
         return float(self.initial_conditions.datum_pressure)

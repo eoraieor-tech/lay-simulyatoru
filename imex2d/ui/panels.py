@@ -7,7 +7,7 @@ metodlarındadır.
 """
 
 from __future__ import annotations
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor
@@ -35,6 +35,7 @@ from ..domain.initial import InitialConditions
 from ..domain.properties import FluidProperties
 from ..domain.pvt import PVTTable
 from ..domain.scal import (CapillaryParameters, CoreyParameters)
+from ..domain.unit_conversions import convert, to_engine_units
 from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation
 from ..rendering.theme import PALETTE
 from .geology_map import GeologyMapWidget
@@ -56,6 +57,49 @@ def _ispin(value, lo, hi):
     box.setRange(lo, hi)
     box.setValue(value)
     return box
+
+
+def _unit_combo(options, default: str) -> QComboBox:
+    """Vahid seçici — DEFOLT HƏMİŞƏ mühərrik vahididir (`options[0]`),
+    ona görə toxunulmayan panel əvvəlki kimi (mühərrik vahidində)
+    davranır — 'Mövcud istifadəçilər əvvəlki ədədi defoltları görməlidir'
+    tələbi budur."""
+    box = QComboBox()
+    box.addItems(options)
+    box.setCurrentText(default)
+    return box
+
+
+def _bind_unit_aware_spins(spins, combo: QComboBox, quantity: str) -> None:
+    """Vahid seçici dəyişəndə spin-box-ların DİAPAZONUNU və GÖSTƏRİLƏN
+    ƏDƏDİ yeni vahidə YENİDƏN HESABLAYIR (fiziki kəmiyyəti SAXLAYIR).
+
+    Bunsuz: diapazon (`setRange`) HƏMİŞƏ ilk (defolt) vahidin miqyasında
+    qalırdı — məs. təzyiq sahəsi bar üçün 1–1200 diapazonlu idi; istifadəçi
+    "psi" seçib 3000 yazanda dəyər SƏSSİZCƏ 1200-ə (~83 bar-a) kəsilirdi
+    (bax `test_ui_units.py`-də tutulan reqressiya). Bu funksiya hər spin-un
+    ilkin (`__init__`-də verilmiş) min/maks-ını REFERANS kimi saxlayıb hər
+    vahid dəyişimində yeni vahidə çevirir.
+    """
+    spins = list(spins)
+    base_unit = combo.currentText()
+    base_ranges = [(spin.minimum(), spin.maximum()) for spin in spins]
+
+    def on_unit_changed():
+        new_unit = combo.currentText()
+        for spin, (base_lo, base_hi) in zip(spins, base_ranges):
+            old_value = spin.value()
+            new_lo = convert(base_lo, base_unit, new_unit, quantity)
+            new_hi = convert(base_hi, base_unit, new_unit, quantity)
+            new_value = convert(old_value, on_unit_changed.previous_unit, new_unit, quantity)
+            spin.blockSignals(True)
+            spin.setRange(min(new_lo, new_hi), max(new_lo, new_hi))
+            spin.setValue(new_value)
+            spin.blockSignals(False)
+        on_unit_changed.previous_unit = new_unit
+
+    on_unit_changed.previous_unit = base_unit
+    combo.currentIndexChanged.connect(on_unit_changed)
 
 
 class GridGeometryPanel(QWidget):
@@ -664,6 +708,73 @@ class GeologyPanel(QWidget):
         self.set_validation(issues)
 
 
+class FaciesPanel(QWidget):
+    """Fasiya/SIS konfiqurasiyası (Phase 4.1 §9) — YALNIZ minimal
+    parametrlər: sütun adı, seed, realizasiya sayı, nisbətlər. Qabaqcıl
+    parametrlər (variogram, anizotropluq, qonşuluq axtarışı) BU PANELDƏ
+    YOXDUR — proqram səviyyəsində (`geology_service.FaciesBuildConfig`)
+    əlçatandır, "Do NOT expose every advanced parameter" qaydasına görə.
+
+    QEYD (bilərəkdən məhdud əhatə): bu panel HƏLƏ `main_window.py`-nin
+    əsas saxla/yüklə iş axınına BAĞLANMAYIB — bu fazanın fokusu backend
+    inteqrasiyasıdır (bax `FACIES.md`/hesabat "Qalan iş"). `build_config()`
+    dəyərləri oxumaq üçün hazırdır, layihə serializasiyası onları HƏLƏ
+    saxlamır.
+    """
+    changed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        form = QFormLayout(self)
+        self.column_name = QLineEdit("FACIES")
+        self.seed = _ispin(0, 0, 999999)
+        self.n_realizations = _ispin(1, 1, 500)
+        self.proportions_text = QLineEdit("")
+        hint = QLabel("Nisbətlər formatı: kod:nisbət, kod:nisbət, … (cəm 1.0 olmalıdır). "
+                      "Boş buraxılsa quyu datasından müşahidə olunan nisbətlər işlədilir "
+                      "(bax hesabatda xəbərdarlıq).")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
+        for label, widget in [("Fasiya sütunu", self.column_name),
+                              ("Seed", self.seed),
+                              ("Realizasiya sayı", self.n_realizations),
+                              ("Nisbətlər (kod:nisbət)", self.proportions_text)]:
+            form.addRow(label, widget)
+            sig = getattr(widget, "textChanged", None) or widget.valueChanged
+            sig.connect(self.changed)
+        form.addRow(hint)
+
+    def parse_proportions(self) -> Optional[dict]:
+        """Boş mətn -> `None` (müşahidə olunan nisbətlərə keçid, bax
+        `geology_service._simulate_categorical_field`). Səhv formatda
+        `ValueError` — SƏSSİZCƏ boş/yanlış nisbətə keçilmir."""
+        text = self.proportions_text.text().strip()
+        if not text:
+            return None
+        proportions: Dict[int, float] = {}
+        for token in text.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            code_text, sep, value_text = token.partition(":")
+            if not sep:
+                raise ValueError(f"Nisbət formatı yanlışdır: {token!r} (gözlənilən 'kod:nisbət').")
+            proportions[int(code_text.strip())] = float(value_text.strip())
+        return proportions
+
+    def build_config(self, realization_id: int = 0, seed_offset: int = 0):
+        from ..application.geology_service import FaciesBuildConfig
+        return FaciesBuildConfig(proportions=self.parse_proportions(),
+                                 seed=self.seed.value() + seed_offset,
+                                 realization_id=realization_id)
+
+    def column_name_value(self) -> str:
+        return self.column_name.text().strip()
+
+    def realization_count(self) -> int:
+        return self.n_realizations.value()
+
+
 class FaultPanel(QWidget):
     """Fault siyahısı: CSV, Eclipse FAULTS/MULTFLT, ya da əl ilə.
 
@@ -885,22 +996,34 @@ class RockFluidPanel(QWidget):
         super().__init__()
         form = QFormLayout(self)
         self.porosity = _spin(0.22, 0.01, 0.45, 3, 0.01)
-        self.permx = _spin(150, 0.01, 20000, 1, 10, "mD")
+        # decimals=4 (mD üçün lazım olandan çox) — vahid "D"-yə keçəndə
+        # (1 D = 1000 mD) tipik dəyərlər (0.001-20 D) hələ də mənalı
+        # göstərilsin deyə. "m2" tipik reservoir dəyərləri (~1e-16 m²)
+        # ÜÇÜN İSƏ HEÇ BİR spin-box dəqiqliyi kifayət deyil — bax UNITS.md.
+        self.permx = _spin(150, 0.01, 20000, 4, 10, "mD")
+        self.permx_unit = _unit_combo(["mD", "D", "m2"], "mD")
+        _bind_unit_aware_spins([self.permx], self.permx_unit, "permeability")
         self.ky_over_kx = _spin(1.0, 0.01, 10, 2, 0.1)
         self.kv_over_kh = _spin(0.10, 0.001, 1.0, 3, 0.01)
         self.heterogeneity = QComboBox()
         self.heterogeneity.addItems(["Homogen", "Təsadüfi (log-normal)"])
         self.sigma = _spin(0.5, 0.05, 2.0, 2, 0.05)
         self.seed = _ispin(7, 0, 9999)
-        self.mu_w = _spin(0.5, 0.05, 50, 2, 0.05, "cP")
-        self.mu_o = _spin(3.0, 0.05, 5000, 2, 0.5, "cP")
+        # decimals=6 — "Pa.s" seçiləndə (1 cP = 0.001 Pa·s) tipik neft
+        # lözlüyü (0.5-5000 cP -> 0.0005-5 Pa·s) mənalı göstərilsin.
+        self.mu_w = _spin(0.5, 0.05, 50, 6, 0.05, "cP")
+        self.mu_o = _spin(3.0, 0.05, 5000, 6, 0.5, "cP")
+        self.viscosity_unit = _unit_combo(["cP", "Pa.s"], "cP")
+        _bind_unit_aware_spins([self.mu_w, self.mu_o], self.viscosity_unit, "viscosity")
         self.bo = _spin(1.15, 1.0, 3.0, 3, 0.01)
         self.rock_compressibility = _spin(4.5e-5, 1e-6, 1e-3, 7, 1e-5, "1/bar")
         rows = [("Məsaməlilik φ", self.porosity), ("Keçiricilik Kx", self.permx),
+                ("Kx vahidi", self.permx_unit),
                 ("Ky/Kx", self.ky_over_kx), ("Kv/Kh (şaquli)", self.kv_over_kh),
                 ("Heterogenlik", self.heterogeneity),
                 ("σ (log-normal)", self.sigma), ("Seed", self.seed),
                 ("Su lözlüyü μw", self.mu_w), ("Neft lözlüyü μo", self.mu_o),
+                ("Lözlük vahidi", self.viscosity_unit),
                 ("Bo", self.bo), ("Süxur sıxılması", self.rock_compressibility)]
         for label, widget in rows:
             form.addRow(label, widget)
@@ -908,16 +1031,20 @@ class RockFluidPanel(QWidget):
             sig.connect(self.changed)
 
     def geology_values(self) -> dict:
-        return dict(porosity=self.porosity.value(), permx_base=self.permx.value(),
+        permx_engine = to_engine_units(self.permx.value(), self.permx_unit.currentText(),
+                                       "permeability")
+        return dict(porosity=self.porosity.value(), permx_base=permx_engine,
                     ky_over_kx=self.ky_over_kx.value(),
                     kv_over_kh=self.kv_over_kh.value(),
                     heterogeneous=self.heterogeneity.currentIndex() == 1,
                     sigma=self.sigma.value(), seed=self.seed.value())
 
     def fluids(self) -> FluidProperties:
-        return FluidProperties(water_viscosity=self.mu_w.value(),
-                               oil_viscosity=self.mu_o.value(),
-                               oil_fvf=self.bo.value())
+        unit = self.viscosity_unit.currentText()
+        return FluidProperties(
+            water_viscosity=to_engine_units(self.mu_w.value(), unit, "viscosity"),
+            oil_viscosity=to_engine_units(self.mu_o.value(), unit, "viscosity"),
+            oil_fvf=self.bo.value())
 
     def rock_compressibility_value(self) -> float:
         return self.rock_compressibility.value()
@@ -1300,7 +1427,9 @@ class NumericalPanel(QWidget):
     def __init__(self):
         super().__init__()
         form = QFormLayout(self)
-        self.initial_pressure = _spin(250, 1, 1200, 1, 10, "bar")
+        self.initial_pressure = _spin(250, 1, 1200, 3, 10, "bar")
+        self.initial_pressure_unit = _unit_combo(["bar", "psi", "MPa"], "bar")
+        _bind_unit_aware_spins([self.initial_pressure], self.initial_pressure_unit, "pressure")
         self.initial_sw = _spin(0.20, 0.0, 1.0, 3, 0.01)
         self.end_time = _spin(1500, 1, 40000, 0, 100, "gün")
         self.max_dt = _spin(20, 0.01, 365, 2, 1, "gün")
@@ -1316,6 +1445,7 @@ class NumericalPanel(QWidget):
         self.owc = _spin(2050.0, 0.0, 8000.0, 1, 10.0, "m")
         form.addRow(self.use_equilibration)
         for label, widget in [("Başlanğıc təzyiq", self.initial_pressure),
+                              ("Başlanğıc təzyiq vahidi", self.initial_pressure_unit),
                               ("Başlanğıc Sw", self.initial_sw),
                               ("Datum dərinliyi", self.datum_depth),
                               ("Su-neft kontaktı (OWC)", self.owc),
@@ -1324,7 +1454,8 @@ class NumericalPanel(QWidget):
                               ("CFL əmsalı", self.cfl),
                               ("Yaddaş anlarının sayı", self.snapshots)]:
             form.addRow(label, widget)
-            widget.valueChanged.connect(self.changed)
+            sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
+            sig.connect(self.changed)
         self.use_equilibration.stateChanged.connect(self.changed)
         note = QLabel("Söndürülübsə, bütün hüceyrələrdə eyni təzyiq və Sw "
                       "işlədilir (köhnə davranış).")
@@ -1334,9 +1465,11 @@ class NumericalPanel(QWidget):
 
     def initial_conditions(self) -> InitialConditions:
         equilibrate = self.use_equilibration.isChecked()
+        pressure_bar = to_engine_units(self.initial_pressure.value(),
+                                       self.initial_pressure_unit.currentText(), "pressure")
         return InitialConditions(
             datum_depth=self.datum_depth.value(),
-            datum_pressure=self.initial_pressure.value(),
+            datum_pressure=pressure_bar,
             water_saturation=self.initial_sw.value(),
             oil_water_contact=self.owc.value() if equilibrate else None,
             use_equilibration=equilibrate)
