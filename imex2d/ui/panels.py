@@ -284,6 +284,7 @@ class GeologyPanel(QWidget):
 
     changed = pyqtSignal()
     interpolate_requested = pyqtSignal()
+    cross_validate_requested = pyqtSignal()
 
     COLUMNS = ["Ad", "Modeldə", "X, m", "Y, m", "(i, j)", "Lay üstü, m",
               "Lay altı, m", "φ", "k, mD", "Sw", "Qeyd"]
@@ -351,22 +352,45 @@ class GeologyPanel(QWidget):
         self.power = _spin(2.0, 0.5, 8.0, 2, 0.5)
         self.search_radius = _spin(0.0, 0.0, 100000.0, 0, 50.0, "m")
         self.range_ = _spin(0.0, 0.0, 100000.0, 0, 50.0, "m")
+        self.range_v = _spin(0.0, 0.0, 100000.0, 0, 5.0, "m")
         self.sill = _spin(0.0, 0.0, 1e6, 4, 0.01)
         self.nugget = _spin(0.0, 0.0, 1e6, 4, 0.01)
+        self.min_neighbors = _ispin(1, 1, 999)
+        self.max_neighbors = _ispin(0, 0, 999)
         rows = [("IDW dərəcəsi p", self.power),
                 ("Axtarış radiusu (0 = limitsiz)", self.search_radius),
-                ("Kriging radiusu a (0 = avto)", self.range_),
+                ("Kriging radiusu a — üfüqi (0 = avto)", self.range_),
+                ("Kriging radiusu — şaquli (0 = üfüqi ilə eyni)", self.range_v),
                 ("Sill c (0 = avto)", self.sill),
-                ("Nugget c₀", self.nugget)]
+                ("Nugget c₀", self.nugget),
+                ("Min qonşu sayı (yerli axtarışda)", self.min_neighbors),
+                ("Maks qonşu sayı (0 = limitsiz)", self.max_neighbors)]
         for label, widget in rows:
             form.addRow(label, widget)
             widget.valueChanged.connect(self._on_table_edited)
+
+        self.allow_cross_layer_fallback = QCheckBox(
+            "Boş laya digər laylardan borc verməyə icazə ver (ekstrapolyasiya)")
+        self.allow_cross_layer_fallback.setToolTip(
+            "Söndürülübsə (defolt): heç bir quyu nöqtəsi olmayan lay üçün "
+            "açıq xəta verilir — başqa layların dəyəri sükutla işlədilmir.\n"
+            "Yandırılsa: 3D/anizotrop Kriging seçilibsə yaxın laylar uzaq "
+            "laylardan çox təsir edir (kor-koranə bərabər hovuzlama yox).")
+        self.allow_cross_layer_fallback.toggled.connect(self._on_table_edited)
+        form.addRow("", self.allow_cross_layer_fallback)
         layout.addLayout(form)
 
         action_row = QHBoxLayout()
         self.interpolate_button = QPushButton("İnterpolyasiya et")
         self.interpolate_button.clicked.connect(self.interpolate_requested)
         action_row.addWidget(self.interpolate_button)
+        self.cross_validate_button = QPushButton("Cross-validation et")
+        self.cross_validate_button.setToolTip(
+            "Quyu nöqtələrindən bəzilərini müvəqqəti gizlədib qalanları ilə "
+            "proqnozlaşdırır, real RMSE/MAE/R²/MAPE göstərir. '100% dəqiq' "
+            "vəd etmir — az nöqtə ilə R² mənfi ola bilər.")
+        self.cross_validate_button.clicked.connect(self.cross_validate_requested)
+        action_row.addWidget(self.cross_validate_button)
         self.stale_label = QLabel("")
         self.stale_label.setStyleSheet("color:#e0a020;font-size:11px")
         action_row.addWidget(self.stale_label, 1)
@@ -389,10 +413,13 @@ class GeologyPanel(QWidget):
     # ------------------------------------------------------------ slots
     def _on_method_changed(self):
         method = self.method.currentText()
+        is_kriging = "Kriging" in method
         self.power.setEnabled("IDW" in method)
-        self.search_radius.setEnabled("IDW" in method)
-        for widget in (self.range_, self.sill, self.nugget):
-            widget.setEnabled("Kriging" in method)
+        self.search_radius.setEnabled("IDW" in method or is_kriging)
+        for widget in (self.range_, self.range_v, self.sill, self.nugget,
+                      self.min_neighbors, self.max_neighbors,
+                      self.allow_cross_layer_fallback):
+            widget.setEnabled(is_kriging)
 
     def _on_item_changed(self, item: QTableWidgetItem):
         if item.column() == self.COL_IN_MODEL:
@@ -458,11 +485,20 @@ class GeologyPanel(QWidget):
             return InverseDistance(power=self.power.value(),
                                    search_radius=radius if radius > 0 else None)
         if "Kriging" in method:
+            radius = self.search_radius.value()
+            max_n = self.max_neighbors.value()
             return OrdinaryKriging(
                 range_=self.range_.value() or None,
+                range_v=self.range_v.value() or None,
                 sill=self.sill.value() or None,
-                nugget=self.nugget.value())
+                nugget=self.nugget.value(),
+                search_radius=radius if radius > 0 else None,
+                min_neighbors=self.min_neighbors.value(),
+                max_neighbors=max_n if max_n > 0 else None)
         return NearestNeighbour()
+
+    def cross_layer_fallback_allowed(self) -> bool:
+        return self.allow_cross_layer_fallback.isChecked()
 
     def set_report(self, text: str):
         self.report.setPlainText(text)

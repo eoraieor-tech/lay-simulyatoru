@@ -36,7 +36,8 @@ from ..application.serialization import (FILE_EXTENSION, ProjectFileError,
                                          ProjectSerializer)
 from ..application.geology_adapter import wells_to_dataset
 from ..application.geology_service import (GeologicalGridSpec,
-                                          WellBasedGeologicalModelBuilder)
+                                          WellBasedGeologicalModelBuilder,
+                                          format_cross_validation_report)
 from ..application.scenarios import WELL_PATTERNS, SyntheticGeologicalModelBuilder
 from ..application.simulation_service import (ModelValidationError,
                                               SimulationService)
@@ -264,6 +265,7 @@ class MainWindow(QMainWindow):
             panel.changed.connect(self.rebuild_model)
         self.geology_panel.changed.connect(self._on_geology_table_changed)
         self.geology_panel.interpolate_requested.connect(self._interpolate_geology)
+        self.geology_panel.cross_validate_requested.connect(self._cross_validate_geology)
         self.well_panel.apply_button.clicked.connect(self._apply_pattern)
 
         container = QWidget()
@@ -1443,6 +1445,7 @@ class MainWindow(QMainWindow):
             geology, report = builder.build(
                 dataset, spec, ky_over_kx=rock_values["ky_over_kx"],
                 kv_over_kh=rock_values["kv_over_kh"],
+                allow_cross_layer_fallback=self.geology_panel.cross_layer_fallback_allowed(),
                 name="Quyu cədvəlindən geoloji model")
         except ValueError as exc:
             QMessageBox.critical(self, "İnterpolyasiya edilmədi", str(exc))
@@ -1456,6 +1459,24 @@ class MainWindow(QMainWindow):
         self._geology_model_from_wells = geology
         self.geology_panel.mark_fresh()
         self.rebuild_model()
+
+    def _cross_validate_geology(self):
+        """'Cross-validation et' düyməsi — M4. Nəticəni QURULAN modelə
+        DEYİL, birbaşa quyu cədvəlinə tətbiq edir (interpolyasiya
+        edilməmiş olsa belə işləyir) — real dəqiqliyi göstərir, "100%
+        dəqiq" vəd etmir."""
+        wells = self.geology_panel.wells()
+        method = self.geology_panel.method_text()
+        dataset, _skipped = wells_to_dataset(wells, method)
+        if len(dataset) < 3:
+            QMessageBox.information(
+                self, "Cross-validation",
+                "Cross-validation üçün ən azı 3 quyu nöqtəsi lazımdır.")
+            return
+        builder = WellBasedGeologicalModelBuilder(self.geology_panel.interpolator())
+        all_results = builder.cross_validate_all(dataset)
+        text = format_cross_validation_report(all_results)
+        QMessageBox.information(self, "Cross-validation nəticəsi", text)
 
     def _apply_pattern(self):
         """Ssenari daxildə İNDEKSLƏ işləyir (`five_spot` və s. dəyişmir) —

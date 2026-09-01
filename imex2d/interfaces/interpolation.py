@@ -16,10 +16,17 @@ class IPropertyInterpolator(ABC):
 
     name: str = "interpolator"
 
+    #: `True` olan implementasiyalar (n,3) [X,Y,Z] nöqtə/hədəf qəbul edir
+    #: (bax `OrdinaryKriging`). `False` qalanlar (NearestNeighbour, IDW)
+    #: yalnız (n,2)-ni dəstəkləyir — geology_service.py bunu yoxlayıb
+    #: hansı fəzada nöqtə quracağına qərar verir.
+    supports_z: bool = False
+
     @abstractmethod
     def interpolate(self, points: np.ndarray, values: np.ndarray,
                     targets: np.ndarray) -> np.ndarray:
-        """points (n,2), values (n,), targets (m,2) -> (m,) dəyərlər."""
+        """points (n,2) və ya (n,3) [supports_z], values (n,),
+        targets (m,2)/(m,3) -> (m,) dəyərlər."""
 
     def describe(self) -> str:
         return self.name

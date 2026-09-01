@@ -1,11 +1,18 @@
 """`GeologicalWell` cədvəlini `geology_service.py`-nin gözlədiyi
 `WellDataset`-ə çevirir.
 
-`geology_service.py` TOXUNULMUR (bax `ISH_HESABATI.md`, bölmə 9) — bu
-modul yalnız girişi CSV oxuyucunun yerinə keçirir. Xassə-üzrə davranış
-("bir quyuda dəyər yoxdursa yalnız o xassə düşür, sətir yox") elə burada
-əldə olunur: `WellSample.values` yalnız MÖVCUD olan xassələri daşıyır,
-`WellDataset.points()` isə həmin xassəni istəməyən sətirləri özü süzür.
+Qeyd: `geology_service.py`-a "toxunulmazdır" qərarı (bax `ISH_HESABATI.md`,
+bölmə 9) həmin fazanın (CSV → cədvəl keçidi) öz əhatəsi üçün idi. Layer
+sızması düzəlişi (bax `ISH_HESABATI.md`, M1) üçün `_interpolate_volume`
+dəyişdirildi — Kriging riyaziyyatına toxunmadan, yalnız boş laya hansı
+nöqtələrin daxil ediləcəyi məntiqinə. Bu modul isə hələ də yalnız girişi
+CSV oxuyucunun yerinə keçirir; `WellSample.layer` heç vaxt doldurmur (bax
+aşağıda), ona görə bu yolla qurulan modellər indi də laysız (bütün K-lara
+yayılan) qalır — bax `tests/test_layer_aware_kriging_leak.py::test_ui_table_wells_broadcast_single_value_to_every_layer`.
+Xassə-üzrə davranış ("bir quyuda dəyər yoxdursa yalnız o xassə düşür, sətir
+yox") elə burada əldə olunur: `WellSample.values` yalnız MÖVCUD olan
+xassələri daşıyır, `WellDataset.points()` isə həmin xassəni istəməyən
+sətirləri özü süzür.
 
 Seçilmiş üsul üçün quyu sayı kifayət etmirsə (bax
 `imex2d.domain.geology.method_minimum`), həmin xassə dataset-dən

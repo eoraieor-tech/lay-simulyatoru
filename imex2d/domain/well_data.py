@@ -53,16 +53,28 @@ class WellDataset:
     def is_layered(self) -> bool:
         return any(s.layer is not None for s in self.samples)
 
-    def points(self, prop: str, layer: Optional[int] = None):
-        """(koordinatlar, dəyərlər) — verilmiş xassə və təbəqə üçün."""
-        coordinates, values = [], []
+    def samples_for(self, prop: str, layer: Optional[int] = None) -> List[WellSample]:
+        """`prop` xassəsini daşıyan, verilmiş laya aid (və ya laysız) nümunələr.
+
+        `points()` ilə eyni süzgəcdir, sadəcə tam `WellSample`-ı qaytarır —
+        çağıran (məs. `geology_service.py`) hər nümunənin öz `depth`/`layer`
+        məlumatına ehtiyac duyanda (3D/anizotrop kriging üçün Z tərtib
+        etmək) istifadə edir.
+        """
+        result = []
         for sample in self.samples:
             if prop not in sample.values:
                 continue
             if layer is not None and sample.layer is not None and sample.layer != layer:
                 continue
-            coordinates.append((sample.x, sample.y))
-            values.append(sample.values[prop])
+            result.append(sample)
+        return result
+
+    def points(self, prop: str, layer: Optional[int] = None):
+        """(koordinatlar, dəyərlər) — verilmiş xassə və təbəqə üçün."""
+        samples = self.samples_for(prop, layer)
+        coordinates = [(s.x, s.y) for s in samples]
+        values = [s.values[prop] for s in samples]
         return np.asarray(coordinates, float).reshape(-1, 2), np.asarray(values, float)
 
     def bounds(self):
