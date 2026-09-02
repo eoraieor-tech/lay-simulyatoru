@@ -24,7 +24,8 @@ from ..domain.geology import GeologicalWell
 from ..domain.geometry import CellGeometry
 from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
-from ..domain.properties import FluidProperties, PropertyMap, RockProperties
+from ..domain.properties import (FluidProperties, PermeabilityTensor, PropertyMap,
+                                 RockProperties)
 from ..domain.pvt import PVTTable
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.scal import CapillaryParameters, CoreyParameters
@@ -74,6 +75,33 @@ def _property_map_from(data: Optional[dict]) -> Optional[PropertyMap]:
         return None
     return PropertyMap(data["name"], np.asarray(data["values"], dtype=float),
                        data.get("unit", ""))
+
+
+def _permeability_tensor_to_dict(tensor: Optional[PermeabilityTensor]) -> Optional[dict]:
+    """Phase 2 — bütün 6 komponent (3 diaqonal + 3 off-diaqonal) ayrıca
+    saxlanılır, heç biri itirilmir/təxmin edilmir."""
+    if tensor is None:
+        return None
+    return {
+        "kxx": _property_map(tensor.kxx),
+        "kyy": _property_map(tensor.kyy),
+        "kzz": _property_map(tensor.kzz),
+        "kxy": _property_map(tensor.kxy),
+        "kxz": _property_map(tensor.kxz),
+        "kyz": _property_map(tensor.kyz),
+    }
+
+
+def _permeability_tensor_from_dict(data: Optional[dict]) -> Optional[PermeabilityTensor]:
+    if data is None:
+        return None
+    return PermeabilityTensor(
+        kxx=_property_map_from(data["kxx"]),
+        kyy=_property_map_from(data["kyy"]),
+        kzz=_property_map_from(data["kzz"]),
+        kxy=_property_map_from(data.get("kxy")),
+        kxz=_property_map_from(data.get("kxz")),
+        kyz=_property_map_from(data.get("kyz")))
 
 
 def _dataclass_to_dict(obj, fields) -> dict:
@@ -426,6 +454,7 @@ class ProjectSerializer:
                 "permz": _property_map(rock.permz),
                 "net_to_gross": _property_map(rock.net_to_gross),
                 "compressibility": rock.compressibility,
+                "permeability_tensor": _permeability_tensor_to_dict(rock.permeability_tensor),
             },
             "fluids": _dataclass_to_dict(model.fluids, [
                 "water_viscosity", "oil_viscosity", "water_fvf", "oil_fvf",
@@ -464,7 +493,9 @@ class ProjectSerializer:
             permy=_property_map_from(rock_data["permy"]),
             permz=_property_map_from(rock_data.get("permz")),
             net_to_gross=_property_map_from(rock_data.get("net_to_gross")),
-            compressibility=rock_data.get("compressibility", 4.5e-5))
+            compressibility=rock_data.get("compressibility", 4.5e-5),
+            permeability_tensor=_permeability_tensor_from_dict(
+                rock_data.get("permeability_tensor")))
         maps = {}
         for item in data.get("property_maps", []):
             prop = _property_map_from(item)

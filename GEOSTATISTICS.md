@@ -89,3 +89,9 @@ Fit/aşkarlanma nəticələri introspeksiya üçün saxlanılır:
   yazılıb və sınanıb, amma `OrdinaryKriging`-ə (auto-fit üçün) hələ
   bağlanmayıb — hazırkı `range_v` hələ də əl ilə verilir və ya `range_`-ə
   bərabər qəbul edilir.
+- **Tam tenzor permeabilite (`PermeabilityTensor`, bax `ARCHITECTURE.md`
+  §5.13) bu boru xəttindən HEÇ VAXT DOLDURULMUR** — co-kriging və ya
+  digər çoxdəyişənli/tenzor-əsaslı interpolyasiya bu fazada YAZILMADI
+  (bilərəkdən, MPFA-O-dan əvvəlki hazırlıq mərhələsidir). Kxy/Kxz/Kyz
+  komponentləri hazırda YALNIZ kodda ƏLLƏ (birbaşa `PropertyMap`
+  qurularaq) verilə bilər — heç bir geoloji məlumat İCAD EDİLMİR.

@@ -262,6 +262,18 @@ qeyri-boşdursa, `known_units(quantity)`-ə uyğun olmalıdır, əks halda
 edilmir. Reyestrdə OLMAYAN ad (PORO, NTG, SW, REGION_ID) üçün `unit`
 sərbəst mətn olaraq qalır — DƏYİŞMƏDİ.
 
+**Phase 2 (tam tenzor permeabilite) əlavəsi**: `KXX/KYY/KZZ/KXY/KXZ/KYZ`
+də reyestrə əlavə olundu — diaqonal `PERMX/PERMY/PERMZ` İLƏ EYNİ vahid-
+etibarlılığı (mD/D/m²) qoruyur. **Məhdudiyyət**: bu, YALNIZ vahid-ETİKETİNİN
+etibarlılığını yoxlayır (`PropertyMap.__post_init__`) — heç bir xassə üçün
+(diaqonal DA daxil) konstruksiya zamanı AVTOMATİK ƏDƏDİ ÇEVİRMƏ YOXDUR,
+tenzor da istisna deyil. `PermeabilityTensor.convert_units(from, to)`
+BÜTÜN 6 komponentə EYNİ amili tətbiq edən hazır aləti təmin edir, AMMA
+CSV/GRDECL idxal sərhədində bunu AVTOMATİK çağıran boru xətti HƏLƏ YOXDUR
+— çünki tenzor K-nı fayldan oxuyan mexanizmin ÖZÜ hələ yoxdur (bax
+`GEOSTATISTICS.md`/`ARCHITECTURE.md` §5.13, audit §13: "tensor components
+currently need to be supplied explicitly").
+
 ## PVT (`domain/pvt.py`)
 
 `PVTTable.from_values(..., pressure_unit="bar", viscosity_unit="cP",

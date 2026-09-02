@@ -376,13 +376,47 @@ konstruktoruna `flux_discretization: Optional[IFluxDiscretization] = None`
 əlavə olundu — verilməyəndə `default_flux_discretization()` (= TPFA)
 işlədilir, DEFOLT DAVRANIŞ dəyişmir.
 
-**Tenzor permeabilitə hazırlığı**: `RockProperties.permeability_tensor:
-Optional[PermeabilityTensor] = None` — Kxx/Kyy/Kzz + istəyə görə
-Kxy/Kxz/Kyz. `None` olduqda (bütün mövcud modellər) davranış tam
-eynidir. Verilibsə VƏ off-diaqonal komponent varsa, TPFA onu SƏSSİZCƏ
+**Tenzor permeabilitə (Phase 2 — "Full Tensor Permeability Implementation")**:
+`RockProperties.permeability_tensor: Optional[PermeabilityTensor] = None`
+— Kxx/Kyy/Kzz (məcburi) + Kxy/Kxz/Kyz (istəyə görə), hər biri `PropertyMap`
+(hüceyrə-hüceyrə dəyişə bilər, bax audit §8). Yalnız 6 MÜSTƏQİL komponent
+saxlanılır — simmetrik cütlər (`Kyx=Kxy` və s.) `as_matrices()`-də hər
+çağırışda RİYAZİ bərpa olunur, ayrıca TƏKRAR saxlanmır.
+
+*Doğrulama* (`PermeabilityTensor.validate()`): NaN/Inf hər komponentdə
+tutulur; müsbət-müəyyənlik YALNIZ diaqonalın müsbətliyinə görə YOX,
+`np.linalg.eigvalsh`-lə hesablanan HƏQİQİ məxsusi qiymətlərə görə
+yoxlanılır (λ_min(K) > 0) — vektorlaşdırılıb (bütün hüceyrələr TƏK LAPACK
+çağırışında, O(N)), Python dövrü yoxdur. Güclü anizotropluq (10⁴-ə qədər
+sınanıb) süni kəsilmə OLMADAN qəbul edilir; etibarsız tenzor "təmir"
+edilmir, sadəcə RƏDD edilir (`RockProperties.validate()` bunu ötürür).
+
+*Fırlanma* (`rotate(R)`): `K_rot = R·K·Rᵀ`, `R`-in ORTOQONALLIĞI (`R·Rᵀ=I`)
+yoxlanılır — əks halda `ValueError` (qeyri-ortoqonal "fırlanma" məxsusi
+qiymətləri poza bilər). Testlərlə təsdiqlənib: izotrop tenzor izotrop
+qalır, məxsusi qiymətlər saxlanılır, müsbət-müəyyənlik qorunur.
+
+*Vahid çevirməsi* (`convert_units(from, to)`): mövcud `unit_conversions.
+convert`-i BÜTÜN 6 komponentə EYNİ amillə tətbiq edir. **Məhdudiyyət**:
+CSV/GRDECL idxal sərhədində tenzor komponentlərini AVTOMATİK çevirən
+boru xətti HƏLƏ YOXDUR (çünki tenzor K-nı geologiya boru xəttindən
+oxuyan mexanizmin ÖZÜ də yoxdur, bax §13) — `convert_units()` istifadəçi
+kodunun əlində olan, hazır, düzgün alətdir, avtomatik ÇAĞIRILAN yer YOXDUR.
+
+*TPFA münasibəti*: off-diaqonal komponent aşkarlansa, TPFA onu SƏSSİZCƏ
 diaqonala yumşaltmır (`has_off_diagonal()`) — `DiscretizedGrid.warnings`-ə
-açıq xəbərdarlıq yazır, öz nəticəsini dəyişdirmədən (yalnız diaqonaldan
-istifadəyə davam edir).
+HANSI komponentin (Kxy/Kxz/Kyz) və neçə hüceyrənin təsirləndiyini AÇIQ
+göstərən xəbərdarlıq yazır, öz nəticəsini (transmissivliyini) DƏYİŞDİRMƏDƏN
+(yalnız diaqonaldan istifadəyə davam edir).
+
+*Serializasiya*: `imex2d/application/serialization.py` — bütün 6 komponent
+ayrıca saxlanılır/bərpa olunur (`_permeability_tensor_to_dict`/`_from_dict`),
+`None` (köhnə/tenzor-siz model) geriyə-uyğun qalır.
+
+**DOĞRU İFADƏ (audit §21/Phase 2 §L)**: "tam tenzor permeabilite TƏMSİL
+OLUNUR VƏ DOĞRULANIR, amma tam tenzor axın diskretizasiyası MPFA TƏLƏB
+EDİR" — "simulyator tərəfindən tam dəstəklənir" YANLIŞDIR, İSTİFADƏ
+EDİLMİR.
 
 **Həndəsə hazırlığı**: `CellGeometry`-yə üç YENİ, əlavə metod —
 `cell_centroid()`, `face_centroid(conn)`, `face_normal(conn)` (bax
@@ -401,8 +435,67 @@ N-hüceyrəli stensilə ümumiləşdirilməli olacaq — bax `discretization.py`
 modul docstring-i, "Jacobian inteqrasiya nöqtəsi" bölməsi, tam sətir
 istinadları ilə. **Bu fayl bu fazada dəyişdirilməyib.**
 
-**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun özü, native corner-point
-həndəsə, tenzor K-nın TPFA-da faktiki istifadəsi — hamısı gələcək faza.
+**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun özü (MPFA-L də), native
+corner-point həndəsə, tenzor K-nın TPFA-da (və ya hər hansı digər axın
+həlledicisində) FAKTİKİ istifadəsi, geologiya boru xəttindən (SGS/SIS/
+interpolyasiya) tenzor K komponentlərinin AVTOMATİK doldurulması (co-
+kriging və s.) — hamısı gələcək faza.
+
+### 5.14 Ümumi (qeyri-ortoqonal) çoxüzlü həndəsə nüvəsi (Phase 3)
+Yeni modul: `imex2d/domain/polyhedral_geometry.py::HexahedralCell`/`Face`
+— HÜCEYRƏ-BAŞINA (per-cell), potensial qeyri-ortoqonal 8-təpəli hüceyrə
+həndəsəsi. `CellGeometry`-dən (Kartezian, vektorlaşdırılmış, DƏYİŞMƏYİB)
+FƏRQLİ, ONU ƏVƏZ ETMİR — bir səviyyə AŞAĞIDA yerləşən SAF riyazi nüvədir:
+
+```text
+Geometry NÜVƏSİ (HexahedralCell/Face — saf riyaziyyat, Connections-dan
+                  MÜSTƏQİL, bax audit §18/§21)
+    ↓
+Grid Geometry (CellGeometry — Kartezian; gələcək CornerPointGeometry
+               bu nüvəni İSTİFADƏ EDƏ BİLƏR, HƏLƏ YAZILMAYIB)
+    ↓
+Topology (Connections — HANSI hüceyrələr bağlıdır)
+    ↓
+Discretization (TPFA indiki, MPFA-O gələcək)
+    ↓
+Flow
+```
+
+**Həcm/mərkəz**: tetraedr-parçalanması (8 təpənin ortası olan daxili
+istinad nöqtəsindən hər üzün üçbucaqlarına) — standart, qabarıq (VƏ
+yüngül qeyri-qabarıq) çoxüzlülər üçün RİYAZİ CƏHƏTDƏN DÜZGÜN üsul.
+Sıfır/mənfi həcm (degenerativ/tərs-yönümlü hüceyrə) AÇIQ RƏDD edilir.
+
+**Üz sahəsi/mərkəzi/normalı**: fan-triangulyasiya (`(v0,v1,v2),
+(v0,v2,v3)`) + sahə-çəkili orta. Tam müstəvi üz üçün DƏQİQ; əyri
+(warped) üz üçün YALNIZ TƏXMİNİ (bax `Face.is_planar()`) — bu, SÜKUTLA
+GİZLƏDİLMİR, `is_planar()` vasitəsilə AÇIQ yoxlanıla bilər.
+
+**Fırlanma/qeyri-ortoqonallıq**: hüceyrə fırlandıqda həcm/kənar
+uzunluğu/üz sahəsi QORUNUR, normal DÜZGÜN fırlanır (test edilib).
+`non_orthogonality_angle(d_ij, n_f)` — YALNIZ DİAQNOSTİKA, TPFA-nı
+DƏYİŞDİRMİR (bax audit §12).
+
+**Doğrulama**: NaN/Inf, sıfır/mənfi həcm, sıfır/mənfi sahə, sıfır-
+uzunluqlu normal — hamısı AÇIQ RƏDD edilir, HEÇ NƏ "təmir" olunmur.
+
+**Serializasiya**: BU FAZADA YOXDUR — çünki `HexahedralCell`/`Face`
+HƏLƏ HEÇ BİR SAXLANILAN modelə (`GeologicalModel`/`ReservoirModel`)
+BAĞLANMAYIB (bax audit §25: yalnız istifadə olunan sahələr saxlanılır).
+Gələcək `CornerPointGeometry` modelə bağlananda, onun ÖZ serializasiyası
+YALNIZ təpələri saxlamalıdır (sahə/həcm/mərkəz/normal HƏMİŞƏ YENİDƏN
+hesablana bilər, TƏKRAR saxlanmamalıdır).
+
+**Sərhəd üzləri**: bu modul "sərhəd VS daxili" TƏSNİFATINI ETMİR (bu,
+topologiya sualıdır, bax §18) — hər hüceyrənin HƏR üzü (sərhəddə olsun
+ya olmasın) etibarlı sahə/mərkəz/normal daşıyır; hansı üzün sərhəd
+olduğunu XARİCİ topologiya (`Connections`) müəyyən edir.
+
+**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun bu nüvədən istifadəsi, ümumi
+(Kartezian-olmayan) GRID-səviyyəli həndəsə sinfi, native corner-point
+idxal, ACTNUM/qeyri-aktiv hüceyrə inteqrasiyası, qeyri-qabarıq (non-
+convex) hüceyrələr üçün formal doğrulama, faylların (COORD/ZCORN) bu
+nüvəyə bağlanması — hamısı gələcək faza.
 
 ---
 

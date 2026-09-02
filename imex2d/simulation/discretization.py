@@ -111,20 +111,30 @@ class TwoPointFluxDiscretization(IFluxDiscretization):
 
     @staticmethod
     def _tensor_warnings(model: ReservoirModel) -> List[str]:
-        """Tam tenzor K aşkarlansa AÇIQ xəbərdarlıq verir — TPFA onu
-        SƏSSİZCƏ diaqonala "yumşaltmır" (scalarize etmir), sadəcə
-        İSTİFADƏ ETMİR və bunu bildirir (bax audit tapşırığı §5: "do
-        not silently collapse tensor K into scalar K").
+        """Tam tenzor K aşkarlansa AÇIQ, DETERMİNİSTİK xəbərdarlıq verir
+        — TPFA onu SƏSSİZCƏ diaqonala "yumşaltmır" (scalarize etmir),
+        sadəcə İSTİFADƏ ETMİR və bunu, HANSI komponentlərin (Kxy/Kxz/Kyz)
+        və neçə hüceyrənin təsirləndiyini AÇIQ göstərərək bildirir (bax
+        audit Phase 2 §11: "the existing warning mechanism can be
+        improved, make it clear and deterministic").
         """
         tensor = model.rock.permeability_tensor
-        if tensor is not None and tensor.has_off_diagonal():
-            return [
-                "Tam permeabilite tenzoru (Kxy/Kxz/Kyz) aşkarlanıb, AMMA "
-                "TPFA (TwoPointFluxDiscretization) YALNIZ diaqonal Kx/Ky/Kz-i "
-                "işlədir — off-diaqonal anizotropluq bu simulyasiyada NƏZƏRƏ "
-                "ALINMIR. Düzgün nəticə üçün MPFA-O lazımdır (hələ implement "
-                "edilməyib)."]
-        return []
+        if tensor is None or not tensor.has_off_diagonal():
+            return []
+        tol = 1e-12
+        affected: List[str] = []
+        for label, component in (("Kxy", tensor.kxy), ("Kxz", tensor.kxz),
+                                 ("Kyz", tensor.kyz)):
+            if component is not None and np.any(np.abs(component.values) > tol):
+                n_nonzero = int(np.sum(np.abs(component.values) > tol))
+                affected.append(f"{label} ({n_nonzero} hüceyrə)")
+        return [
+            "Tam permeabilite tenzoru aşkarlanıb, sıfırdan fərqli off-diaqonal "
+            f"komponent(lər): {', '.join(affected)}. TPFA (TwoPointFluxDiscretization) "
+            "YALNIZ diaqonal Kx/Ky/Kz-i işlədir — off-diaqonal anizotropluq bu "
+            "simulyasiyada NƏZƏRƏ ALINMIR (səssizcə diaqonala yumşaldılmır, "
+            "sadəcə istifadə edilmir). Düzgün nəticə üçün MPFA-O lazımdır "
+            "(hələ implement edilməyib)."]
 
     @staticmethod
     def _directional_permeability(model: ReservoirModel, conn: Connections):

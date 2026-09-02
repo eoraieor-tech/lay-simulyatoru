@@ -6,8 +6,8 @@ from typing import Optional
 
 import numpy as np
 
-from .unit_conversions import known_units
-from .validation import (validate_compressibility, validate_density,
+from .unit_conversions import convert, known_units
+from .validation import (ValidationResult, validate_compressibility, validate_density,
                          validate_permeability, validate_porosity, validate_viscosity)
 
 #: Xassə adı -> gözlənilən kəmiyyət növü (bax `unit_conversions.py`).
@@ -15,8 +15,14 @@ from .validation import (validate_compressibility, validate_density,
 #: audit: keçiricilik mD/Darcy/m² arasında, təzyiq bar/psi arasında
 #: real çaşqınlıq mənbəyidir). Reyestrdə OLMAYAN ad (PORO, NTG, SW,
 #: REGION_ID...) üçün `unit` sərbəst mətn olaraq qalır — DƏYİŞMİR.
+#: KXX/KYY/KZZ/KXY/KXZ/KYZ — Phase 2 (tam tenzor permeabilite): DİAQONAL
+#: PERMX/PERMY/PERMZ İLƏ EYNİ vahid-etibarlılığı qoruyur (bax
+#: `PermeabilityTensor`) — off-diaqonal komponentlər üçün AYRICA/zəif
+#: yoxlama qalmasın deyə.
 PROPERTY_QUANTITY = {
     "PERMX": "permeability", "PERMY": "permeability", "PERMZ": "permeability",
+    "KXX": "permeability", "KYY": "permeability", "KZZ": "permeability",
+    "KXY": "permeability", "KXZ": "permeability", "KYZ": "permeability",
     "PRESSURE": "pressure",
 }
 
@@ -68,21 +74,36 @@ class PropertyMap:
 
 @dataclass
 class PermeabilityTensor:
-    """Tam simmetrik permeabilite tenzoru — gələcək MPFA-O üçün HAZIRLIQ
-    (bax audit tapşırığı §5, `imex2d/simulation/discretization.py` modul
+    """Tam simmetrik permeabilite tenzoru — birinci-dərəcəli fiziki xassə
+    (Phase 2: "Full Tensor Permeability Implementation"), gələcək MPFA-O
+    üçün HAZIRLIQ (bax `imex2d/simulation/discretization.py` modul
     docstring-i).
 
         K = [[Kxx, Kxy, Kxz],
              [Kxy, Kyy, Kyz],
-             [Kxz, Kyz, Kzz]]     (simmetrik fərz edilir — standart fiziki qəbul)
+             [Kxz, Kyz, Kzz]]     (simmetrik fərz edilir — Kyx=Kxy, Kzx=Kxz, Kzy=Kyz)
 
-    BU FAZADA HEÇ BİR HƏLLEDİCİ (TPFA) bunu İSTİFADƏ ETMİR — `RockProperties.
-    permx/permy/permz` (diaqonal) YEGANƏ TPFA-nın oxuduğu mənbədir, DƏYİŞMİR.
-    Bu sinif YALNIZ off-diaqonal (Kxy/Kxz/Kyz) anizotropluq məlumatını
-    İTİRMƏDƏN daşımaq üçündür ki, gələcək MPFA-O onu birbaşa istifadə edə
-    bilsin — TPFA-nın bunu SƏSSİZCƏ diaqonala "yumşaltması" (scalarize)
+    YALNIZ 6 MÜSTƏQİL komponent (Kxx,Kyy,Kzz,Kxy,Kxz,Kyz) SAXLANILIR —
+    simmetrik cütlər (Kyx və s.) AYRICA sahə kimi TƏKRARLANMIR, `as_
+    matrices()` onları hər çağırışda RİYAZİ olaraq bərpa edir. Hər
+    komponent `PropertyMap`-dir, ona görə hüceyrə-hüceyrə DƏYİŞƏ bilər
+    (heterojen rezervuar, bax audit §8).
+
+    Öz-qiymətlər (`eigenvalues`), müsbət-müəyyənlik (`validate`),
+    fırlanma (`rotate`) və vahid çevirməsi (`convert_units`) təmin
+    edilir — hamısı VEKTORLAŞDIRILIB (`np.linalg.eigvalsh` bütün
+    hüceyrələr üçün TƏK çağırış, Python dövrü YOXDUR).
+
+    BU FAZADA DA HEÇ BİR HƏLLEDİCİ (TPFA) bunu İSTİFADƏ ETMİR —
+    `RockProperties.permx/permy/permz` (diaqonal) YEGANƏ TPFA-nın
+    oxuduğu mənbədir, DƏYİŞMİR. Bu sinif YALNIZ off-diaqonal
+    (Kxy/Kxz/Kyz) anizotropluq məlumatını İTİRMƏDƏN daşımaq/doğrulamaq/
+    saxlamaq üçündür ki, gələcək MPFA-O onu birbaşa istifadə edə bilsin
+    — TPFA-nın bunu SƏSSİZCƏ diaqonala "yumşaltması" (scalarize)
     QADAĞANDIR (bax `has_off_diagonal`/`TwoPointFluxDiscretization.build`
-    xəbərdarlığı).
+    xəbərdarlığı). DOĞRU İFADƏ: "tam tenzor permeabilite TƏMSİL OLUNUR
+    VƏ DOĞRULANIR, amma tam tenzor axın diskretizasiyası MPFA TƏLƏB
+    EDİR" — "simulyator tərəfindən tam dəstəklənir" DEYİL.
     """
     kxx: PropertyMap
     kyy: PropertyMap
@@ -91,6 +112,19 @@ class PermeabilityTensor:
     kxz: Optional[PropertyMap] = None
     kyz: Optional[PropertyMap] = None
 
+    def __post_init__(self):
+        n = self.kxx.values.size
+        for label, component in (("Kyy", self.kyy), ("Kzz", self.kzz),
+                                 ("Kxy", self.kxy), ("Kxz", self.kxz), ("Kyz", self.kyz)):
+            if component is not None and component.values.size != n:
+                raise ValueError(
+                    f"{label}: hüceyrə sayı Kxx ilə uyğun gəlmir "
+                    f"({component.values.size} != {n})")
+
+    @property
+    def ncell(self) -> int:
+        return int(self.kxx.values.size)
+
     def has_off_diagonal(self, tol: float = 1e-12) -> bool:
         """TPFA-nın DÜZGÜN HƏLL EDƏ BİLMƏDİYİ off-diaqonal komponent varmı
         (yəni real, sıfırdan fərqli anizotropluq bucağı)."""
@@ -98,6 +132,144 @@ class PermeabilityTensor:
             if component is not None and np.any(np.abs(component.values) > tol):
                 return True
         return False
+
+    def _off_diagonal_values(self, component: Optional[PropertyMap]) -> np.ndarray:
+        return component.values if component is not None else np.zeros(self.ncell)
+
+    def as_matrices(self) -> np.ndarray:
+        """(ncell, 3, 3) — hər hüceyrə üçün tam simmetrik matris.
+
+        Yalnız `Kxx,Kyy,Kzz,Kxy,Kxz,Kyz` (6 komponent) SAXLANILIR (bax
+        audit §3/§5: "avoid storing redundant symmetric components") —
+        `Kyx=Kxy` və s. HƏR ÇAĞIRIŞDA bu metodla RİYAZİ olaraq bərpa
+        olunur, ayrıca sahə kimi YOX.
+        """
+        n = self.ncell
+        kxy = self._off_diagonal_values(self.kxy)
+        kxz = self._off_diagonal_values(self.kxz)
+        kyz = self._off_diagonal_values(self.kyz)
+        matrix = np.zeros((n, 3, 3))
+        matrix[:, 0, 0] = self.kxx.values
+        matrix[:, 1, 1] = self.kyy.values
+        matrix[:, 2, 2] = self.kzz.values
+        matrix[:, 0, 1] = matrix[:, 1, 0] = kxy
+        matrix[:, 0, 2] = matrix[:, 2, 0] = kxz
+        matrix[:, 1, 2] = matrix[:, 2, 1] = kyz
+        return matrix
+
+    # ── invariantlar (bax audit §10) — HEÇ BİRİ tenzoru DƏYİŞMİR ─────────
+    def eigenvalues(self) -> np.ndarray:
+        """(ncell, 3) — artan sırada (`np.linalg.eigvalsh` konvensiyası).
+
+        Vektorlaşdırılıb — `np.linalg.eigvalsh` bütün hüceyrələr üçün TƏK
+        LAPACK çağırışında işləyir (bax audit §17: "validation should
+        scale approximately O(N)... avoid Python loops")."""
+        return np.linalg.eigvalsh(self.as_matrices())
+
+    def min_eigenvalue(self) -> np.ndarray:
+        return self.eigenvalues()[:, 0]
+
+    def max_eigenvalue(self) -> np.ndarray:
+        return self.eigenvalues()[:, -1]
+
+    def determinant(self) -> np.ndarray:
+        return np.linalg.det(self.as_matrices())
+
+    def trace(self) -> np.ndarray:
+        return self.kxx.values + self.kyy.values + self.kzz.values
+
+    def anisotropy_ratio(self) -> np.ndarray:
+        """λ_max / λ_min (hər hüceyrə üzrə) — Kmin<=0 olan hüceyrələr
+        üçün `inf` (belə hüceyrə artıq `validate()`-də XƏTA kimi
+        tutulur, bu, YALNIZ bu metodun sıfıra bölünmə ilə ÇÖKMƏMƏSİ
+        üçündür)."""
+        eig = self.eigenvalues()
+        lo, hi = eig[:, 0], eig[:, -1]
+        return np.divide(hi, lo, out=np.full_like(hi, np.inf), where=lo > 0.0)
+
+    # ── validasiya (bax audit §4/§6) ──────────────────────────────────────
+    def validate(self, label: str = "Permeabilite tenzoru") -> ValidationResult:
+        """Simmetriya KONSTRUKSİYACA təmin olunur (bax `as_matrices` —
+        `Kyx`/`Kzx`/`Kzy` AYRICA SAXLANILMIR, ona görə "simmetriya
+        pozulması" strukturca MÜMKÜN DEYİL, yoxlanmasına EHTİYAC yoxdur).
+
+        Bu metod YALNIZ FİZİKİ etibarlılığı yoxlayır:
+          1. NaN/sonsuz komponent (hər hansı).
+          2. Müsbət-müəyyənlik: λ_min(K) > 0 — TƏKCƏ diaqonalın müsbət
+             olması KİFAYƏT DEYİL (bax audit §4: "a matrix can have
+             positive diagonal entries while still being non-positive-
+             definite") — ona görə HƏQİQİ məxsusi qiymət hesablanır,
+             `Kxx>0 and Kyy>0 and Kzz>0` kimi SƏTHİ yoxlama İŞLƏDİLMİR.
+
+        Heç bir dəyər DÜZƏLDİLMİR/"təmir edilmir" (bax audit §6: "do not
+        repair the tensor silently") — yalnız AÇIQ xəta bildirilir.
+        """
+        result = ValidationResult()
+        matrices = self.as_matrices()
+        finite = np.isfinite(matrices).all(axis=(1, 2))
+        if not np.all(finite):
+            n_bad = int(np.sum(~finite))
+            result.errors.append(
+                f"{label}: {n_bad} hüceyrədə NaN/sonsuz komponent var — "
+                "eigenvalue hesablamaq mümkün deyil.")
+            return result   # NaN-lı matrisdə eigvalsh ƏLAVƏ NaN yayar, davam etmə
+
+        eig = np.linalg.eigvalsh(matrices)
+        min_eig = eig[:, 0]
+        invalid = min_eig <= 0.0
+        if np.any(invalid):
+            n_bad = int(np.sum(invalid))
+            worst = float(min_eig.min())
+            result.errors.append(
+                f"{label}: {n_bad} hüceyrə müsbət-müəyyən DEYİL "
+                f"(minimum məxsusi qiymət {worst:.6g} <= 0) — fiziki cəhətdən "
+                "etibarsız permeabilite tenzoru (λ_min(K) > 0 tələb olunur).")
+        return result
+
+    # ── fırlanma (bax audit §9) ────────────────────────────────────────────
+    def rotate(self, rotation: np.ndarray) -> "PermeabilityTensor":
+        """K_rotated = R · K · Rᵀ — bütün hüceyrələrə EYNİ (qlobal)
+        fırlanma tətbiq edir.
+
+        `rotation` (3,3) ORTOQONAL olmalıdır (R·Rᵀ=I) — yoxlanılır, əks
+        halda `ValueError`: qeyri-ortoqonal "fırlanma" məxsusi
+        qiymətləri DƏYİŞDİRƏR (bax audit: "must preserve positive
+        definiteness under orthogonal rotation" — bu YALNIZ HƏQİQİ
+        ortoqonal matrislər üçün riyazi olaraq DOĞRUDUR).
+        """
+        rotation = np.asarray(rotation, float)
+        if rotation.shape != (3, 3):
+            raise ValueError(f"rotation (3,3) olmalıdır, alındı {rotation.shape}")
+        if not np.allclose(rotation @ rotation.T, np.eye(3), atol=1e-8):
+            raise ValueError(
+                "rotation ORTOQONAL olmalıdır (R @ R.T == I) — əks halda fırlanma "
+                "fiziki cəhətdən düzgün deyil və məxsusi qiymətləri (deməli "
+                "müsbət-müəyyənliyi) poza bilər.")
+        matrices = self.as_matrices()
+        rotated = np.einsum("ij,njk,lk->nil", rotation, matrices, rotation)
+        return PermeabilityTensor(
+            kxx=PropertyMap("KXX", rotated[:, 0, 0].copy()),
+            kyy=PropertyMap("KYY", rotated[:, 1, 1].copy()),
+            kzz=PropertyMap("KZZ", rotated[:, 2, 2].copy()),
+            kxy=PropertyMap("KXY", rotated[:, 0, 1].copy()),
+            kxz=PropertyMap("KXZ", rotated[:, 0, 2].copy()),
+            kyz=PropertyMap("KYZ", rotated[:, 1, 2].copy()))
+
+    # ── vahid çevirməsi (bax audit §7) ─────────────────────────────────────
+    def convert_units(self, from_unit: str, to_unit: str) -> "PermeabilityTensor":
+        """BÜTÜN 6 komponentə EYNİ çevirməni tətbiq edir (bax audit §7:
+        "must apply to every component consistently... Do not convert
+        only the diagonal"). Mövcud `unit_conversions.convert`-i işlədir
+        — YENİ çevirmə düsturu İCAD EDİLMİR."""
+        def _convert(component: Optional[PropertyMap]) -> Optional[PropertyMap]:
+            if component is None:
+                return None
+            return PropertyMap(component.name,
+                               convert(component.values, from_unit, to_unit, "permeability"),
+                               unit=to_unit)
+        return PermeabilityTensor(
+            kxx=_convert(self.kxx), kyy=_convert(self.kyy), kzz=_convert(self.kzz),
+            kxy=_convert(self.kxy), kxz=_convert(self.kxz), kyz=_convert(self.kyz))
 
 
 @dataclass
@@ -133,6 +305,8 @@ class RockProperties:
         issues += validate_porosity(self.porosity.values, "PORO").errors
         issues += validate_permeability(self.permx.values, "PERMX").errors
         issues += validate_permeability(self.permy.values, "PERMY").errors
+        if self.permeability_tensor is not None:
+            issues += self.permeability_tensor.validate().errors
         return issues
 
     def validate_warnings(self) -> list:

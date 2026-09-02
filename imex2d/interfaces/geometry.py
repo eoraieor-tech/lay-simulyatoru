@@ -12,6 +12,18 @@ metodlardan istifadə etməlidir, `CellGeometry`-nin daxili strukturundan
 
 Native corner-point (COORD/ZCORN-dən BİRBAŞA) HƏLƏ İMPLEMENTASİYA
 EDİLMİR — bax `ECLIPSE_IO.md`.
+
+Phase 3 ("General Geometry Foundation for MPFA-O") ƏLAVƏSİ: bu ABC
+DƏYİŞDİRİLMƏDİ (audit §4 nəticəsi — "improve if necessary", NECESSARY
+tapılmadı). Səbəb: bu, VEKTORLAŞDIRILMIŞ (bütün grid TƏK massivlərlə)
+GRID-səviyyəli müqavilədir; `imex2d.domain.polyhedral_geometry.
+HexahedralCell`/`Face` isə HÜCEYRƏ-BAŞINA (per-cell), potensial qeyri-
+ortoqonal ÜMUMİ həndəsə NÜVƏSİDİR — bir səviyyə AŞAĞIDA yerləşir, bu
+ABC-ni ƏVƏZ ETMİR. Gələcək `CornerPointGeometry` (HƏLƏ YOXDUR) bu
+nüvəni hüceyrə-hüceyrə çağırıb nəticələri BU ABC-nin vektorlaşdırılmış
+formasına "yığa" bilər — yəni `polyhedral_geometry.py` gələcək bir
+`IGridGeometry` İMPLEMENTASİYASININ DAXİLİ ALƏTİDİR, ƏLAVƏ/ALTERNATİV
+İNTERFEYS YOX.
 """
 
 from __future__ import annotations
