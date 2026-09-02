@@ -497,6 +497,55 @@ idxal, ACTNUM/qeyri-aktiv hüceyrə inteqrasiyası, qeyri-qabarıq (non-
 convex) hüceyrələr üçün formal doğrulama, faylların (COORD/ZCORN) bu
 nüvəyə bağlanması — hamısı gələcək faza.
 
+### 5.15 Grid-səviyyəli ümumi həndəsə (Phase 4)
+Yeni modul: `imex2d/domain/general_grid_geometry.py::GeneralGridGeometry` —
+§5.14-dəki `HexahedralCell`/`Face` NÜVƏSİNİ ÇOXLU hüceyrəyə tətbiq edir,
+`Connections` (topologiya) ilə DETERMİNİSTİK inteqrasiya ilə:
+
+```text
+Geometry NÜVƏSİ (HexahedralCell/Face — TƏK hüceyrə)
+    ↓
+Grid Topology (Connections — HANSI hüceyrələr bağlıdır)
+    ↓
+General Grid Geometry (BU FAZA — ÇOXLU hüceyrə, paylaşılan üzlər,
+                        sərhəd üzləri, vektorlaşdırılmış massivlər)
+    ↓
+Flux Discretization (TPFA indiki, MPFA-O gələcək)
+```
+
+**Üz deduplikasiyası** (audit §5/§6): floating-point koordinat
+müqayisəsinə güvənmir — `Connections.axis`-dan (0=X,1=Y,2=Z) istifadə
+edərək DETERMİNİSTİK: `cell_a`-nın müsbət-ox yerli üzü === `cell_b`-nin
+mənfi-ox yerli üzü (EYNİ fiziki üz, TƏK `Face` obyekti saxlanılır). O(N)
+— heç bir geometrik axtarış yoxdur.
+
+**Sərhəd üzləri**: HƏR hüceyrənin 6 yerli üzündən `Connections`-da
+əhatə OLUNMAYANLAR avtomatik sərhəd üzü kimi qeydə alınır (`neighbor=
+None`) — sərhəd/daxili təsnifatı ÜÇÜN xüsusi giriş TƏLƏB OLUNMUR.
+
+**Doğrulanmış invariantlar** (bax `tests/test_general_grid_geometry.py`,
+22 test): fırlanma/sürüşmə/miqyaslanma altında həcm/mərkəz/sahə/normal
+düzgün dəyişir; daxili üzlərdə owner/neighbor sahə-mərkəz-normal
+uyğunluğu; qapanma münasibəti `Σ(A_f·n_f)≈0` maşın-dəqiqliyində;
+qonşuluq/hüceyrə-üz xəritələməsi `Connections`-la tam uyğun; NaN/Inf/
+sıfır-həcm/sıfır-sahə AÇIQ rədd edilir; qurma N-də XƏTTİ miqyaslanır
+(ölçülüb, test edilib).
+
+**Serializasiya**: BU FAZADA DA YOXDUR — `GeneralGridGeometry` heç bir
+saxlanılan modelə (`ReservoirModel`/`Project`) BAĞLANMAYIB (eyni
+qərar/səbəb, bax §5.14-ün serializasiya qeydi).
+
+**TPFA reqressiyası**: dəyişməz — bu modul heç bir mövcud sinif
+tərəfindən ÇAĞIRILMIR, `test_five_spot_reference_case_reproduces_
+legacy_results` (dəqiq addım sayı/OOIP/RF) dəyişmədən keçir.
+
+**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun bu qatdan istifadəsi, native
+corner-point idxal (COORD/ZCORN → bu qat), ACTNUM/qeyri-aktiv hüceyrə
+FAKTİKİ inteqrasiyası (arxitektura BUNU ƏNGƏLLƏMİR — `connections=None`
+artıq dəstəklənir — amma FAKTİKİ ACTNUM oxunması YOXDUR), fay
+transmissivlik çarpanlarının bu qata daxil edilməsi (bu, DİSKRETİZASİYA
+işidir, HƏNDƏSƏ yox) — hamısı gələcək faza.
+
 ---
 
 ## 6. Növbəti modulun necə qoşulacağı

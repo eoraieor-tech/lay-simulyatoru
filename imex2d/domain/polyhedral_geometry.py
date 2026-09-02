@@ -13,26 +13,30 @@ Kartezian fərziyyəsi ilə) işləyir — bu, TPFA üçün son dərəcə səmə
 və DƏYİŞDİRİLMİR (bax audit §14/§26: "existing CellGeometry must continue
 to work... all existing results must remain unchanged"). Bu modul isə
 HÜCEYRƏ-BAŞINA (per-cell) ÜMUMİ (potensial qeyri-ortoqonal, gələcəkdə
-corner-point) həndəsəni təmsil edir — gələcək bir "ÜMUMI grid həndəsəsi"
-sinfi (məs. `CornerPointGeometry`, HƏLƏ YAZILMAYIB) bu NÜVƏNİ hüceyrə-
-hüceyrə çağırıb nəticələri `IGridGeometry`-nin vektorlaşdırılmış
-müqaviləsinə (bax `interfaces/geometry.py`) "yığa" bilər — beləliklə
-TPFA/MPFA-O bu iki tətbiqin HANSI olduğunu BİLMİR, YALNIZ `IGridGeometry`-ə
-güvənir.
+corner-point) həndəsəni təmsil edir.
 
-Qat diaqramı (bax audit §21, `ARCHITECTURE.md` §5.14):
+**Phase 4 yeniləməsi**: "gələcək ÜMUMİ grid həndəsəsi sinfi" artıq
+YAZILIB — `imex2d.domain.general_grid_geometry.GeneralGridGeometry` bu
+NÜVƏNİ (HexahedralCell/Face) hüceyrə-hüceyrə çağırıb, `Connections`
+topologiyası ilə DETERMİNİSTİK xəritələyərək çoxlu-hüceyrəli grid təmsil
+edir (paylaşılan üzlərin deduplikasiyası, sərhəd üzləri, vektorlaşdırılmış
+massivlər). O DA `IGridGeometry`-ni FORMAL İRSƏN ALMIR (eyni səbəb —
+bax `interfaces/geometry.py`), AMMA konseptual olaraq gələcək bir
+`CornerPointGeometry`-nin DAXİLİ ALƏTİDİR.
 
-    Geometry NÜVƏSİ (bu fayl: HexahedralCell/Face — saf riyaziyyat)
+Qat diaqramı (bax audit §21, `ARCHITECTURE.md` §5.14/§5.15):
+
+    Geometry NÜVƏSİ (bu fayl: HexahedralCell/Face — saf riyaziyyat, TƏK hüceyrə)
         ↓
-    Grid Geometry (CellGeometry — Kartezian, VEKTORLAŞDIRILMIŞ; gələcək
-                   CornerPointGeometry bu nüvəni İSTİFADƏ EDƏ BİLƏR)
+    Grid Topology (`domain/grid.py::Connections` — HANSI hüceyrələr bağlıdır)
         ↓
-    Topology (`domain/grid.py::Connections` — HANSI hüceyrələr bağlıdır,
-              HARADA olduqları İLƏ QARIŞDIRILMIR, bax audit §18)
-        ↓
-    Discretization (TPFA indiki, MPFA-O gələcək)
-        ↓
-    Flow
+    General Grid Geometry (`general_grid_geometry.py` — ÇOXLU hüceyrə,
+                            paylaşılan üzlər, sərhəd üzləri, Phase 4)
+        ↓                                    ↓
+    Grid Geometry alternativi:          Discretization (TPFA indiki,
+    CellGeometry (Kartezian,            MPFA-O gələcək)
+    VEKTORLAŞDIRILMIŞ, DƏYİŞMƏYİB)          ↓
+                                         Flow
 
 HEXAHEDRAL FƏRZİYYƏLƏR (bax audit §16 — "document assumptions"):
   - Hər üz DÖRDBUCAQLIDIR (4 təpə) və TAM MÜSTƏVİ OLMAYA BİLƏR (əyri/
@@ -259,6 +263,18 @@ class HexahedralCell:
         if abs(total_volume) <= 1e-30:
             return self.vertices.mean(axis=0)
         return weighted / total_volume
+
+    def closure_residual(self) -> np.ndarray:
+        """`Σ(A_f · n_f)` bütün 6 üz üzrə (bax audit §16/Phase 4 §16).
+
+        QAPALI, qabarıq hüceyrə üçün bu RİYAZİ olaraq (divergensiya
+        teoremi) TƏQRIBƏN SIFIR olmalıdır — maşın-dəqiqliyinə yaxın
+        qalıq gözlənilir. Normal HEÇ VAXT bunu "sıfır etmək" üçün
+        düzəldilmir — bu, YALNIZ diaqnostikadır."""
+        total = np.zeros(3)
+        for face in self.faces().values():
+            total += face.area() * face.normal()
+        return total
 
     def validate(self, label: str = "Hüceyrə") -> ValidationResult:
         result = ValidationResult()
