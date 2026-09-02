@@ -26,6 +26,17 @@ STANDART SADƏLƏŞDİRMƏLƏR (sənaye simulyatorlarında da belədir):
   · Cazibə üzvündə sıxlığın təzyiqdən asılılığı nəzərə alınmır.
 Hər ikisi Nyutonun yığılma sürətinə cüzi təsir edir, doğruluğuna yox —
 çünki konvergensiya qalığa görə yoxlanılır, Jakobiana görə yox.
+
+MPFA-O HAZIRLIĞI (audit — Phase: "Numerical Discretization Architecture
+Preparation", BU FAYL DƏYİŞDİRİLMƏYİB, yalnız sənədləşdirilib):
+`_build_pattern()` HƏR üz üçün DƏQİQ 2-hüceyrəli blok fərz edir
+(`cell_a`↔`cell_a/b`, `cell_b`↔`cell_a/b`) — MPFA-O interaction-region
+stensili bunu N-hüceyrəli edəcək. `_flux()` `self.R.transmissibility`-ni
+BİRBAŞA oxuyur və ∂ΔΦ/∂p_a=+1, ∂ΔΦ/∂p_b=−1 tək-cüt fərziyyəsi ilə işləyir
+— MPFA-O gələndə bu, diskretizasiya qatının (bax `../discretization.py`)
+öz Jacobian-töhfəsini qaytaran yeni bir metodla əvəz olunmalıdır. Tam
+izah: `../discretization.py` modul docstring-i, "Jacobian inteqrasiya
+nöqtəsi" bölməsi.
 """
 
 from __future__ import annotations

@@ -22,8 +22,9 @@ from ...interfaces.providers import (ICapillaryPressureProvider,
                                      IRelativePermeabilityProvider)
 from ...interfaces.services import (IProgressReporter, ISimulationEngine,
                                     NullProgressReporter)
+from ...interfaces.discretization import IFluxDiscretization
 from ...logging_setup import get_logger
-from ..discretization import TwoPointFluxDiscretization
+from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
 from ..well_model import PeacemanWellModel
 from .jacobian import JacobianAssembler
@@ -47,7 +48,8 @@ class FullyImplicitEngine(ISimulationEngine):
                  capillary: Optional[ICapillaryPressureProvider] = None,
                  initialization: Optional[IInitializationProvider] = None,
                  newton_config: Optional[NewtonConfig] = None,
-                 time_step_config: Optional[AdaptiveTimeStepConfig] = None):
+                 time_step_config: Optional[AdaptiveTimeStepConfig] = None,
+                 flux_discretization: Optional[IFluxDiscretization] = None):
         self.model = model
         self.config = config
         self.relperm = relperm
@@ -55,7 +57,13 @@ class FullyImplicitEngine(ISimulationEngine):
         self.capillary = capillary
         self.initialization = initialization
 
-        grid = TwoPointFluxDiscretization().build(model)
+        #: DEFOLT = TPFA (bax audit tapşırığı §4). `flux_discretization`
+        #: AÇIQ verilməyibsə mövcud davranış BİRƏBİR eynidir — gələcək
+        #: MPFA-O yalnız bu parametri dəyişdirməklə "taxılacaq", `Residual
+        #: Assembler`/`Jacobian`-a HEÇ BİR TOXUNMADAN (bax
+        #: `../discretization.py` modul docstring-i).
+        self.flux_discretization = flux_discretization or default_flux_discretization()
+        grid = self.flux_discretization.build(model)
         wells = PeacemanWellModel().build_connections(model)
         self.residual_assembler = ResidualAssembler(
             model, grid, wells, relperm, pvt=pvt, capillary=capillary)

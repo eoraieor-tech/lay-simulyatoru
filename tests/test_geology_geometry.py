@@ -107,5 +107,50 @@ def test_depth_to_k_column_lookup_uses_correct_ij_not_flat_index():
                             top_depth=2000.0, top_depth_map=surface)
     # (i=2, j=2) sütununda tavan 2100 -> 2002 grid-dən kənar
     assert depth_to_k(25.0, 25.0, 2002.0, geometry) is None
+
+
+# ── MPFA/geometriya-abstraksiya hazırlığı (§6) — TAMAMİLƏ YENİ metodlar,
+# mövcud `xy_to_ij`/`depth_to_k`/`volumes`/`face_areas` DƏYİŞMƏYİB ──────────
+def test_cell_centroid_matches_xy_to_ij_inverse():
+    grid, geometry = _flat_geometry(nx=4, ny=3, nz=1, dx=20.0, dy=25.0, top=2000.0)
+    centroid = geometry.cell_centroid()
+    assert centroid.shape == (grid.ncell, 3)
+    cell = grid.index(2, 1, 0)
+    assert np.allclose(centroid[cell], [50.0, 37.5, 2002.0])   # (2+.5)*20, (1+.5)*25, top+dz/2
+
+
+def test_face_normal_points_from_cell_a_to_cell_b_along_axis():
+    grid, geometry = _flat_geometry(nx=3, ny=3, nz=2, dx=10.0, dy=10.0, dz=5.0)
+    conn = grid.build_connections()
+    normal = geometry.face_normal(conn)
+    assert normal.shape == (conn.count, 3)
+    assert np.allclose(np.linalg.norm(normal, axis=1), 1.0)   # vahid vektor
+    for axis, unit in ((0, [1, 0, 0]), (1, [0, 1, 0]), (2, [0, 0, 1])):
+        mask = conn.axis == axis
+        assert mask.any()
+        assert np.allclose(normal[mask], unit)
+
+
+def test_face_centroid_lies_exactly_between_cell_centroids_for_uniform_grid():
+    grid, geometry = _flat_geometry(nx=3, ny=1, nz=1, dx=10.0, dy=10.0, dz=5.0)
+    conn = grid.build_connections()
+    centroid = geometry.cell_centroid()
+    face_centroid = geometry.face_centroid(conn)
+    midpoint = 0.5 * (centroid[conn.cell_a] + centroid[conn.cell_b])
+    assert np.allclose(face_centroid, midpoint)
+
+
+def test_face_centroid_respects_variable_layer_thickness():
+    """Fərqli qalınlıqlı təbəqələrdə üz mərkəzi SADƏ ORTALAMADAN fərqli
+    olmalıdır — `half_a`/`half_b` fərqli olduğu üçün üz TAM ORTADA deyil."""
+    grid = CartesianGrid(1, 1, 2)
+    geometry = CellGeometry(grid, dx=10.0, dy=10.0, dz=[4.0, 10.0], top_depth=2000.0)
+    conn = grid.build_connections()
+    centroid = geometry.cell_centroid()
+    face_centroid = geometry.face_centroid(conn)
+    midpoint = 0.5 * (centroid[conn.cell_a] + centroid[conn.cell_b])
+    assert not np.allclose(face_centroid[0, 2], midpoint[0, 2])
+    # üz həqiqi mövqeyi: təbəqə 0-ın tavanı (0) + qalınlığı (4) = 2004
+    assert np.isclose(face_centroid[0, 2], 2000.0 + 4.0)
     # (i=0, j=0) sütununda tavan 2000 -> 2002 birinci təbəqə
     assert depth_to_k(5.0, 5.0, 2002.0, geometry) == 0

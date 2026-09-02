@@ -100,6 +100,54 @@ class CellGeometry:
         half_b[m2] = dz_cell[conn.cell_b[m2]] * 0.5
         return half_a, half_b
 
+    # ─────────────────────────────────────────────────────────────
+    # MPFA/geometriya-abstraksiya HAZIRLIĞI (audit tapşırığı §6) —
+    # `interfaces/geometry.py::IGridGeometry` müqaviləsinə uyğun,
+    # AMMA bu sinif həmin ABC-ni İRSƏN ALMIR (bax izahat orada: bu
+    # kod bazasında domain dataclass-ları interfeys-inject edilən
+    # strategiyalar deyil, ona görə mövcud təbəqələşmə pozulmur —
+    # yalnız METOD ADLARI/İMZALARI uyğunlaşdırılıb). Bu üç metod
+    # TAMAMİLƏ ƏLAVƏDİR — heç bir mövcud metodun davranışını
+    # DƏYİŞMİR, `TwoPointFluxDiscretization` bunlardan HƏLƏ İSTİFADƏ
+    # ETMİR (TPFA öz köhnə `face_areas`/`face_half_distances` yolunu
+    # saxlayır) — yalnız gələcək MPFA-O üçün lazım olan əlavə
+    # həndəsi məlumatı əvvəlcədən təmin edir.
+    def cell_centroid(self) -> np.ndarray:
+        """(ncell, 3) — hər hüceyrənin mərkəzi [X, Y, Z], metr."""
+        grid = self.grid
+        i, j, _k = grid.ijk_array(np.arange(grid.ncell))
+        x = (i.astype(float) + 0.5) * self.dx
+        y = (j.astype(float) + 0.5) * self.dy
+        z = self.cell_depths()
+        return np.column_stack([x, y, z])
+
+    def face_normal(self, conn: Connections) -> np.ndarray:
+        """(nface, 3) — vahid normal, `cell_a`-dan `cell_b`-yə.
+
+        `CartesianGrid.build_connections`-da `cell_a` HƏMİŞƏ aşağı
+        indeksdir, ona görə normal HƏMİŞƏ müsbət ox istiqamətindədir.
+        """
+        normal = np.zeros((conn.count, 3))
+        normal[conn.axis == 0, 0] = 1.0
+        normal[conn.axis == 1, 1] = 1.0
+        normal[conn.axis == 2, 2] = 1.0
+        return normal
+
+    def face_centroid(self, conn: Connections) -> np.ndarray:
+        """(nface, 3) — üz mərkəzi.
+
+        Oxa-perpendikulyar müstəvidə `cell_a`/`cell_b`-nin mərkəzləri
+        EYNİDİR (struktur grid) — ona görə yalnız bağlayıcı ox üzrə
+        `cell_a` mərkəzindən yarım-məsafə (`face_half_distances`) qədər
+        sürüşdürülür. K istiqamətində qonşu təbəqələrin qalınlığı fərqli
+        ola bildiyi üçün bu, sadə `(centroid_a+centroid_b)/2`
+        ortalamasından DAHA DƏQİQDİR (üzün əsl mövqeyini verir).
+        """
+        centroid_a = self.cell_centroid()[conn.cell_a]
+        half_a, _half_b = self.face_half_distances(conn)
+        normal = self.face_normal(conn)
+        return centroid_a + half_a[:, None] * normal
+
     def areal_extent(self) -> tuple:
         return (self.grid.nx * self.dx, self.grid.ny * self.dy)
 

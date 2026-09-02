@@ -67,6 +67,40 @@ class PropertyMap:
 
 
 @dataclass
+class PermeabilityTensor:
+    """Tam simmetrik permeabilite tenzoru — gələcək MPFA-O üçün HAZIRLIQ
+    (bax audit tapşırığı §5, `imex2d/simulation/discretization.py` modul
+    docstring-i).
+
+        K = [[Kxx, Kxy, Kxz],
+             [Kxy, Kyy, Kyz],
+             [Kxz, Kyz, Kzz]]     (simmetrik fərz edilir — standart fiziki qəbul)
+
+    BU FAZADA HEÇ BİR HƏLLEDİCİ (TPFA) bunu İSTİFADƏ ETMİR — `RockProperties.
+    permx/permy/permz` (diaqonal) YEGANƏ TPFA-nın oxuduğu mənbədir, DƏYİŞMİR.
+    Bu sinif YALNIZ off-diaqonal (Kxy/Kxz/Kyz) anizotropluq məlumatını
+    İTİRMƏDƏN daşımaq üçündür ki, gələcək MPFA-O onu birbaşa istifadə edə
+    bilsin — TPFA-nın bunu SƏSSİZCƏ diaqonala "yumşaltması" (scalarize)
+    QADAĞANDIR (bax `has_off_diagonal`/`TwoPointFluxDiscretization.build`
+    xəbərdarlığı).
+    """
+    kxx: PropertyMap
+    kyy: PropertyMap
+    kzz: PropertyMap
+    kxy: Optional[PropertyMap] = None
+    kxz: Optional[PropertyMap] = None
+    kyz: Optional[PropertyMap] = None
+
+    def has_off_diagonal(self, tol: float = 1e-12) -> bool:
+        """TPFA-nın DÜZGÜN HƏLL EDƏ BİLMƏDİYİ off-diaqonal komponent varmı
+        (yəni real, sıfırdan fərqli anizotropluq bucağı)."""
+        for component in (self.kxy, self.kxz, self.kyz):
+            if component is not None and np.any(np.abs(component.values) > tol):
+                return True
+        return False
+
+
+@dataclass
 class RockProperties:
     """Statik süxur xassələri — geoloji modeldən gəlir."""
     porosity: PropertyMap
@@ -75,6 +109,11 @@ class RockProperties:
     permz: Optional[PropertyMap] = None
     net_to_gross: Optional[PropertyMap] = None
     compressibility: float = 4.5e-5
+    #: HƏLƏ HEÇ BİR HƏLLEDİCİ TƏRƏFİNDƏN İSTİFADƏ OLUNMUR (bax
+    #: `PermeabilityTensor` docstring-i) — yalnız gələcək MPFA-O üçün
+    #: opt-in verilənlər daşıyıcısı. `None` (defolt) — mövcud bütün
+    #: modellər ÜÇÜN DAVRANIŞ TAM EYNİDİR.
+    permeability_tensor: Optional[PermeabilityTensor] = None
 
     def validate(self) -> list:
         """Sərt fiziki xətalar. `validate_warnings()` — qeyri-adi (amma

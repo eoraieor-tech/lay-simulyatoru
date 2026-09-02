@@ -143,11 +143,18 @@ deyil, `interfaces`-dəki abstraksiyaları tanıyır.
 └───────────────────────────────────────────────────────────────────┘
 
 ┌─ simulation ─────────────────────────────────────────────────────┐
-│  TwoPointFluxDiscretization      PeacemanWellModel                │
-│      + build(model)                  + build_connections(model)   │
-│           │                               │                       │
-│           ▼                               ▼                       │
-│      DiscretizedGrid                 WellConnection[]             │
+│  «interface» IFluxDiscretization      PeacemanWellModel           │
+│      + build(model) -> DiscretizedGrid   + build_connections(model)│
+│           ▲                               │                       │
+│           │ implements                    ▼                       │
+│  TwoPointFluxDiscretization (TPFA,   WellConnection[]             │
+│  DEFOLT) ──── future MPFAODiscretization (HƏLƏ YOXDUR)            │
+│           │                                                        │
+│           ▼                                                        │
+│      DiscretizedGrid                                               │
+│        + connections, pore_volume, cell_volume                     │
+│        + compute_flux(d_phi)  ← ResidualAssembler BUNU çağırır,   │
+│          TPFA-nın özünü DEYİL (bax §5.13)                          │
 │                                                                    │
 │  ImpesEngine ──implements──> ISimulationEngine                    │
 │      - model: ReservoirModel        « inject »                    │
@@ -341,6 +348,61 @@ service = SimulationService(
     pvt_provider=BlackOilPVT(...),      # ← yalnız bu sətir əlavə olunacaq
 )
 ```
+
+### 5.13 Axın diskretizasiyası: TPFA (indiki) + gələcək MPFA-O
+("Numerical Discretization Architecture Preparation" fazası — bax
+`imex2d/simulation/discretization.py` modul docstring-i tam detal üçün.)
+
+```text
+Flow Solver (FullyImplicitEngine / ImpesEngine)
+    ↓
+Residual Assembly (ResidualAssembler)
+    ↓  yalnız grid.connections / grid.pore_volume / grid.compute_flux()-a güvənir
+Flux Discretization Interface (IFluxDiscretization)
+    ↓                                              ↓
+TPFA (TwoPointFluxDiscretization, İNDİKİ)     Future MPFA-O (HƏLƏ YOXDUR)
+```
+
+**Nə edildi**: `IFluxDiscretization` (bax `imex2d/interfaces/discretization.py`)
+— tək abstrakt metod `build(model) -> DiscretizedGrid`.
+`TwoPointFluxDiscretization` bunu tətbiq edir, riyaziyyatı BİRƏBİR
+eynidir (harmonik orta transmissivlik). `DiscretizedGrid`-ə YENİ bir
+metod (`compute_flux(d_phi)`) əlavə olundu — `ResidualAssembler.
+face_fluxes()` artıq `self.transmissibility * ΔΦ`-ni BİRBAŞA yazmır,
+`self.grid.compute_flux(ΔΦ)` çağırır. Mobilite/upstream çəkiləndirmə
+YENƏ DƏ `ResidualAssembler`-dədir, çünki bu, diskretizasiya sxemindən
+ASILI OLMAYAN fizikadır. `FullyImplicitEngine`/`ImpesEngine`
+konstruktoruna `flux_discretization: Optional[IFluxDiscretization] = None`
+əlavə olundu — verilməyəndə `default_flux_discretization()` (= TPFA)
+işlədilir, DEFOLT DAVRANIŞ dəyişmir.
+
+**Tenzor permeabilitə hazırlığı**: `RockProperties.permeability_tensor:
+Optional[PermeabilityTensor] = None` — Kxx/Kyy/Kzz + istəyə görə
+Kxy/Kxz/Kyz. `None` olduqda (bütün mövcud modellər) davranış tam
+eynidir. Verilibsə VƏ off-diaqonal komponent varsa, TPFA onu SƏSSİZCƏ
+diaqonala yumşaltmır (`has_off_diagonal()`) — `DiscretizedGrid.warnings`-ə
+açıq xəbərdarlıq yazır, öz nəticəsini dəyişdirmədən (yalnız diaqonaldan
+istifadəyə davam edir).
+
+**Həndəsə hazırlığı**: `CellGeometry`-yə üç YENİ, əlavə metod —
+`cell_centroid()`, `face_centroid(conn)`, `face_normal(conn)` (bax
+`imex2d/interfaces/geometry.py::IGridGeometry` — sənədləşdirilmiş
+müqavilə, `CellGeometry` bunu formal İRSƏN ALMIR, çünki bu kod
+bazasında domain dataclass-ları interfeys-inject edilən strategiyalar
+deyil — yalnız metod adları uyğunlaşdırılıb). Mövcud `face_areas`/
+`face_half_distances`/`volumes` DƏYİŞMƏYİB, TPFA bunlardan istifadəyə
+davam edir.
+
+**Jacobian inteqrasiya nöqtəsi (HƏLƏ DƏYİŞDİRİLMƏYİB)**: `JacobianAssembler.
+_build_pattern()` (`implicit/jacobian.py`) hər üz üçün DƏQİQ 2-hüceyrəli
+blok fərz edir; `_flux()` `transmissibility`-ni birbaşa oxuyub tək-cüt
+∂ΔΦ/∂p=±1 fərziyyəsi ilə törəmə qurur. MPFA-O gələndə hər ikisi
+N-hüceyrəli stensilə ümumiləşdirilməli olacaq — bax `discretization.py`
+modul docstring-i, "Jacobian inteqrasiya nöqtəsi" bölməsi, tam sətir
+istinadları ilə. **Bu fayl bu fazada dəyişdirilməyib.**
+
+**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun özü, native corner-point
+həndəsə, tenzor K-nın TPFA-da faktiki istifadəsi — hamısı gələcək faza.
 
 ---
 

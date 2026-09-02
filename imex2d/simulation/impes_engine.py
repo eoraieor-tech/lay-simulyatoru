@@ -20,10 +20,11 @@ from ..domain.wells import ControlMode
 from ..interfaces.providers import (ICapillaryPressureProvider,
                                     IInitializationProvider, IPVTProvider,
                                     IRelativePermeabilityProvider)
+from ..interfaces.discretization import IFluxDiscretization
 from ..logging_setup import get_logger
 from ..interfaces.services import (ILinearSolver, IProgressReporter,
                                    ISimulationEngine, NullProgressReporter)
-from .discretization import TwoPointFluxDiscretization
+from .discretization import default_flux_discretization
 
 LOG = get_logger(__name__)
 
@@ -42,7 +43,8 @@ class ImpesEngine(ISimulationEngine):
                  linear_solver: ILinearSolver,
                  pvt: Optional[IPVTProvider] = None,
                  capillary: Optional[ICapillaryPressureProvider] = None,
-                 initialization: Optional[IInitializationProvider] = None):
+                 initialization: Optional[IInitializationProvider] = None,
+                 flux_discretization: Optional[IFluxDiscretization] = None):
         self.model = model
         self.config = config
         self.relperm = relperm
@@ -51,7 +53,12 @@ class ImpesEngine(ISimulationEngine):
         self.capillary = capillary
         self.initialization = initialization
 
-        self._discretization = TwoPointFluxDiscretization().build(model)
+        #: DEFOLT = TPFA (bax audit tapşırığı §4, `FullyImplicitEngine`-də
+        #: EYNİ pattern). IMPES-in öz daxili axın hesablaması (aşağıda,
+        #: `self._trans`-a görə) BU FAZADA DƏYİŞMİR — yalnız GRID-in necə
+        #: QURULDUĞU pluggable edilib.
+        self.flux_discretization = flux_discretization or default_flux_discretization()
+        self._discretization = self.flux_discretization.build(model)
         self._connections = self._discretization.connections
         self._trans = self._discretization.transmissibility
         self._pv = self._discretization.pore_volume

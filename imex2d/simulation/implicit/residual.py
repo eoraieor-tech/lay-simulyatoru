@@ -148,15 +148,23 @@ class ResidualAssembler:
 
     # ═══════════════════════════════════════════════════ üzlər üzrə axın
     def face_fluxes(self, state: ReservoirState, fluid: FluidState):
-        """A → B istiqamətində səth həcmi axını (m3/gün)."""
+        """A → B istiqamətində səth həcmi axını (m3/gün).
+
+        BAZA Darcy axını (`grid.compute_flux`) DİSKRETİZASİYA qatından
+        gəlir — bu metod (VƏ bütövlükdə `ResidualAssembler`) TPFA-nın
+        özünü YOX, YALNIZ `IFluxDiscretization` müqaviləsini bilir (bax
+        `../discretization.py` modul docstring-i). Mobilite/upstream
+        çəkiləndirmə BURADA qalır, çünki bu, diskretizasiya sxemindən
+        ASILI OLMAYAN fizikadır (TPFA-da da, gələcək MPFA-O-da da eynidir).
+        """
         conn = self.connections
         d_phi_w, d_phi_o = self.potentials(state, fluid)
 
         up_w = np.where(d_phi_w >= 0, conn.cell_a, conn.cell_b)
         up_o = np.where(d_phi_o >= 0, conn.cell_a, conn.cell_b)
 
-        water = self.transmissibility * (fluid.lam_w[up_w] / fluid.bw[up_w]) * d_phi_w
-        oil = self.transmissibility * (fluid.lam_o[up_o] / fluid.bo[up_o]) * d_phi_o
+        water = self.grid.compute_flux(d_phi_w) * (fluid.lam_w[up_w] / fluid.bw[up_w])
+        oil = self.grid.compute_flux(d_phi_o) * (fluid.lam_o[up_o] / fluid.bo[up_o])
         return water, oil
 
     def net_influx(self, state: ReservoirState, fluid: FluidState):
