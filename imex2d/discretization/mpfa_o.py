@@ -35,6 +35,7 @@ from ..domain.general_grid_geometry import (GeneralGridGeometry,
 from ..domain.grid import CartesianGrid, Connections
 from ..domain.properties import PermeabilityTensor
 from ..interfaces.discretization import IFluxDiscretization
+from .mpfa_global import MPFAGlobalOperator
 from .mpfa_o_interaction import (MPFAOInteractionRegion, build_interaction_regions,
                                  validate_interaction_regions)
 from .mpfa_o_local_system import (MPFAOBoundaryClosure, MPFAOLocalSystem,
@@ -258,6 +259,11 @@ def build_mpfa_o_coefficients(grid: CartesianGrid, geometry: GeneralGridGeometry
         shape=(n_face, len(boundary_dofs))).tocsr()
     # `tocsr()` təkrarlanan (sətir, sütun) girişlərini AVTOMATİK CƏMLƏYİR
     # — bir üzün 4 küncündən gələn paylar məhz belə toplanır (§8).
+    # Lokal `T_cell` blokları SIX olduğu üçün struktur SIFIRLAR da gəlir;
+    # onlar atılır (ƏDƏDİ nəticə DƏYİŞMİR, yalnız yaddaş azalır — bax
+    # `docs/mpfa_o_phase5b1.md` §9).
+    T_cell.eliminate_zeros()
+    T_bnd.eliminate_zeros()
 
     coefficients = MPFAOCoefficients(
         T_cell=T_cell, T_bnd=T_bnd, boundary_dofs=boundary_dofs,
@@ -290,6 +296,46 @@ class MPFADiscretizedGrid:
     #: connection_faces`).
     connection_faces: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
     warnings: List[str] = field(default_factory=list)
+    #: MPFA-nın HƏLƏ DƏSTƏKLƏMƏDİYİ, amma modeldə MÖVCUD olan
+    #: xüsusiyyətlər (məs. fay). Qalıq qatı bu siyahı BOŞ DEYİLSƏ
+    #: hesablamanı RƏDD EDİR — səssiz, yanıldıcı nəticə QADAĞANDIR
+    #: (bax `docs/mpfa_o_phase5b1.md` §8, tapşırıq §26).
+    unsupported_features: List[str] = field(default_factory=list)
+    #: Phase 5B-1 QLOBAL operatoru (`MPFAGlobalOperator`) — `None` yalnız
+    #: `Connections` verilmədikdə.
+    global_operator: Optional[MPFAGlobalOperator] = None
+
+    def supports_multipoint_stencil(self) -> bool:
+        """`ResidualAssembler` bu metodla MPFA yolunu seçir (duck-typed;
+        `DiscretizedGrid`-də bu metod YOXDUR → TPFA yolu, bax
+        `docs/mpfa_o_phase5b1.md` §5)."""
+        return True
+
+    # ── Phase 5B-1: potensial → axın (qalıq qatının işlətdiyi giriş) ────
+    def connection_fluxes_from_potential(self, potential: np.ndarray,
+                                         boundary_potential=None) -> np.ndarray:
+        """`(nconn,)` — HÜCEYRƏ üzrə skalyar potensialdan (`Φ_α`) baza
+        Darsi axını, `cell_a → cell_b`, mobilitəsiz.
+
+        Bu, `IFluxDiscretization` müqaviləsinin ÇOXNÖQTƏLİ qarşılığıdır
+        (tapşırıq §4): giriş TAM vektordur, tək `Δp` deyil."""
+        return self._require_operator().connection_fluxes(potential,
+                                                          boundary_potential)
+
+    def upstream_cells(self, flux: np.ndarray) -> np.ndarray:
+        """HƏQİQİ çoxnöqtəli axının işarəsindən upstream hüceyrəsi (§10)."""
+        return self._require_operator().upstream_cells(flux)
+
+    def global_stencil_pattern(self):
+        """HƏQİQİ MPFA bağlantı naxışı (§22)."""
+        return self._require_operator().global_stencil_pattern()
+
+    def _require_operator(self) -> MPFAGlobalOperator:
+        if self.global_operator is None:
+            raise RuntimeError(
+                "Qlobal MPFA operatoru qurulmayıb — `MPFAODiscretization.build()` "
+                "`Connections` olan model tələb edir.")
+        return self.global_operator
 
     def compute_flux(self, d_phi: np.ndarray) -> np.ndarray:
         """**Phase 5A-da QƏSDƏN TƏTBİQ EDİLMƏYİB.**
@@ -377,13 +423,23 @@ class MPFAODiscretization(IFluxDiscretization):
         k_matrices = permeability_matrices(model)
 
         warnings: List[str] = []
+        unsupported: List[str] = []
         if any(f.has_geometry for f in model.fault_references):
+            unsupported.append(
+                "fay (fault) transmissivlik çarpanları — MPFA-da HƏLƏ "
+                "implement edilməyib (Phase 5D)")
             warnings.append(
                 "Modeldə fay (fault) var, AMMA MPFA-O (Phase 5A) fay "
                 "transmissivlik çarpanlarını TƏTBİQ ETMİR — bu, TPFA-da "
                 "işləyir (`TwoPointFluxDiscretization._apply_fault_multipliers`), "
                 "MPFA-da isə Phase 5D işidir. Alınan MPFA axınları fayları "
                 "NƏZƏRƏ ALMIR.")
+        if self.closure is not MPFAOBoundaryClosure.NEUMANN_ZERO:
+            unsupported.append(
+                f"'{self.closure.value}' sərhəd bağlanışı — qalıq (residual) qatı "
+                "hələ sərhəd π dəyərlərini ötürmür (Phase 5B-2). Qalıq yolu üçün "
+                "`MPFAOBoundaryClosure.NEUMANN_ZERO` (axınsız sərhəd) seçin — "
+                "bu, mövcud simulyatorun ARTIQ tətbiq etdiyi şərtdir")
         if model.rock.permeability_tensor is None:
             warnings.append(
                 "`rock.permeability_tensor` verilməyib — MPFA-O DİAQONAL "
@@ -393,11 +449,18 @@ class MPFAODiscretization(IFluxDiscretization):
         coefficients = self.build_coefficients(
             model.grid, geometry, k_matrices, model.units.darcy_constant)
 
+        connection_faces = geometry.connection_faces()
+        operator = MPFAGlobalOperator(
+            coefficients=coefficients, connections=conn,
+            connection_faces=connection_faces, face_owner=geometry.face_owner,
+            face_neighbor=geometry.face_neighbor)
+
         return MPFADiscretizedGrid(
             connections=conn, pore_volume=model.pore_volume(),
             cell_volume=model.geometry.volumes(), geometry=geometry,
-            coefficients=coefficients, connection_faces=geometry.connection_faces(),
-            warnings=warnings)
+            coefficients=coefficients, connection_faces=connection_faces,
+            warnings=warnings, unsupported_features=unsupported,
+            global_operator=operator)
 
 
 def permeability_matrices(model) -> np.ndarray:

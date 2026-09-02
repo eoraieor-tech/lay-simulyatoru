@@ -76,11 +76,23 @@ class ResidualAssembler:
         self.capillary = capillary
 
         self.connections = grid.connections
-        self.transmissibility = grid.transmissibility
+        #: TPFA-da `(nconn,)` massiv; MPFA-da `None` (çoxnöqtəli sxemin
+        #: tək-üz transmissivliyi YOXDUR). `JacobianAssembler` bunu
+        #: oxuyur və `None` olanda AÇIQ xəta verir (Phase 5B-2).
+        self.transmissibility = getattr(grid, "transmissibility", None)
         self.pore_volume = grid.pore_volume
         self.ncell = model.ncell
 
+        #: ÇOXNÖQTƏLİ (MPFA-O) yolu seçilirmi — duck-typed, `DiscretizedGrid`
+        #: (TPFA) bu metodu DAŞIMIR → `False` → mövcud yol BİR SƏTİR BELƏ
+        #: dəyişmir (bax `docs/mpfa_o_phase5b1.md` §5).
+        self._multipoint = bool(getattr(grid, "supports_multipoint_stencil",
+                                        lambda: False)())
+        if self._multipoint:
+            self._reject_unsupported(grid)
+
         depths = model.geometry.cell_depths()
+        self._cell_depths = depths
         self._depth_difference = (depths[self.connections.cell_a]
                                   - depths[self.connections.cell_b])
         self._has_gravity = bool(np.any(np.abs(self._depth_difference) > 1e-12))
@@ -146,6 +158,78 @@ class ResidualAssembler:
 
         return d_phi_w, d_phi_o
 
+    @staticmethod
+    def _reject_unsupported(grid) -> None:
+        """MPFA-nın HƏLƏ dəstəkləmədiyi model xüsusiyyəti varsa qalıq
+        hesablamasını AÇIQ RƏDD edir (tapşırıq §26/§27).
+
+        Səssizcə davam etmək fiziki cəhətdən YANILDICI simulyasiya
+        nəticəsi verərdi (məs. fay TPFA-da axını kəsir, MPFA-da isə
+        NƏZƏRƏ ALINMIR) — bu QADAĞANDIR."""
+        unsupported = list(getattr(grid, "unsupported_features", []))
+        if unsupported:
+            raise NotImplementedError(
+                "MPFA-O qalıq yolu bu modeli HESABLAYA BİLMİR — dəstəklənməyən "
+                "xüsusiyyət(lər): " + "; ".join(unsupported)
+                + ". TPFA (`TwoPointFluxDiscretization`) bunları dəstəkləyir. "
+                  "Bax docs/mpfa_o_phase5b1.md §8.")
+
+    # ══════════════════════════════════ HÜCEYRƏ üzrə faza potensialları
+    def cell_potentials(self, state: ReservoirState, fluid: FluidState):
+        """(Φ_w, Φ_o) — HÜCEYRƏ üzrə, bar (bax `docs/mpfa_o_phase5b1.md` §4).
+
+            Φ_o,c = p_c          − ρ_o,c·g·D_c
+            Φ_w,c = p_c − Pc_c   − ρ_w,c·g·D_c
+
+        ÇOXNÖQTƏLİ sxem üçün lazımdır: MPFA operatoru SKALYAR SAHƏYƏ
+        tətbiq olunur, üz-başına fərqə yox. Sabitlər (`GRAVITY`,
+        `PA_TO_BAR`), sıxlıq düsturu (`ρ = ρ_səth/B`) və `Pc` mövcud
+        `potentials()` ilə EYNİDİR — İKİNCİ cazibə konvensiyası
+        İCAD EDİLMİR (tapşırıq §12).
+
+        FƏRQ (SƏNƏDLƏŞDİRİLMİŞ): `potentials()` üz üçün ORTALANMIŞ
+        sıxlıq (`½(ρ_a+ρ_b)`) işlədir; çoxnöqtəli stensildə "həmin iki
+        hüceyrə" anlayışı olmadığı üçün burada HÜCEYRƏ sıxlığı işlədilir.
+        İkisi cazibə olmayanda (D bərabər) VƏ YA sıxlıq bərabər olanda
+        BİRƏBİR üst-üstə düşür; fərq `O(Δρ·ΔD)` tərtibindədir.
+        """
+        phi_w = state.pressure.astype(float, copy=True)
+        phi_o = state.pressure.astype(float, copy=True)
+
+        if fluid.pc is not None:
+            phi_w = phi_w - fluid.pc
+
+        if self._has_gravity:
+            rho_w = self.model.fluids.water_density / np.maximum(fluid.bw, 1e-9)
+            rho_o = self.model.fluids.oil_density / np.maximum(fluid.bo, 1e-9)
+            head = GRAVITY * self._cell_depths * PA_TO_BAR
+            phi_w = phi_w - rho_w * head
+            phi_o = phi_o - rho_o * head
+
+        return phi_w, phi_o
+
+    def _multipoint_face_fluxes(self, state: ReservoirState, fluid: FluidState):
+        """MPFA-O yolu — bax `docs/mpfa_o_phase5b1.md` §2/§6.
+
+        Həndəsi operator (`T_conn`) DÖVLƏTDƏN ASILI DEYİL və hər
+        çağırışda TƏKRAR İSTİFADƏ olunur (§11) — burada YALNIZ
+        matris-vektor hasili + mobilitə vurması var, heç bir lokal
+        sistem yenidən qurulmur.
+        """
+        phi_w, phi_o = self.cell_potentials(state, fluid)
+
+        # Baza (mobilitəsiz) çoxnöqtəli Darsi axını, cell_a → cell_b
+        base_w = self.grid.connection_fluxes_from_potential(phi_w)
+        base_o = self.grid.connection_fluxes_from_potential(phi_o)
+
+        # Upstream — HƏQİQİ çoxnöqtəli axının işarəsindən (§10)
+        up_w = self.grid.upstream_cells(base_w)
+        up_o = self.grid.upstream_cells(base_o)
+
+        water = base_w * (fluid.lam_w[up_w] / fluid.bw[up_w])
+        oil = base_o * (fluid.lam_o[up_o] / fluid.bo[up_o])
+        return water, oil
+
     # ═══════════════════════════════════════════════════ üzlər üzrə axın
     def face_fluxes(self, state: ReservoirState, fluid: FluidState):
         """A → B istiqamətində səth həcmi axını (m3/gün).
@@ -157,6 +241,9 @@ class ResidualAssembler:
         çəkiləndirmə BURADA qalır, çünki bu, diskretizasiya sxemindən
         ASILI OLMAYAN fizikadır (TPFA-da da, gələcək MPFA-O-da da eynidir).
         """
+        if self._multipoint:
+            return self._multipoint_face_fluxes(state, fluid)
+
         conn = self.connections
         d_phi_w, d_phi_o = self.potentials(state, fluid)
 

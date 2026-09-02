@@ -625,6 +625,74 @@ verir — çoxnöqtəli axını tək üzün `ΔΦ`-sindən uydurmaq metodu TPFA-
 anti-pseudo-MPFA sübutu, əl ilə yoxlanıla bilən istinad halı,
 performans/yaddaş reqressiyası).
 
+### 5.17 MPFA-O qlobal residual/stensil inteqrasiyası (Phase 5B-1)
+
+Phase 5A LOKAL nüvəni verirdi; bu faza onu **qalıq (residual)
+səviyyəsinə** bağlayır. Spesifikasiya: **`docs/mpfa_o_phase5b1.md`**.
+
+```text
+Phase 5A: T_face (nface × ncell, csr)
+    ↓  sətir seçimi (connection_faces — DETERMİNİSTİK biyeksiya)
+T_conn (nconn × ncell)          ← mpfa_global.py::MPFAGlobalOperator
+    ↓  Φ_α = p − Pc − ρ_α g D   (HÜCEYRƏ üzrə, §4)
+q_pot,f = Σ_j T_conn[f,j] Φ_α,j
+    ↓  upstream = sign(q_pot)   (HƏQİQİ çoxnöqtəli axından, §6)
+q_α,f = q_pot,f · (λ_α/B_α)_upstream
+    ↓  net_influx (DƏYİŞMƏYƏN np.add.at)
+R_i = (akkumulyasiya)/Δt − influx − quyu     (DƏYİŞMİR)
+```
+
+**Yeni fayl**: `imex2d/discretization/mpfa_global.py::MPFAGlobalOperator`
+— `T_conn`, divergensiya `D`, `A = D·T_conn` (SABİT mobilitəli XƏTTİ
+operator), `global_stencil_pattern()`, `conservation_report()`.
+Hamısı `scipy.sparse`; `np.zeros((ncell, ncell))` HEÇ BİR YERDƏ YOXDUR.
+
+**`ResidualAssembler`-də DƏYİŞİKLİK — DAR budaqlanma**: `_multipoint`
+bayrağı (duck-typed `supports_multipoint_stencil()`) + `cell_potentials()`
++ `_multipoint_face_fluxes()`. `net_influx`, `well_rates`,
+`accumulation`, `residual`, `material_balance_error` TOXUNULMAYIB —
+akkumulyasiya/PVT/relperm/quyu/zaman addımı MÜŞTƏRƏKDİR.
+
+**İkiqat sayma (§8)**: sub-üz payları Phase 5A-da fiziki üzdə cəmlənir;
+fiziki üz ↔ `Connections` girişi BİYEKSİYADIR; sərhəd üzləri
+`NEUMANN_ZERO`-da sıfır axın daşıyır. Hər üz balansa DƏQİQ BİR DƏFƏ
+daxil olur — testlə (üz-səviyyəli və əlaqə-səviyyəli balansın
+müqayisəsi) yoxlanılır.
+
+**Potensial konvensiyası (§4)**: TAM POTENSİAL (pressure-only DEYİL).
+Sabitlər/sıxlıq/Pc mövcud koddan gəlir — İKİNCİ cazibə konvensiyası
+YOXDUR. YEGANƏ (SƏNƏDLƏŞDİRİLMİŞ) fərq: TPFA üz-ortalanmış sıxlıq
+(`½(ρ_a+ρ_b)`), MPFA isə hüceyrə sıxlığı işlədir (çoxnöqtəli stensildə
+"həmin iki hüceyrə" yoxdur). Cazibəsiz VƏ YA bərabər sıxlıqda ikisi
+BİRƏBİR eynidir; fərq `O(Δρ·ΔD)`-dir və testlə ÖLÇÜLÜR.
+
+**Status (DÜRÜST təsnifat)**:
+
+| | vəziyyət |
+|---|---|
+| Qlobal seyrək MPFA stensili (`T_conn`, `A`, naxış) | **implement + validasiya edilib** |
+| Qalıq (residual) inteqrasiyası | **implement + validasiya edilib** |
+| Mobilitə/upstream (çoxnöqtəli axının işarəsindən) | **implement + validasiya edilib** |
+| Daxili üz + qlobal konservasiya | **validasiya edilib** (≈1e-12 / ≈6e-14) |
+| Ortoqonal izotrop limitdə MPFA qalığı ≡ TPFA qalığı | **validasiya edilib** (nisbi 1.5e-16) |
+| no-flow (Neumann-0) sərhəd | **dəstəklənir** |
+| Dirichlet sərhəd | **struktur hazırdır**, qalıq qatı π ötürmür → RƏDD EDİLİR (5B-2) |
+| Qeyri-xətti analitik Jacobian | **YOXDUR** (5B-2) — MPFA ilə `JacobianAssembler` AÇIQ imtina edir |
+| Nyuton/`FullyImplicitEngine`/`ImpesEngine` MPFA ilə | **YOXDUR** (5B-2) — AÇIQ imtina |
+| MPFA-da fay (fault) | **YOXDUR** (5D) — model faylıdırsa qalıq RƏDD EDİLİR |
+| corner-point / ACTNUM | **YOXDUR** |
+
+**Simulyator HƏLƏ MPFA ilə qeyri-xətti hasilat proqnozu VERƏ BİLMİR** —
+Phase 5B-1 YALNIZ qalıq qiymətləndirməsidir.
+
+**TPFA reqressiyası**: `TwoPointFluxDiscretization` və TPFA-nın
+qalıq/Jacobian/Newton yolu HEÇ DƏYİŞMƏYİB;
+`default_flux_discretization()` HƏLƏ DƏ TPFA qaytarır.
+
+**Testlər**: `tests/test_mpfa_o_global_assembly.py` — 57 test
+(A–T kateqoriyaları, lokal→qlobal uyğunluq, qlobal anti-pseudo-MPFA,
+ikiqat-sayma detektoru, əl ilə yoxlanıla bilən qlobal matris).
+
 ---
 
 ## 6. Növbəti modulun necə qoşulacağı

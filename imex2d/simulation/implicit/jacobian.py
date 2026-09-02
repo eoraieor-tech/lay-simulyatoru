@@ -67,7 +67,33 @@ class JacobianAssembler:
             capillary=residual_assembler.capillary,
             fluids=self.model.fluids,
             reference_pressure=residual_assembler.reference_pressure)
+        self._reject_multipoint(residual_assembler)
         self._build_pattern()
+
+    @staticmethod
+    def _reject_multipoint(residual_assembler: ResidualAssembler) -> None:
+        """ÇOXNÖQTƏLİ (MPFA-O) diskretizasiya ilə AÇIQ imtina — Phase 5B-2.
+
+        `_build_pattern()` hər üz üçün DƏQİQ 2-hüceyrəli blok, `_flux()`
+        isə `∂ΔΦ/∂p_a = +1`, `∂ΔΦ/∂p_b = −1` fərz edir. MPFA-O stensili
+        bir üzdə 18-ə qədər hüceyrəni bağlayır, ona görə bu Jakobian
+        MPFA qalığının HƏQİQİ törəməsi OLMAZDI. Səssizcə davam etmək
+        Nyutonu YANLIŞ (uyğunsuz) Jakobianla işlədərdi — tapşırıq §24
+        bunu QADAĞAN edir.
+
+        HƏQİQİ bağlantı naxışı hazırdır: `grid.global_stencil_pattern()`
+        (bax `imex2d/discretization/mpfa_global.py`), Phase 5B-2 məhz
+        ondan istifadə edəcək.
+        """
+        if not getattr(residual_assembler, "_multipoint", False):
+            return
+        raise NotImplementedError(
+            "MPFA-O ilə analitik Jacobian HƏLƏ İMPLEMENT EDİLMƏYİB (Phase 5B-2). "
+            "`JacobianAssembler` hər üz üçün 2-hüceyrəli blok fərz edir, MPFA-O "
+            "stensili isə çoxnöqtəlidir — bu Jacobian MPFA qalığının törəməsi "
+            "OLMAZDI. Phase 5B-1-də MPFA YALNIZ QALIQ qiymətləndirməsi üçün "
+            "işlədilə bilər (`ResidualAssembler.residual(...)`). Bax "
+            "docs/mpfa_o_phase5b1.md §11.")
 
     # ═════════════════════════════════════════════ struktur (bir dəfə)
     def _build_pattern(self):

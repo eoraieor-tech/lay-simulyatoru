@@ -34,6 +34,20 @@ from .results import SimulationResult, Snapshot
 from .well_model import PeacemanWellModel, WellConnection
 
 
+def _reject_multipoint_impes(discretization: IFluxDiscretization) -> None:
+    """ÇOXNÖQTƏLİ (MPFA-O) diskretizasiya ilə AÇIQ imtina — Phase 5B-2.
+
+    IMPES `_discretization.transmissibility`-ni BİRBAŞA oxuyur (tək-üz
+    skalyar). MPFA-O-da belə kəmiyyət YOXDUR; saxta bir dəyər uydurmaq
+    metodu TPFA-ya çevirmək olardı (tapşırıq §24/§32).
+    """
+    if getattr(discretization, "supports_multipoint_stencil", lambda: False)():
+        raise NotImplementedError(
+            "ImpesEngine çoxnöqtəli diskretizasiya (MPFA-O) ilə HƏLƏ İŞLƏMİR "
+            "(Phase 5B-2): IMPES tək-üz transmissivliyi tələb edir, MPFA-O-da "
+            "isə belə kəmiyyət yoxdur. Bax docs/mpfa_o_phase5b1.md §11.")
+
+
 class ImpesEngine(ISimulationEngine):
 
     def __init__(self,
@@ -58,6 +72,7 @@ class ImpesEngine(ISimulationEngine):
         #: `self._trans`-a görə) BU FAZADA DƏYİŞMİR — yalnız GRID-in necə
         #: QURULDUĞU pluggable edilib.
         self.flux_discretization = flux_discretization or default_flux_discretization()
+        _reject_multipoint_impes(self.flux_discretization)
         self._discretization = self.flux_discretization.build(model)
         self._connections = self._discretization.connections
         self._trans = self._discretization.transmissibility
