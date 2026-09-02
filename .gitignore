@@ -16,3 +16,9 @@ diag_*/
 *.INIT
 *.SMSPEC
 *.UNSMRY
+
+# graphify knowledge graph (generated, AST-only, rebuild with `graphify update .`)
+graphify-out/
+
+# personal Claude Code overrides (permissions etc.) — not team config
+.claude/settings.local.json
