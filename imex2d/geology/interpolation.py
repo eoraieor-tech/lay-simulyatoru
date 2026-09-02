@@ -1,4 +1,4 @@
-"""Məkan interpolyasiyası — IPropertyInterpolator implementasiyaları.
+"""Məkan interpolyasiyası — IPropertyInterpolator implementasiyaları (A1/A5).
 
 Üç üsul, artan mürəkkəblik sırası ilə:
 
@@ -8,26 +8,110 @@
     OrdinaryKriging   — variogram əsaslı, statistik optimal xətti qiymət.
                         Məkan korrelyasiyasını nəzərə alır.
 
+BORU XƏTTİ (A5) — `OrdinaryKriging` bir çağırışda bunları icra edir::
+
+    XAM SƏRT DATA
+      → DOĞRULAMA (`_prepare`: NaN/±inf, uzunluq, dublikat siyasəti)
+      → KOORDİNAT NORMALLAŞDIRMASI ((n,2) → (n,3))
+      → DENEYSEL VARİOGRAM + MODEL FİT (`geology/variogram.py`, auto_fit)
+      → PARAMETR DOĞRULAMASI (`validate_variogram_parameters`)
+      → ANİZOTROP TRANSFORMASİYA (`geology/anisotropy.py`)
+      → MƏKAN İNDEKSİ + QONŞULUQ SEÇİMİ (`geology/spatial_search.py`)
+      → YERLİ KRİGİNG (kiçik, ədədi dayanıqlı sistemlər)
+      → QİYMƏT + KRİGİNG VARİANSI + DİAQNOSTİKA (`KrigingResult`)
+      → İNTERPOLYASİYA EDİLMİŞ ŞƏBƏKƏ
+
+Həndəsə (anizotrop məsafə) YALNIZ `geology/anisotropy.py`-dən gəlir,
+qonşuluq seçimi YALNIZ `geology/spatial_search.py`-dən — yəni "A2 bir
+həndəsə, A1 başqa həndəsə işlədir" uyğunsuzluğu struktur olaraq MÜMKÜN
+DEYİL (A4.3/Gate 5).
+
 Keçiricilik üçün `log_transform=True` tövsiyə olunur: keçiricilik
-log-normal paylanır, ona görə interpolyasiya ln(k) fəzasında aparılır.
+log-normal paylanır, ona görə interpolyasiya ln(k) fəzasında aparılır
+(bax `interpolate_property` və `ValueTransform` — A6 genişlənmə nöqtəsi).
 """
 
 from __future__ import annotations
+
+import math
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
 from ..interfaces.interpolation import IPropertyInterpolator
+from .anisotropy import AnisotropyParams
+from .spatial_search import (SUPPORT_EXTRAPOLATED, BatchNeighborhood,
+                             NeighborhoodConfig, NeighborhoodSelector)
 from .variogram import (MODEL_FUNCS, MODEL_SPHERICAL, AnisotropyDetectionResult,
-                        AnisotropyParams, VariogramParameters, detect_anisotropy,
-                        fit_variogram_from_data)
+                        VariogramParameters, detect_anisotropy, fit_variogram_from_data,
+                        validate_variogram_parameters)
+
+# ── solver statusları (A1.5: hər ehtiyat yolu AÇIQ görünür) ────────────
+SOLVER_DIRECT = "direct"              #: LAPACK `solve` — normal yol
+SOLVER_JITTER = "jitter"              #: diaqonal requlyarlaşdırma tələb olundu
+SOLVER_LSTSQ = "lstsq"                #: minimal-norma (psevdo-tərs) həlli
+SOLVER_RENORMALIZED = "renormalized"  #: çəkilər Σw=1-ə yenidən normallandı
+SOLVER_IDW = "idw_fallback"           #: sistem tamamilə həll edilmədi → 1/d²
+SOLVER_EXACT = "exact_hard_data"      #: hədəf sərt data nöqtəsi ilə üst-üstə
+SOLVER_NONE = "no_neighbors"          #: qonşu yoxdur → NaN
+SOLVER_SINGLE_VALUE = "single_value"  #: yeganə sərt data nöqtəsi
+
+#: `Σ wᵢ = 1` (yansızlıq) şərtinin qəbul edilən sapması. Bundan böyük
+#: sapma sistemin faktiki olaraq həll OLUNMADIĞINI göstərir.
+UNBIASED_TOLERANCE = 1e-6
+
+#: Diaqonal requlyarlaşdırma (jitter) cəhdləri — matrisin izinə (trace)
+#: NİSBİ əmsallar. Kiçikdən böyüyə sınanır, İLK uğurlu dayandırır.
+JITTER_FACTORS: Tuple[float, ...] = (1e-12, 1e-10, 1e-8, 1e-6, 1e-4)
+
+#: `_max_pairwise_distance` tam (n,n) matris qurmaqdan qaçmağa keçdiyi
+#: hədd — bundan aşağıda ƏVVƏLKİ (bit-bit eyni) yol işlədilir.
+_FULL_MATRIX_LIMIT = 1500
+
+#: Yerli sistemlərin toplu (batched) həllində bir dəstədə saxlanılan
+#: MAKSIMUM matris elementi — yaddaş tavanı (≈ 16 MB double).
+_BATCH_ELEMENTS = 2_000_000
 
 
 def _distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """(n,2) və (m,2) arasında Evklid məsafələri -> (n,m)."""
     diff = a[:, None, :] - b[None, :, :]
     return np.sqrt(np.sum(diff * diff, axis=-1))
+
+
+def _max_pairwise_distance(points: np.ndarray) -> float:
+    """Ən böyük cüt-cüt məsafə — TAM (n,n) matris QURMADAN (A7/Gate 10).
+
+    Kiçik çoxluqlarda (`n ≤ _FULL_MATRIX_LIMIT`) əvvəlki yol (tam matris)
+    saxlanılır ki, `range = domen/3` evristikası BİT-BİT eyni qalsın.
+    Böyük çoxluqda əvvəlcə QABARIQ ÖRTÜK (convex hull) təpələri arasında
+    maksimum axtarılır — diametr HƏMİŞƏ örtük təpələrində realizə olunur,
+    ona görə nəticə TƏQRİBİ DEYİL, DƏQİQDİR. Örtük deqenerativ (kollinear
+    nöqtələr) olanda parçalı (chunked) dəqiq hesablamaya keçilir —
+    yaddaş `O(n)`, nəticə yenə dəqiq.
+    """
+    n = points.shape[0]
+    if n < 2:
+        return 0.0
+    if n <= _FULL_MATRIX_LIMIT:
+        return float(_distance_matrix(points, points).max())
+
+    try:
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(points)
+        vertices = points[hull.vertices]
+        if vertices.shape[0] >= 2:
+            return float(_distance_matrix(vertices, vertices).max())
+    except Exception:   # QhullError daxil — deqenerativ həndəsə
+        pass
+
+    chunk = max(1, _BATCH_ELEMENTS // n)
+    best = 0.0
+    for start in range(0, n, chunk):
+        block = points[start:start + chunk]
+        best = max(best, float(_distance_matrix(block, points).max()))
+    return best
 
 
 class NearestNeighbour(IPropertyInterpolator):
@@ -76,15 +160,189 @@ class InverseDistance(IPropertyInterpolator):
 
 
 @dataclass
+class KrigingResult:
+    """Bir `krige()` çağırışının TAM nəticəsi (A1.5).
+
+    Bütün massivlər `(m,)` — hədəf sayı qədər. Heç bir sahə UYDURULMUR:
+    qonşu tapılmayan hədəfdə `estimate`/`variance` NaN-dır, `solver`
+    `SOLVER_NONE` göstərir.
+    """
+
+    estimate: np.ndarray
+    variance: np.ndarray
+    neighbor_count: np.ndarray          #: yerli sistemə daxil olan nöqtə sayı
+    nearest_distance: np.ndarray        #: ANİZOTROP fəzada ən yaxın qonşu məsafəsi
+    extrapolated: np.ndarray            #: bool — `support == "extrapolated"`
+    support: np.ndarray                 #: `spatial_search.SUPPORT_*`
+    neighborhood_status: np.ndarray     #: `spatial_search.STATUS_*`
+    solver: np.ndarray                  #: `SOLVER_*`
+    anisotropy: AnisotropyParams
+    model: str
+    range_: float
+    sill: float
+    nugget: float
+    local: bool                         #: yerli (True) yoxsa qlobal (False) sistem
+    fit: Optional[VariogramParameters] = None
+    warnings: List[str] = field(default_factory=list)
+
+    def __array__(self, dtype=None, copy=None):
+        """`np.asarray(result)` → qiymətlər. Mövcud, massiv gözləyən
+        çağıranlar üçün geriyə-uyğunluq körpüsü (A12)."""
+        if dtype is None:
+            return np.array(self.estimate, copy=bool(copy)) if copy else self.estimate
+        return self.estimate.astype(dtype, copy=True)
+
+    def __len__(self) -> int:
+        return int(self.estimate.size)
+
+    @property
+    def standard_deviation(self) -> np.ndarray:
+        """`sqrt(variance)` — mənfi (ədədi) varians sıfıra kəsilir."""
+        return np.sqrt(np.clip(self.variance, 0.0, None))
+
+    def summary(self) -> str:
+        """Qısa mətn hesabatı — UI/PDF üçün."""
+        finite = np.isfinite(self.estimate)
+        lines = [
+            f"Kriging: model={self.model} range={self.range_:.4g} "
+            f"sill={self.sill:.4g} nugget={self.nugget:.4g} "
+            f"({'yerli' if self.local else 'qlobal'} sistem)",
+            f"  hədəf: {self.estimate.size}, etibarlı: {int(finite.sum())}, "
+            f"ekstrapolyasiya: {int(np.sum(self.extrapolated))}",
+        ]
+        if finite.any():
+            lines.append(
+                f"  qonşu sayı: min {int(self.neighbor_count[finite].min())} "
+                f"orta {self.neighbor_count[finite].mean():.1f} "
+                f"maks {int(self.neighbor_count[finite].max())}")
+        unique, counts = np.unique(self.solver.astype(str), return_counts=True)
+        lines.append("  solver: " + ", ".join(f"{u}={c}" for u, c in zip(unique, counts)))
+        for message in self.warnings:
+            lines.append(f"  ⚠ {message}")
+        return "\n".join(lines)
+
+
+def _check_weights(solution: np.ndarray, n: int) -> bool:
+    """Həllin ETİBARLILIĞI: sonlu + yansızlıq şərti `Σ wᵢ = 1`."""
+    if not np.all(np.isfinite(solution)):
+        return False
+    total = solution[:n].sum(axis=0)
+    return bool(np.all(np.abs(total - 1.0) <= UNBIASED_TOLERANCE))
+
+
+def _solve_single_robust(left: np.ndarray, right: np.ndarray, distances: np.ndarray,
+                         total_sill: float) -> Tuple[np.ndarray, str]:
+    """Bir yerli Kriging sisteminin ÇOX PİLLƏLİ dayanıqlı həlli (A1.3).
+
+    Ardıcıllıq (hər pillə AÇIQ, statusla bildirilir):
+
+    1. `np.linalg.solve` — LAPACK `gesv` (LU + qismən pivotlama). Kor-koranə
+       `inv()` İSTİFADƏ EDİLMİR.
+    2. **Jitter** — məlumat blokunun diaqonalına matrisin izinə nisbi
+       kiçik `ε` əlavə edilir (Tixonov requlyarlaşdırması). Bu, riyazi
+       cəhətdən SONSUZ KİÇİK nugget əlavə etməyə bərabərdir — dublikat/
+       demək olar üst-üstə düşən nöqtələrin yaratdığı təkliyi (singularity)
+       aradan qaldırır. `JITTER_FACTORS` kiçikdən böyüyə sınanır, İLK
+       uğurlu dayandırır (lazım olandan artıq requlyarlaşdırma YOX).
+    3. **`lstsq`** — minimal-norma (psevdo-tərs) həlli. Yalnız 1-2 uğursuz
+       olanda; nəticə yansızlıq şərtini pozarsa çəkilər AÇIQ şəkildə
+       yenidən normallanır (`SOLVER_RENORMALIZED`).
+    4. **IDW ehtiyatı** — sistem ümumiyyətlə həll edilmirsə `1/d²` çəkiləri.
+       Bu, Kriging DEYİL: varians a-priori sill (`nugget+sill`) kimi
+       qaytarılır, çünki həqiqi kriging variansı mövcud deyil. Status
+       `SOLVER_IDW` ilə HƏMİŞƏ görünür.
+
+    Qaytarır: `(solution (n+1,), status)`.
+    """
+    n = left.shape[0] - 1
+
+    try:
+        solution = np.linalg.solve(left, right)
+        if _check_weights(solution, n):
+            return solution, SOLVER_DIRECT
+    except np.linalg.LinAlgError:
+        pass
+
+    scale = float(np.trace(left[:n, :n])) / max(n, 1)
+    if not np.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    for factor in JITTER_FACTORS:
+        jittered = left.copy()
+        jittered[:n, :n] += np.eye(n) * (factor * scale)
+        try:
+            solution = np.linalg.solve(jittered, right)
+        except np.linalg.LinAlgError:
+            continue
+        if _check_weights(solution, n):
+            return solution, SOLVER_JITTER
+
+    solution, *_ = np.linalg.lstsq(left, right, rcond=None)
+    if np.all(np.isfinite(solution)):
+        if _check_weights(solution, n):
+            return solution, SOLVER_LSTSQ
+        total = solution[:n].sum()
+        if np.isfinite(total) and abs(total) > 1e-12:
+            solution[:n] /= total
+            return solution, SOLVER_RENORMALIZED
+
+    safe = np.maximum(np.asarray(distances, float), 1e-12)
+    weights = 1.0 / safe ** 2
+    weights = weights / weights.sum()
+    solution = np.empty(n + 1)
+    solution[:n] = weights
+    # Laqranj vuruğu elə seçilir ki, `σ² = Σ w·γ + μ` a-priori sill versin
+    solution[n] = total_sill - float(np.dot(weights, right[:n]))
+    return solution, SOLVER_IDW
+
+
+def _solve_batch(left: np.ndarray, right: np.ndarray, distances: np.ndarray,
+                 total_sill: float) -> Tuple[np.ndarray, np.ndarray]:
+    """Eyni ölçülü yerli sistemlərin TOPLU həlli (A7 vektorlaşdırma).
+
+    `left` (g, n+1, n+1), `right` (g, n+1), `distances` (g, n).
+    Əvvəlcə HAMISI birlikdə `np.linalg.solve` ilə həll olunur (LAPACK
+    yığcam çağırışı); YALNIZ yoxlamadan keçməyən sistemlər tək-tək
+    `_solve_single_robust`-a göndərilir — yəni ehtiyat yolları
+    performansı normal halda HEÇ CÜR yavaşlatmır.
+    """
+    g, size = left.shape[0], left.shape[1]
+    n = size - 1
+    status = np.full(g, SOLVER_DIRECT, dtype=object)
+    try:
+        solution = np.linalg.solve(left, right[:, :, None])[:, :, 0]
+    except np.linalg.LinAlgError:
+        solution = np.full((g, size), np.nan)
+
+    finite = np.all(np.isfinite(solution), axis=1)
+    unbiased = np.zeros(g, dtype=bool)
+    unbiased[finite] = np.abs(solution[finite, :n].sum(axis=1) - 1.0) <= UNBIASED_TOLERANCE
+    for row in np.where(~(finite & unbiased))[0]:
+        solution[row], status[row] = _solve_single_robust(
+            left[row], right[row], distances[row], total_sill)
+    return solution, status
+
+
+@dataclass
 class OrdinaryKriging(IPropertyInterpolator):
     """Adi kriging — çoxlu variogram modeli, avtomatik fit, tam 3D
-    anizotropluq (azimut + major/minor + şaquli), yerli axtarış dəstəyi ilə.
+    anizotropluq (azimut + dip + major/minor/şaquli), peşəkar yerli
+    qonşuluq seçimi və ədədi dayanıqlı solver ilə (A1).
 
         γ(h) = c0 + c·[1.5·(h/a) − 0.5·(h/a)³],  h < a      (sferik, defolt)
         γ(h) = c0 + c,                            h ≥ a
 
     Eksponensial/qauss modelləri də var (bax `geology/variogram.py`).
-    c0 — nugget, c — sill, a — major üfüqi radius (`range_`).
+    c0 — nugget, c — QURULUŞLU sill, a — major üfüqi radius (`range_`).
+
+    **Sistem (A1.1)** — N qonşu üçün::
+
+        [Γ  1] [w]   [γ₀]
+        [1ᵀ 0] [μ] = [ 1]
+
+    `Γ[i,j] = γ(hᵢⱼ)` (diaqonal 0), `γ₀[i] = γ(hᵢ₀)`, `Σwᵢ = 1` MƏCBURDUR
+    (Laqranj vuruğu `μ`). Qiymət `ẑ = Σ wᵢ zᵢ`, varians `σ² = Σ wᵢγ₀ᵢ + μ`
+    — hər ikisi EYNİ həll edilmiş sistemdən oxunur (A1.6 konvensiya
+    vahidliyi).
 
     **Parametr mənbəyi** — `range_`/`sill` birbaşa verilə bilər; verilməyib
     `auto_fit=True` olsa `geology/variogram.py`-dəki deneysel variogram +
@@ -94,24 +352,28 @@ class OrdinaryKriging(IPropertyInterpolator):
     YOXDUR — köhnə `domen/3`/`var(dəyərlər)` evristikası birbaşa işlədilir,
     tamamilə əvvəlki davranış.
 
-    **3D/tam anizotropluq** — `points`/`targets` (n,2) [X,Y] və ya (n,3)
+    **3D/tam anizotropluq (A4)** — `points`/`targets` (n,2) [X,Y] və ya (n,3)
     [X,Y,Z] ola bilər. `range_v` (şaquli radius) verilməyibsə `range_`-ə
     bərabər qəbul edilir. `azimuth_deg`/`range_minor` verilməyəndə (defolt)
-    üfüqi müstəvi İZOTROPDUR — yalnız Z miqyaslanır (əvvəlki M2 davranışı,
-    bax `geology/variogram.AnisotropyParams.transform` docstring-i: bu hal
-    ədəd-ədəd əvvəlki nəticəni verir). `azimuth_deg` verilsə (və ya
-    `auto_detect_anisotropy=True` etibarlı nəticə tapsa) üfüqi müstəvidə də
-    major/minor radiuslar fərqli işlədilir — tam geometrik anizotropluq
-    transformu (`AnisotropyParams.transform`).
+    üfüqi müstəvi İZOTROPDUR — yalnız Z miqyaslanır (əvvəlki M2 davranışı).
+    `azimuth_deg`/`dip_deg` verilsə (və ya `auto_detect_anisotropy=True`
+    etibarlı nəticə tapsa) tam geometrik anizotropluq transformu işə düşür
+    (`geology/anisotropy.AnisotropyParams`). Transform HƏM Kriging
+    matrisinə, HƏM DƏ qonşuluq axtarışına eyni obyektlə tətbiq olunur.
 
-    **Yerli axtarış (moving neighbourhood)** — `search_radius` və/və ya
-    `max_neighbors` veriləndə hər hədəf üçün YALNIZ ən yaxın uyğun
-    nöqtələrlə AYRICA yerli kriging sistemi qurulur (qlobal sistemin
-    əvəzinə). `min_neighbors`-dan az uyğun nöqtə olan hədəf üçün NaN
-    qaytarılır — dəyər UYDURULMUR, sadəcə "bu nöqtədə etibarlı proqnoz
-    yoxdur" bildirilir. Hamısı `None`/defolt olanda nəticə köhnə QLOBAL
-    kriging ilə BİRƏBİR eynidir (bax `_solve_global`) — bu yol reqressiya
-    testləri ilə qorunur.
+    **Yerli axtarış (moving neighbourhood, A1.2/A2)** — `search_radius`,
+    `max_neighbors`, `sectors` və ya açıq `neighborhood` veriləndə hər
+    hədəf üçün YALNIZ seçilmiş qonşularla AYRICA yerli sistem qurulur.
+    `min_neighbors`-dan az uyğun qonşu olan hədəf üçün NaN qaytarılır —
+    dəyər UYDURULMUR.
+
+    **Avtomatik yerliləşmə (Gate 3)** — heç bir yerli parametr
+    verilməyəndə də nöqtə sayı `auto_local_threshold`-u KEÇƏRSƏ sistem
+    AVTOMATİK yerli rejimə keçir (`auto_local_max_neighbors` qonşu ilə),
+    çünki minlərlə nöqtə üçün qlobal sıx sistem nə praktik, nə də
+    geostatistik olaraq düzgündür. Bu həddən AŞAĞIDA (tipik quyu
+    çoxluğu) nəticə köhnə QLOBAL kriging ilə BİRƏBİR eynidir — bu yol
+    reqressiya testləri ilə qorunur.
     """
     range_: Optional[float] = None
     range_v: Optional[float] = None
@@ -122,10 +384,32 @@ class OrdinaryKriging(IPropertyInterpolator):
     auto_fit_nugget: bool = False
     azimuth_deg: Optional[float] = None
     range_minor: Optional[float] = None
+    dip_deg: float = 0.0
     auto_detect_anisotropy: bool = False
     search_radius: Optional[float] = None
     min_neighbors: int = 1
     max_neighbors: Optional[int] = None
+    #: istiqamətli balanslaşdırma (A2.5): 0=söndürülmüş, 4=kvadrant, …
+    sectors: int = 0
+    vertical_sectors: bool = False
+    max_per_sector: Optional[int] = None
+    #: XAM |ΔZ| həddi (A2.6) — geoloji olaraq uzaq layı tamamilə kəsir
+    max_vertical_distance: Optional[float] = None
+    #: seyrək məlumat ehtiyat yolları (A2.7)
+    max_radius_expansions: int = 0
+    radius_expansion_factor: float = 2.0
+    max_search_radius: Optional[float] = None
+    allow_knn_fallback: bool = False
+    allow_global_fallback: bool = False
+    #: tam `NeighborhoodConfig` — verilsə yuxarıdakı qısayolları ƏVƏZ EDİR
+    neighborhood: Optional[NeighborhoodConfig] = None
+    #: Gate 3: bu qədər nöqtədən sonra qlobal sistem AVTOMATİK yerliləşir
+    auto_local_threshold: int = 100
+    auto_local_max_neighbors: int = 40
+    #: sərt data siyasəti (A1.4): "auto" = nugget==0 olanda dəqiq honor
+    honor_hard_data: str = "auto"
+    #: qeyri-sonlu (NaN/±inf) giriş nöqtələri çıxarılsınmı (A1.3)
+    drop_non_finite: bool = True
     name: str = "Kriging (adi)"
 
     supports_z = True
@@ -144,7 +428,17 @@ class OrdinaryKriging(IPropertyInterpolator):
             raise ValueError(
                 f"Naməlum variogram modeli: {self.model!r}. "
                 f"Dəstəklənən: {tuple(MODEL_FUNCS) + ('auto',)}")
+        if self.honor_hard_data not in ("auto", "always", "never"):
+            raise ValueError(
+                f"honor_hard_data 'auto'/'always'/'never' olmalıdır, "
+                f"alındı: {self.honor_hard_data!r}")
+        if self.min_neighbors < 1:
+            raise ValueError(f"min_neighbors ≥ 1 olmalıdır, alındı: {self.min_neighbors}")
+        if self.auto_local_threshold < 1:
+            raise ValueError(
+                f"auto_local_threshold ≥ 1 olmalıdır, alındı: {self.auto_local_threshold}")
 
+    # ── variogram qiymətləndirməsi ────────────────────────────────────
     def _variogram(self, h: np.ndarray, range_: float, sill: float, nugget: float,
                    model: str, zero_at_origin: bool = True) -> np.ndarray:
         """`zero_at_origin` yalnız məlumat-məlumat matrisi üçün doğrudur:
@@ -159,6 +453,61 @@ class OrdinaryKriging(IPropertyInterpolator):
             return np.where(h <= 1e-12, 0.0, gamma)
         return gamma
 
+    # ── giriş doğrulaması / normallaşdırma ────────────────────────────
+    @staticmethod
+    def _as_points(arr) -> np.ndarray:
+        """(n,2) -> Z=0 sütunu ilə (n,3); (n,3) olduğu kimi qalır."""
+        arr = np.asarray(arr, float)
+        if arr.ndim != 2:
+            raise ValueError("Nöqtələr 2D massiv olmalıdır: (n,2) və ya (n,3)")
+        if arr.shape[1] == 2:
+            return np.column_stack([arr, np.zeros(arr.shape[0])])
+        if arr.shape[1] == 3:
+            return arr
+        raise ValueError(f"Nöqtələr (n,2) və ya (n,3) olmalıdır, alındı: {arr.shape}")
+
+    def _prepare(self, points, values, targets):
+        """XAM giriş → `(points3, values, targets3, target_ok, warnings)`.
+
+        * uzunluq uyğunluğu YOXLANILIR (səssiz kəsmə YOX);
+        * qeyri-sonlu (NaN/±inf) KOORDİNAT və ya DƏYƏR daşıyan sərt data
+          nöqtələri `drop_non_finite=True` (defolt) olanda ÇIXARILIR və
+          xəbərdarlıq yazılır — belə sətir Kriging matrisini bütövlüklə
+          NaN edərdi (A1.3);
+        * qeyri-sonlu HƏDƏF koordinatı üçün `target_ok=False` — nəticə
+          NaN olur, sistem qurulmur;
+        * ziddiyyətli dublikatlar `_dedupe_conflicting_points` ilə
+          deterministik ORTALANIR (A1.4 dublikat siyasəti).
+        """
+        points3 = self._as_points(points)
+        values = np.asarray(values, float).ravel()
+        targets3 = self._as_points(targets)
+        if values.shape[0] != points3.shape[0]:
+            raise ValueError(
+                f"points ({points3.shape[0]}) və values ({values.shape[0]}) "
+                "uzunluğu uyğun gəlmir.")
+
+        warnings: List[str] = []
+        finite = np.all(np.isfinite(points3), axis=1) & np.isfinite(values)
+        if not np.all(finite):
+            if not self.drop_non_finite:
+                raise ValueError(
+                    f"{int(np.sum(~finite))} sərt data nöqtəsində NaN/sonsuz "
+                    "koordinat və ya dəyər var (drop_non_finite=False).")
+            warnings.append(
+                f"{int(np.sum(~finite))} sərt data nöqtəsi NaN/sonsuz koordinat və ya "
+                "dəyər daşıdığı üçün ÇIXARILDI — Kriging sistemi onlarla qurula bilməz.")
+            points3, values = points3[finite], values[finite]
+
+        target_ok = np.all(np.isfinite(targets3), axis=1)
+        if not np.all(target_ok):
+            warnings.append(
+                f"{int(np.sum(~target_ok))} hədəf koordinatı NaN/sonsuzdur — "
+                "onlar üçün NaN qaytarılır (dəyər uydurulmur).")
+
+        points3, values, dup_warnings = self._dedupe_conflicting_points(points3, values)
+        return points3, values, targets3, target_ok, warnings + dup_warnings
+
     def _dedupe_conflicting_points(self, points3: np.ndarray, values: np.ndarray):
         """Tam üst-üstə düşən (məsafə < 1e-9) giriş nöqtələrini araşdırır.
 
@@ -170,7 +519,9 @@ class OrdinaryKriging(IPropertyInterpolator):
 
         İndi: ziddiyyətli dublikatlar DETERMİNİSTİK olaraq ORTALANIR və
         `last_warnings_`-ə yazılır; dəyərləri praktik eyni olan
-        dublikatlar səssizcə (xəbərdarlıqsız) birləşdirilir.
+        dublikatlar səssizcə (xəbərdarlıqsız) birləşdirilir. Bu, A1.4-ün
+        tələb etdiyi AÇIQ dublikat siyasətidir: sərt datanın DƏQİQ
+        honor edilməsi bu ortalanmış (təkil) dəyərə görədir.
 
         Bu funksiya HƏR `interpolate()`/`interpolate_with_variance()`
         çağırışında (o cümlədən SGS/SIS-in artan-nöqtə simulyasiya
@@ -220,12 +571,15 @@ class OrdinaryKriging(IPropertyInterpolator):
 
         return points3[keep], resolved[keep], warnings
 
+    # ── variogram/anizotropluq parametrləri ───────────────────────────
     def _parameters(self, points_xy: np.ndarray, values: np.ndarray):
         """`points_xy` — YALNIZ X,Y (Z auto-range təxminini korlamasın).
 
         Qaytarır: `(range_h, range_v, range_minor, azimuth_deg, sill,
         nugget, model)` — hamısı bu çağırış üçün İSTİFADƏ OLUNACAQ faktiki
-        dəyərlər (fit/aşkarlanma nəticələri daxil).
+        dəyərlər (fit/aşkarlanma nəticələri daxil). Nəticə HƏMİŞƏ
+        `validate_variogram_parameters()`-dən keçir (A3.7) — etibarsız
+        model solver-ə ÇATA BİLMİR.
         """
         warnings: list = []
         fit: Optional[VariogramParameters] = None
@@ -242,11 +596,9 @@ class OrdinaryKriging(IPropertyInterpolator):
                 warnings.append(
                     f"Avtomatik variogram fit alınmadı ({exc}) — ehtiyat evristika "
                     "(domen/3) işlədildi.")
-                span = _distance_matrix(points_xy, points_xy).max()
-                range_h = max(span / 3.0, 1e-6)
+                range_h = max(_max_pairwise_distance(points_xy) / 3.0, 1e-6)
         else:
-            span = _distance_matrix(points_xy, points_xy).max()
-            range_h = max(span / 3.0, 1e-6)
+            range_h = max(_max_pairwise_distance(points_xy) / 3.0, 1e-6)
 
         range_v = float(self.range_v) if self.range_v is not None else range_h
         sill = (max(fit.sill, 1e-12) if (fit is not None and self.sill is None)
@@ -271,56 +623,192 @@ class OrdinaryKriging(IPropertyInterpolator):
             except ValueError as exc:
                 warnings.append(f"Anizotropluq aşkarlanması alınmadı: {exc}")
 
+        # A3.7 — etibarsız parametr solver-ə ÇATMIR
+        warnings.extend(validate_variogram_parameters(model, nugget, sill, range_h))
+
         self.last_fit_ = fit
         self.last_anisotropy_ = anisotropy
         self.last_warnings_ = warnings
         return range_h, range_v, range_minor, azimuth_deg, sill, nugget, model
 
-    @staticmethod
-    def _as_points(arr) -> np.ndarray:
-        """(n,2) -> Z=0 sütunu ilə (n,3); (n,3) olduğu kimi qalır."""
-        arr = np.asarray(arr, float)
-        if arr.ndim != 2:
-            raise ValueError("Nöqtələr 2D massiv olmalıdır: (n,2) və ya (n,3)")
-        if arr.shape[1] == 2:
-            return np.column_stack([arr, np.zeros(arr.shape[0])])
-        if arr.shape[1] == 3:
-            return arr
-        raise ValueError(f"Nöqtələr (n,2) və ya (n,3) olmalıdır, alındı: {arr.shape}")
+    def _build_anisotropy(self, range_h, range_v, range_minor, azimuth_deg
+                          ) -> Tuple[AnisotropyParams, List[str]]:
+        params = AnisotropyParams(azimuth_deg=azimuth_deg, range_major=range_h,
+                                  range_minor=range_minor, range_vertical=range_v,
+                                  dip_deg=float(self.dip_deg))
+        return params, params.validate()
 
+    def _neighborhood_config(self, n_points: int, range_h: float
+                             ) -> Tuple[Optional[NeighborhoodConfig], List[str]]:
+        """Yerli rejimin konfiqurasiyası — `None` = QLOBAL sistem.
+
+        Qlobal yol YALNIZ heç bir yerli parametr verilməyəndə VƏ nöqtə
+        sayı `auto_local_threshold`-dan çox olmayanda seçilir (Gate 3).
+        """
+        if self.neighborhood is not None:
+            config = self.neighborhood
+            config.validate()
+            return config, []
+
+        explicit = (self.search_radius is not None or self.max_neighbors is not None
+                    or self.sectors or self.max_vertical_distance is not None
+                    or self.allow_knn_fallback or self.allow_global_fallback
+                    or self.max_radius_expansions)
+        warnings: List[str] = []
+        max_neighbors = self.max_neighbors
+        if not explicit:
+            if n_points <= self.auto_local_threshold:
+                return None, []
+            max_neighbors = self.auto_local_max_neighbors
+            warnings.append(
+                f"Sərt data nöqtəsi sayı ({n_points}) `auto_local_threshold`"
+                f"={self.auto_local_threshold} həddini keçdi — qlobal sıx sistem "
+                f"əvəzinə AVTOMATİK yerli kriging işlədildi "
+                f"(max_neighbors={max_neighbors}).")
+
+        config = NeighborhoodConfig(
+            min_neighbors=self.min_neighbors,
+            max_neighbors=max_neighbors,
+            search_radius=self.search_radius,
+            max_search_radius=self.max_search_radius,
+            radius_expansion_factor=self.radius_expansion_factor,
+            max_radius_expansions=self.max_radius_expansions,
+            sectors=self.sectors,
+            vertical_sectors=self.vertical_sectors,
+            max_per_sector=self.max_per_sector,
+            max_vertical_distance=self.max_vertical_distance,
+            allow_knn_fallback=self.allow_knn_fallback,
+            allow_global_fallback=self.allow_global_fallback,
+            support_range=range_h)
+        config.validate()
+        return config, warnings
+
+    # ── ictimai giriş nöqtələri ───────────────────────────────────────
     def interpolate(self, points, values, targets) -> np.ndarray:
-        points3 = self._as_points(points)
-        values = np.asarray(values, float)
-        targets3 = self._as_points(targets)
-        points3, values, dup_warnings = self._dedupe_conflicting_points(points3, values)
+        """Yalnız qiymətlər `(m,)`. Diaqnostika üçün `krige()` işlədin."""
+        return self._run(points, values, targets, want_variance=False,
+                         want_diagnostics=False)[0]
+
+    def interpolate_with_variance(self, points, values, targets):
+        """`interpolate()`-in EYNİSİ, ƏLAVƏ olaraq kriging VARİANSINI da
+        qaytarır (Phase 5/SGS: şərti Gauss paylanması `N(estimate,
+        variance)` üçün tələb olunur).
+
+        Qaytarır: `(estimate, variance)`, hər ikisi `(m,)` massiv.
+        """
+        estimate, variance, _ = self._run(points, values, targets, want_variance=True,
+                                          want_diagnostics=False)
+        return estimate, variance
+
+    def krige(self, points, values, targets) -> KrigingResult:
+        """TAM nəticə obyekti (A1.5): qiymət, varians, qonşu sayı, ən
+        yaxın məsafə, ekstrapolyasiya bayrağı, dəstək təsnifatı, hər
+        hədəf üçün qonşuluq və solver statusu, işlədilmiş variogram/
+        anizotropluq parametrləri və bütün xəbərdarlıqlar."""
+        _, _, result = self._run(points, values, targets, want_variance=True,
+                                 want_diagnostics=True)
+        return result
+
+    # ── boru xəttinin özəyi ───────────────────────────────────────────
+    def _run(self, points, values, targets, want_variance: bool,
+             want_diagnostics: bool):
+        """A5 boru xətti — bax modul docstring-i.
+
+        Qaytarır: `(estimate, variance|None, KrigingResult|None)`.
+        `want_diagnostics=False` olanda dəstək təsnifatı/status massivləri
+        QURULMUR — SGS/SIS hər hüceyrədə bu metodu çağırır, ona görə
+        diaqnostika ƏLAVƏ xərc kimi yalnız tələb olunanda ödənilir.
+        """
+        points3, values, targets3, target_ok, warnings = self._prepare(
+            points, values, targets)
+        m = targets3.shape[0]
         n = points3.shape[0]
-        if n == 1:
-            self.last_warnings_ = dup_warnings
-            return np.full(targets3.shape[0], values[0])
+
+        if n == 0:
+            self.last_warnings_ = warnings + ["Heç bir etibarlı sərt data nöqtəsi qalmadı."]
+            estimate = np.full(m, np.nan)
+            variance = np.full(m, np.nan)
+            if not want_diagnostics:
+                return estimate, variance, None
+            return estimate, variance, self._empty_diagnostics(
+                m, estimate, variance, self.last_warnings_)
 
         (range_h, range_v, range_minor, azimuth_deg, sill, nugget,
          model) = self._parameters(points3[:, :2], values)
-        self.last_warnings_ = dup_warnings + self.last_warnings_
-        anisotropy = AnisotropyParams(azimuth_deg=azimuth_deg, range_major=range_h,
-                                      range_minor=range_minor, range_vertical=range_v)
+        warnings = warnings + self.last_warnings_
+        anisotropy, aniso_warnings = self._build_anisotropy(
+            range_h, range_v, range_minor, azimuth_deg)
+        warnings += aniso_warnings
+
+        if n == 1 and not want_variance and not want_diagnostics:
+            # tək nöqtə + yalnız qiymət: sistem qurulmadan da nəticə
+            # eynidir (çəki = 1) — ƏVVƏLKİ qısayol, ədəd-ədəd saxlanılır.
+            self.last_warnings_ = warnings
+            return np.where(target_ok, values[0], np.nan), None, None
+
         scaled_points = anisotropy.transform(points3)
         scaled_targets = anisotropy.transform(targets3)
 
-        if self.search_radius is None and self.max_neighbors is None:
-            return self._solve_global(scaled_points, values, scaled_targets, range_h,
-                                      sill, nugget, model)
-        return self._solve_local(scaled_points, values, scaled_targets, range_h, sill,
-                                 nugget, model)
+        config, config_warnings = self._neighborhood_config(n, range_h)
+        warnings += config_warnings
+        self.last_warnings_ = warnings
+
+        if config is None:
+            estimate, variance, solver = self._solve_global_path(
+                scaled_points, values, scaled_targets, target_ok, range_h, sill,
+                nugget, model)
+            neighbor_count = np.where(target_ok, n, 0)
+            batch: Optional[BatchNeighborhood] = None
+            nearest_index, nearest_distance = self._nearest_hard_data(
+                scaled_points, scaled_targets, nugget)
+        else:
+            (estimate, variance, solver, neighbor_count, batch,
+             nearest_index, nearest_distance) = self._solve_local_path(
+                scaled_points, values, scaled_targets, target_ok, range_h, sill,
+                nugget, model, config, points3, targets3)
+
+        estimate, variance, solver = self._honor_hard_data(
+            values, nearest_index, nearest_distance, target_ok, nugget,
+            estimate, variance, solver)
+
+        if not want_diagnostics:
+            return estimate, variance, None
+
+        result = self._build_diagnostics(
+            estimate, variance, solver, neighbor_count, batch,
+            scaled_points, scaled_targets, target_ok, anisotropy, model, range_h,
+            sill, nugget, config is not None, warnings)
+        return estimate, variance, result
+
+    # ── qlobal (kiçik məlumat çoxluğu) yol ────────────────────────────
+    def _solve_global_path(self, points, values, targets, target_ok, range_h, sill,
+                           nugget, model):
+        """Bütün nöqtələrlə TƏK sistem — kiçik quyu çoxluğu üçün.
+
+        Sistem BİR DƏFƏ qurulub `m` sağ tərəflə həll olunur (`O(n³ + n²m)`),
+        yəni hər hüceyrə üçün YENİDƏN həll YOXDUR. `auto_local_threshold`-
+        dan böyük çoxluqda bu yol ÇAĞIRILMIR (bax `_neighborhood_config`).
+        """
+        estimate, variance = self._solve_global(points, values, targets, range_h,
+                                                sill, nugget, model,
+                                                return_variance=True)
+        solver = np.full(targets.shape[0], SOLVER_DIRECT, dtype=object)
+        if points.shape[0] == 1:
+            solver[:] = SOLVER_SINGLE_VALUE
+        if not np.all(target_ok):
+            estimate = np.where(target_ok, estimate, np.nan)
+            variance = np.where(target_ok, variance, np.nan)
+            solver[~target_ok] = SOLVER_NONE
+        return estimate, variance, solver
 
     def _solve_global(self, points, values, targets, range_h, sill, nugget, model,
                       return_variance: bool = False):
-        """Bütün nöqtələrlə TƏK kriging sistemi — parametrsiz köhnə yol.
+        """Bütün nöqtələrlə TƏK kriging sistemi.
 
-        `return_variance=True` (defolt `False`, mövcud çağırışlar
-        DƏYİŞMİR) — Phase 5 (SGS) üçün: kriging variansı `σ²(x0) =
-        Σ w_i·γ(x_i,x0) + μ` ARTIQ HƏLL EDİLMİŞ sistemdən (`weights`,
-        `right`, Laqranj vuruğu `solution[n,:]`) hesablanır — YENİDƏN
-        HƏLL YOXDUR, sadəcə eyni nəticədən ƏLAVƏ oxuma.
+        `return_variance=True` — kriging variansı `σ²(x0) = Σ w_i·
+        γ(x_i,x0) + μ` ARTIQ HƏLL EDİLMİŞ sistemdən (`weights`, `right`,
+        Laqranj vuruğu `solution[n,:]`) hesablanır — YENİDƏN HƏLL YOXDUR,
+        sadəcə eyni nəticədən ƏLAVƏ oxuma (A1.6 vahid konvensiya).
         """
         n = points.shape[0]
         # sol tərəf: variogram matrisi + Laqranj sətri/sütunu
@@ -358,84 +846,208 @@ class OrdinaryKriging(IPropertyInterpolator):
             variance[exact_rows] = 0.0
         return result, variance
 
-    def _solve_local(self, points, values, targets, range_h, sill, nugget, model,
-                     return_variance: bool = False):
-        """Hər hədəf üçün ayrıca yerli (moving neighbourhood) sistem.
+    # ── yerli yol (istehsal yolu) ─────────────────────────────────────
+    def _solve_local_path(self, points, values, targets, target_ok, range_h, sill,
+                          nugget, model, config: NeighborhoodConfig,
+                          raw_points, raw_targets):
+        """Hər hədəf üçün AYRICA yerli sistem (A1.2).
 
-        `points`/`targets` artıq anizotrop-miqyaslanmışdır, ona görə
-        məsafə/radius bu miqyaslanmış fəzada ölçülür — variogramın özü
-        işlətdiyi fəza ilə eynidir.
+        Qonşuluq `spatial_search.NeighborhoodSelector` ilə seçilir — EYNİ
+        anizotrop transformasiya fəzasında (A4.3). Seçim TOPLU aparılır
+        (`select_batch`: sadə k-ən-yaxın halında tək cKDTree çağırışı),
+        sonra eyni ölçülü sistemlər qruplaşdırılıb TOPLU həll olunur
+        (`_solve_batch`) — hədəf başına nə Python axtarış dövrəsi, nə də
+        ayrıca LAPACK çağırışı var (A7).
+
+        `NeighborhoodSelector` artıq TRANSFORMASİYA EDİLMİŞ nöqtələr
+        üzərində qurulur (`anisotropy=None`), çünki `points`/`targets`
+        bu metoda daxil olanda transformdan KEÇMİŞDİR — ikiqat
+        transformasiya riyazi səhv olardı.
         """
-        distances = _distance_matrix(targets, points)   # (m, n)
-        result = np.full(targets.shape[0], np.nan)
-        variance = np.full(targets.shape[0], np.nan) if return_variance else None
-        for row in range(targets.shape[0]):
-            dist_row = distances[row]
-            candidate = np.arange(points.shape[0])
-            if self.search_radius is not None:
-                candidate = candidate[dist_row[candidate] <= self.search_radius]
-            if candidate.size == 0:
-                continue
-            candidate = candidate[np.argsort(dist_row[candidate])]
-            if self.max_neighbors is not None:
-                candidate = candidate[: self.max_neighbors]
-            if candidate.size < max(self.min_neighbors, 1):
-                continue
-            if return_variance:
-                local, local_var = self._solve_global(
-                    points[candidate], values[candidate], targets[row:row + 1],
-                    range_h, sill, nugget, model, return_variance=True)
-                variance[row] = local_var[0]
-            else:
-                local = self._solve_global(points[candidate], values[candidate],
-                                           targets[row:row + 1], range_h, sill, nugget, model)
-            result[row] = local[0]
-        if return_variance:
-            return result, variance
-        return result
+        m = targets.shape[0]
+        estimate = np.full(m, np.nan)
+        variance = np.full(m, np.nan)
+        solver = np.full(m, SOLVER_NONE, dtype=object)
 
-    def interpolate_with_variance(self, points, values, targets):
-        """`interpolate()`-in EYNİSİ, ƏLAVƏ olaraq kriging VARİANSINI da
-        qaytarır (Phase 5/SGS: şərti Gauss paylanması `N(estimate,
-        variance)` üçün tələb olunur). `interpolate()`-in ÖZÜ bu metodla
-        DƏYİŞMƏYİB — tamamilə yeni, əlavə giriş nöqtəsidir.
+        # A2.6 — XAM |ΔZ| kəsiyi XAM Z-yə görə ölçülməlidir, ona görə
+        # selektora xam Z sütunu ötürülür (transform edilmiş Z DEYİL).
+        selector = NeighborhoodSelector(points, anisotropy=None, config=config,
+                                        index="kdtree" if self._use_tree(m, points)
+                                        else "brute")
+        selector.set_raw_vertical(raw_points[:, 2])
 
-        Qaytarır: `(estimate, variance)`, hər ikisi `(m,)` massiv.
+        if config.max_vertical_distance is not None:
+            # şaquli kəsik hədəfin XAM Z-sini tələb edir → sətir-sətir yol
+            batch = selector._select_batch_by_rows_with_depth(targets, raw_targets[:, 2])
+        else:
+            batch = selector.select_batch(targets)
+
+        counts = batch.counts.copy()
+        counts[~target_ok] = 0
+        neighbor_count = counts
+
+        nearest_index = np.where(counts > 0, batch.indices[:, 0], -1)
+        nearest_distance = np.where(counts > 0, batch.distances[:, 0], np.inf)
+
+        total_sill = float(nugget) + float(sill)
+        for size in np.unique(counts[counts > 0]):
+            rows_array = np.where(counts == size)[0]
+            index_matrix = batch.indices[rows_array, :size]
+            chunk = max(1, _BATCH_ELEMENTS // max(int(size) * int(size), 1))
+            for start in range(0, rows_array.size, chunk):
+                block = rows_array[start:start + chunk]
+                idx = index_matrix[start:start + chunk]
+                est, var, status = self._solve_group(
+                    points, values, targets[block], idx, range_h, sill, nugget,
+                    model, total_sill)
+                estimate[block] = est
+                variance[block] = var
+                solver[block] = status
+
+        return (estimate, variance, solver, neighbor_count, batch,
+                nearest_index, nearest_distance)
+
+    @staticmethod
+    def _use_tree(n_targets: int, points: np.ndarray) -> bool:
+        """cKDTree qurmaq sərfəlidirmi.
+
+        Ağac qurmaq `O(n log n)`, hər sorğu `O(log n)`; kobud güc isə
+        qurmasızdır, amma hər sorğu `O(n)`. Hədəf sayı `log₂ n`-dən
+        azdırsa qurma xərci ödənmir — məhz SGS/SIS-in hər hüceyrədə TƏK
+        hədəflə çağırdığı hal (bax `sgs.py`/`facies.py`), orada ağac
+        qurmaq REAL yavaşlama olardı.
         """
-        points3 = self._as_points(points)
-        values = np.asarray(values, float)
-        targets3 = self._as_points(targets)
-        points3, values, dup_warnings = self._dedupe_conflicting_points(points3, values)
-        n = points3.shape[0]
+        return n_targets >= max(4, math.log2(max(points.shape[0], 2)))
 
-        (range_h, range_v, range_minor, azimuth_deg, sill, nugget,
-         model) = self._parameters(points3[:, :2], values)
-        self.last_warnings_ = dup_warnings + self.last_warnings_
-        anisotropy = AnisotropyParams(azimuth_deg=azimuth_deg, range_major=range_h,
-                                      range_minor=range_minor, range_vertical=range_v)
-        scaled_points = anisotropy.transform(points3)
-        scaled_targets = anisotropy.transform(targets3)
+    def _solve_group(self, points, values, targets, index_matrix, range_h, sill,
+                     nugget, model, total_sill):
+        """Eyni qonşu SAYINA malik hədəflər dəstəsi üçün toplu həll.
 
-        if n == 1:
-            # tək nöqtə: `interpolate()` bu halda sistemi keçib birbaşa
-            # dəyəri qaytarır (riyazi cəhətdən `_solve_global`-ın n=1
-            # üçün verdiyi ilə EYNİDİR — çəki=1, Laqranj vuruğu=γ). AMMA
-            # varians üçün bu QISA YOLU İZLƏMİRİK: `_solve_global`-ın
-            # ÖZÜNÜ çağırırıq ki, `_solve_local`-ın (yerli axtarışda
-            # dəqiq 1 qonşu tapılanda) verdiyi NƏTİCƏ İLƏ TAM UYĞUN olsun
-            # — ilk versiya bunları FƏRQLİ (yanlış: sadə-kriging-bənzər
-            # `γ`, düzgünü: `σ²=w·γ+μ=2γ`, n=1-də) hesablayırdı, bu,
-            # sürətli/brute-force axtarışın FƏRQLİ nəticə verməsinə səbəb
-            # olan HƏQİQİ SƏHV idi (tutulub, bax `tests/test_sgs_
-            # validation.py`).
-            return self._solve_global(scaled_points, values, scaled_targets, range_h,
-                                      sill, nugget, model, return_variance=True)
+        `index_matrix` (g, k) — hər sətir bir hədəfin qonşu indeksləri.
+        """
+        g, k = index_matrix.shape
+        neighbors = points[index_matrix]                        # (g,k,3)
+        diff = neighbors[:, :, None, :] - neighbors[:, None, :, :]
+        pair_distance = np.sqrt(np.sum(diff * diff, axis=-1))   # (g,k,k)
+        target_distance = np.sqrt(
+            np.sum((neighbors - targets[:, None, :]) ** 2, axis=-1))   # (g,k)
 
-        if self.search_radius is None and self.max_neighbors is None:
-            return self._solve_global(scaled_points, values, scaled_targets, range_h,
-                                      sill, nugget, model, return_variance=True)
-        return self._solve_local(scaled_points, values, scaled_targets, range_h, sill,
-                                 nugget, model, return_variance=True)
+        left = np.ones((g, k + 1, k + 1))
+        left[:, :k, :k] = self._variogram(pair_distance, range_h, sill, nugget,
+                                          model, zero_at_origin=True)
+        left[:, k, k] = 0.0
+        right = np.ones((g, k + 1))
+        right[:, :k] = self._variogram(target_distance, range_h, sill, nugget,
+                                       model, zero_at_origin=nugget <= 0.0)
+
+        solution, status = _solve_batch(left, right, target_distance, total_sill)
+        weights = solution[:, :k]
+        estimate = np.sum(weights * values[index_matrix], axis=1)
+        variance = np.sum(weights * right[:, :k], axis=1) + solution[:, k]
+        return estimate, np.clip(variance, 0.0, None), status
+
+    # ── sərt datanın DƏQİQ honor edilməsi (A1.4) ──────────────────────
+    def _nearest_hard_data(self, points, targets, nugget):
+        """Qlobal yolda hər hədəf üçün ən yaxın sərt data (indeks, məsafə).
+
+        Yalnız honor siyasəti FAKTİKİ olaraq lazım olanda hesablanır.
+        `nugget == 0` halında `_solve_global` dəqiq honor-u ARTIQ edib,
+        amma statusu `SOLVER_EXACT` kimi işarələmək üçün indekslər yenə
+        lazımdır — hesablama `(m,n)` matrisdir, sistemin özünün onsuz da
+        qurduğu sağ tərəflə eyni ölçüdə, yəni ƏLAVƏ asimptotik xərc yox.
+        Honor söndürülübsə heç nə hesablanmır.
+        """
+        m = targets.shape[0]
+        if self.honor_hard_data == "never" or points.shape[0] == 0 or m == 0:
+            return np.full(m, -1, dtype=int), np.full(m, np.inf)
+        if self.honor_hard_data == "auto" and nugget > 0.0:
+            return np.full(m, -1, dtype=int), np.full(m, np.inf)
+        distances = _distance_matrix(targets, points)
+        index = np.argmin(distances, axis=1)
+        return index.astype(int), distances[np.arange(m), index]
+
+    def _honor_hard_data(self, values, nearest_index, nearest_distance, target_ok,
+                         nugget, estimate, variance, solver):
+        """Hədəf sərt data nöqtəsi ilə ÜST-ÜSTƏ düşəndə dəyəri DƏQİQ qaytarır.
+
+        SİYASƏT (`honor_hard_data`):
+            "auto" (defolt) — YALNIZ `nugget == 0` olanda. Nugget > 0
+                Kriging-in ölçmə səhvini SÜZMƏSİ deməkdir; belə halda
+                ölçülmüş dəyərə "geri qaytarmaq" modelin öz fərziyyəsini
+                pozardı, ona görə honor EDİLMİR (əvvəlki davranış).
+            "always" — nugget-dən ASILI OLMAYARAQ dəqiq honor.
+            "never"  — heç vaxt; yalnız sistemin öz nəticəsi.
+
+        Üst-üstə düşən dəyər `_dedupe_conflicting_points`-in verdiyi
+        (ziddiyyət halında ORTALANMIŞ) təkil dəyərdir — AÇIQ dublikat
+        siyasəti budur.
+
+        Yerli yolda `nearest_index`/`nearest_distance` qonşuluq seçiminin
+        ARTIQ hesabladığı nəticədir — ƏLAVƏ məsafə axtarışı YOXDUR (A7).
+        """
+        if self.honor_hard_data == "never":
+            return estimate, variance, solver
+        if self.honor_hard_data == "auto" and nugget > 0.0:
+            return estimate, variance, solver
+
+        hit = (nearest_index >= 0) & (nearest_distance < 1e-9) & target_ok
+        if not np.any(hit):
+            return estimate, variance, solver
+        estimate = estimate.copy()
+        variance = variance.copy()
+        estimate[hit] = values[nearest_index[hit]]
+        variance[hit] = 0.0
+        solver = solver.copy()
+        solver[hit] = SOLVER_EXACT
+        return estimate, variance, solver
+
+    # ── diaqnostika ───────────────────────────────────────────────────
+    def _empty_diagnostics(self, m, estimate, variance, warnings) -> KrigingResult:
+        return KrigingResult(
+            estimate=estimate, variance=variance,
+            neighbor_count=np.zeros(m, dtype=int),
+            nearest_distance=np.full(m, np.inf),
+            extrapolated=np.ones(m, dtype=bool),
+            support=np.full(m, SUPPORT_EXTRAPOLATED, dtype=object),
+            neighborhood_status=np.full(m, "empty", dtype=object),
+            solver=np.full(m, SOLVER_NONE, dtype=object),
+            anisotropy=AnisotropyParams(), model=self.model if self.model != "auto"
+            else MODEL_SPHERICAL, range_=float("nan"), sill=float("nan"),
+            nugget=float(self.nugget), local=False, warnings=list(warnings))
+
+    def _build_diagnostics(self, estimate, variance, solver, neighbor_count,
+                           batch, points, targets, target_ok, anisotropy,
+                           model, range_h, sill, nugget, local, warnings) -> KrigingResult:
+        """Hər hədəf üçün dəstək təsnifatı + status massivləri.
+
+        Qlobal yolda qonşuluq obyekti yoxdur, ona görə təsnifat üçün
+        AYRICA (yalnız burada, `krige()` çağırılanda) `NeighborhoodSelector`
+        qurulur — `interpolate()` bu xərci ÖDƏMİR."""
+        if batch is None:
+            config = NeighborhoodConfig(support_range=range_h)
+            selector = NeighborhoodSelector(points, anisotropy=None, config=config)
+            batch = selector.select_batch(targets)
+
+        nearest = np.where(batch.counts > 0, batch.distances[:, 0], np.inf)
+        support = np.asarray(batch.support, dtype=object).copy()
+        status = np.asarray(batch.status, dtype=object).copy()
+        if not np.all(target_ok):
+            nearest[~target_ok] = np.inf
+            support[~target_ok] = SUPPORT_EXTRAPOLATED
+            status[~target_ok] = "empty"
+        for message in batch.warnings:
+            if message not in warnings:
+                warnings.append(message)
+
+        return KrigingResult(
+            estimate=estimate, variance=variance,
+            neighbor_count=np.asarray(neighbor_count, dtype=int),
+            nearest_distance=nearest,
+            extrapolated=(support == SUPPORT_EXTRAPOLATED),
+            support=support, neighborhood_status=status, solver=solver,
+            anisotropy=anisotropy, model=model, range_=float(range_h),
+            sill=float(sill), nugget=float(nugget), local=local,
+            fit=self.last_fit_, warnings=list(warnings))
 
 
 INTERPOLATORS = {
@@ -445,25 +1057,78 @@ INTERPOLATORS = {
 }
 
 
+# ── xassə-yönlü çevirmələr (A6 genişlənmə nöqtəsi) ─────────────────────
+class ValueTransform:
+    """Dəyər fəzası çevirməsi — interpolyasiya BAŞQA fəzada aparılsın deyə.
+
+    Məkan/Kriging özəyi (A1–A4) dəyərin fiziki mənasını BİLMİR; hər xassə
+    üçün uyğun fəza bu interfeyslə verilir. Part B (log-keçiricilik,
+    hədli doyma/NTG, kateqorik fasiya, SGS) BU sinfin yeni
+    implementasiyalarını əlavə edərək işləyəcək — məkan özəyini YENİDƏN
+    YAZMADAN.
+
+    Müqavilə: `inverse(forward(v)) ≈ v` və hər ikisi element-üzrə.
+    """
+
+    name = "identity"
+
+    def forward(self, values: np.ndarray) -> np.ndarray:
+        return np.asarray(values, float)
+
+    def inverse(self, values: np.ndarray) -> np.ndarray:
+        return np.asarray(values, float)
+
+
+class LogTransform(ValueTransform):
+    """`ln(v)` — log-normal xassələr (keçiricilik) üçün.
+
+    Bütün dəyərlər müsbət OLMALIDIR; əks halda AÇIQ `ValueError`
+    (səssiz kəsmə/əvəzləmə YOX)."""
+
+    name = "log"
+
+    def forward(self, values: np.ndarray) -> np.ndarray:
+        values = np.asarray(values, float)
+        if np.any(values <= 0):
+            raise ValueError("Log interpolyasiya üçün bütün dəyərlər müsbət olmalıdır.")
+        return np.log(values)
+
+    def inverse(self, values: np.ndarray) -> np.ndarray:
+        return np.exp(np.asarray(values, float))
+
+
+IDENTITY_TRANSFORM = ValueTransform()
+LOG_TRANSFORM = LogTransform()
+
+
 def interpolate_property(interpolator: IPropertyInterpolator,
                          points: np.ndarray, values: np.ndarray,
                          targets: np.ndarray,
                          log_transform: bool = False,
                          minimum: Optional[float] = None,
-                         maximum: Optional[float] = None) -> np.ndarray:
-    """İnterpolyasiya + log çevirmə + hədlərin tətbiqi.
+                         maximum: Optional[float] = None,
+                         transform: Optional[ValueTransform] = None) -> np.ndarray:
+    """İnterpolyasiya + dəyər çevirməsi + hədlərin tətbiqi.
 
     Log çevirmə keçiricilik üçündür: ln(k) fəzasında interpolyasiya
     həm mənfi dəyərin qarşısını alır, həm də fiziki cəhətdən daha
     doğrudur, çünki keçiricilik log-normal paylanır.
+
+    `transform` (A6) — açıq `ValueTransform`; verilməyəndə `log_transform`
+    bayrağı `LOG_TRANSFORM`/`IDENTITY_TRANSFORM` seçir (mövcud
+    çağırışlar DƏYİŞMİR). İkisi birlikdə verilə bilməz.
     """
+    if transform is not None and log_transform:
+        raise ValueError("`transform` və `log_transform=True` birlikdə verilə bilməz.")
+    if transform is None:
+        transform = LOG_TRANSFORM if log_transform else IDENTITY_TRANSFORM
+
     values = np.asarray(values, float)
-    if log_transform:
-        if np.any(values <= 0):
-            raise ValueError("Log interpolyasiya üçün bütün dəyərlər müsbət olmalıdır.")
-        result = np.exp(interpolator.interpolate(points, np.log(values), targets))
-    else:
+    if isinstance(transform, ValueTransform) and type(transform) is ValueTransform:
         result = interpolator.interpolate(points, values, targets)
+    else:
+        result = transform.inverse(
+            interpolator.interpolate(points, transform.forward(values), targets))
 
     if minimum is not None:
         result = np.maximum(result, minimum)
