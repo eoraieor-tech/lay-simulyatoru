@@ -22,7 +22,7 @@ faktiki çağırdığı üçün bax hər faylın "Wired" qeydini (`pvt.py`,
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -53,16 +53,6 @@ def _finite_issue(values: np.ndarray, label: str) -> Optional[str]:
         if n_inf:
             parts.append(f"{n_inf} sonsuz")
         return f"{label}: etibarsız dəyər tapıldı ({', '.join(parts)})."
-    return None
-
-
-def _duplicates_issue(values: np.ndarray, label: str, tol: float = 1e-12) -> Optional[str]:
-    values = np.asarray(values, float)
-    if values.size < 2:
-        return None
-    sorted_values = np.sort(values)
-    if np.any(np.diff(sorted_values) <= tol):
-        return f"{label}: təkrarlanan (demək olar eyni) dəyərlər var."
     return None
 
 

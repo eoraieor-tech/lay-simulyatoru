@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from ..application.config import LinearSolverConfig

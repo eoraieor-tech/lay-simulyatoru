@@ -33,7 +33,6 @@ from ..io.scal_io import ScalFormatError, read_scal_csv, read_swof
 from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
 from ..domain.properties import FluidProperties
-from ..domain.pvt import PVTTable
 from ..domain.scal import (CapillaryParameters, CoreyParameters)
 from ..domain.unit_conversions import convert, to_engine_units
 from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation

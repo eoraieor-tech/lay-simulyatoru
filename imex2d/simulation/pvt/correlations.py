@@ -28,10 +28,6 @@ SM3M3_TO_SCFSTB = 5.61458
 C_TO_F = lambda c: c * 9.0 / 5.0 + 32.0
 
 
-def api_to_specific_gravity(api: float) -> float:
-    return 141.5 / (api + 131.5)
-
-
 def standing_solution_gor(pressure_bar, api: float, gas_gravity: float,
                           temperature_c: float) -> np.ndarray:
     """Rs(p), sm3/sm3. Standing (1947)."""

@@ -40,7 +40,7 @@ from .newton import NewtonConfig, NewtonStatus
 from .residual import FluidState, OIL, ResidualAssembler, WATER
 from .standard_well import StandardWellJacobian, StandardWellModel
 from .state import VARIABLES_PER_CELL, ReservoirState
-from .well_state import CoupledState, WellUnknowns
+from .well_state import CoupledState
 
 LOG = get_logger(__name__)
 

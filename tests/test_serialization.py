@@ -229,3 +229,107 @@ def test_project_counter_survives_so_new_runs_do_not_collide():
     new_run = restored.new_run(model.name, short_config())
     assert new_run.run_id not in {"RUN-001"}
     assert new_run.run_id == "RUN-002"
+
+
+# ── fasiya sahələri (facies_fields) — final consolidation audit §3 ──────
+def test_facies_fields_survive_project_round_trip():
+    """create model -> facies simulation -> save -> load -> compare."""
+    from imex2d.domain.facies_field import FaciesField
+
+    project, model = _rich_project(with_result=False)
+    geology = list(project.geological_models.values())[0]
+    rng = np.random.default_rng(0)
+    codes = rng.integers(0, 2, size=geology.grid.ncell)
+    facies = FaciesField(
+        name="FACIES", codes=codes,
+        category_names={0: "Qum", 1: "Şist"},
+        realization_id=2, seed=42,
+        requested_proportions={0: 0.6, 1: 0.4},
+        realized_proportions={0: 0.58, 1: 0.42},
+        variogram_metadata={0: {"model": "spherical", "nugget": 0.0, "sill": 1.0,
+                                "range_": 150.0, "range_v": 20.0, "azimuth_deg": 30.0,
+                                "range_minor": 80.0}},
+        conditioning_data_stats={"n_hard_points": 12, "n_wells": 6},
+        warnings=["test xəbərdarlığı"])
+    geology.add_facies_field(facies)
+
+    restored = _round_trip(project)[0]
+    restored_geology = restored.geological_models[geology.name]
+    assert "FACIES" in restored_geology.facies_fields
+    restored_facies = restored_geology.facies_fields["FACIES"]
+    assert np.array_equal(restored_facies.codes, facies.codes)
+    assert restored_facies.category_names == facies.category_names
+    assert restored_facies.realization_id == facies.realization_id
+    assert restored_facies.seed == facies.seed
+    assert restored_facies.requested_proportions == facies.requested_proportions
+    assert restored_facies.realized_proportions == facies.realized_proportions
+    assert restored_facies.variogram_metadata == facies.variogram_metadata
+    assert restored_facies.conditioning_data_stats == facies.conditioning_data_stats
+    assert restored_facies.warnings == facies.warnings
+
+
+def test_old_project_file_without_facies_fields_still_loads():
+    """Geriyə uyğunluq: `facies_fields` açarı olmayan (köhnə) layihə
+    faylı problemsiz açılmalı, sadəcə boş `facies_fields` ilə."""
+    project, model = _rich_project(with_result=False)
+    serializer = ProjectSerializer()
+    payload = serializer.project_to_dict(project)
+    for item in payload["geological_models"]:
+        item.pop("facies_fields", None)   # köhnə (v-öncəsi) faylı simulyasiya et
+    restored_project = serializer.project_from_dict(payload)
+    restored_geology = list(restored_project.geological_models.values())[0]
+    assert restored_geology.facies_fields == {}
+
+
+# ── SIS/SGS konfiqurasiyası persistensi — audit §4 ───────────────────────
+def test_geology_facies_and_sgs_configs_survive_round_trip():
+    from imex2d.application.geology_service import ContinuousSGSConfig, FaciesBuildConfig
+    from imex2d.geology.facies import FaciesVariogramParams
+    from imex2d.geology.sgs import FaciesPropertyConfig, PropertyVariogramParams
+
+    project, _ = _rich_project(with_result=False)
+    project.geology_facies_configs["FACIES"] = FaciesBuildConfig(
+        proportions={0: 0.6, 1: 0.4}, category_names={0: "Qum", 1: "Şist"},
+        variograms={0: FaciesVariogramParams(range_=120.0, azimuth_deg=45.0, sill=0.9)},
+        seed=7, realization_id=3, search_radius=200.0, max_neighbors=18,
+        min_neighbors=2, on_conflict="warn")
+    project.geology_sgs_configs["PORO"] = ContinuousSGSConfig(
+        variogram=PropertyVariogramParams(range_=140.0, sill=1.0, nugget=0.05),
+        log_space=False, bounds=(0.01, 0.40), seed=11, realization_id=1,
+        search_radius=None, max_neighbors=20, min_neighbors=1,
+        on_conflict="raise", conflict_tolerance=0.02,
+        facies_field_name="FACIES",
+        facies_configs={0: FaciesPropertyConfig(
+            variogram=PropertyVariogramParams(range_=90.0), log_space=False,
+            bounds=(0.05, 0.35))},
+        min_hard_data_for_own_model=6)
+
+    restored = _round_trip(project)[0]
+
+    facies_cfg = restored.geology_facies_configs["FACIES"]
+    assert facies_cfg.proportions == {0: 0.6, 1: 0.4}
+    assert facies_cfg.category_names == {0: "Qum", 1: "Şist"}
+    assert facies_cfg.variograms[0].range_ == 120.0
+    assert facies_cfg.variograms[0].azimuth_deg == 45.0
+    assert facies_cfg.seed == 7
+    assert facies_cfg.search_radius == 200.0
+    assert facies_cfg.on_conflict == "warn"
+
+    sgs_cfg = restored.geology_sgs_configs["PORO"]
+    assert sgs_cfg.variogram.range_ == 140.0
+    assert sgs_cfg.variogram.nugget == 0.05
+    assert tuple(sgs_cfg.bounds) == (0.01, 0.40)
+    assert sgs_cfg.conflict_tolerance == 0.02
+    assert sgs_cfg.facies_field_name == "FACIES"
+    assert sgs_cfg.facies_configs[0].variogram.range_ == 90.0
+    assert tuple(sgs_cfg.facies_configs[0].bounds) == (0.05, 0.35)
+    assert sgs_cfg.min_hard_data_for_own_model == 6
+
+
+def test_project_without_geology_configs_still_loads():
+    """Geriyə uyğunluq: SGS/fasiya konfiqurasiyası olmayan köhnə layihə
+    boş dict ilə açılmalıdır (crash YOX)."""
+    project, _ = _rich_project(with_result=False)
+    restored = _round_trip(project)[0]
+    assert restored.geology_facies_configs == {}
+    assert restored.geology_sgs_configs == {}

@@ -13,8 +13,11 @@ from __future__ import annotations
 import time
 
 import numpy as np
+import pytest
 
 from imex2d.geology.facies import simulate_sis
+
+pytestmark = pytest.mark.performance
 
 
 def _grid_targets(nx, ny, dx=20.0, dy=20.0):

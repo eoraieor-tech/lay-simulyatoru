@@ -78,14 +78,22 @@ class RockProperties:
 
     def validate(self) -> list:
         """Sərt fiziki xətalar. `validate_warnings()` — qeyri-adi (amma
-        mümkün) diapazon xəbərdarlıqları üçün, bax Phase 1 hesabatı."""
+        mümkün) diapazon xəbərdarlıqları üçün, bax Phase 1 hesabatı.
+
+        HƏQİQİ SƏHV (bax tapşırıq: NaN/inf idarəetməsi auditi): əvvəllər
+        bu metod `self.porosity.values <= 0` kimi XAM müqayisələr
+        işlədirdi — NaN dəyər üçün `NaN <= 0` HƏMİŞƏ `False` qaytarır,
+        ona görə NaN/sonsuz PORO/PERMX/PERMY SƏSSİZCƏ bu yoxlamadan
+        keçib `ReservoirModel.validate()` (bax `reservoir_model.py`)
+        vasitəsilə simulyasiyaya buraxıla bilərdi. İndi eyni fayldan
+        onsuz da idxal edilən (`validate_warnings()`-in artıq işlətdiyi)
+        `validate_porosity`/`validate_permeability` istifadə olunur —
+        bunlar NaN/sonsuzu AÇIQ xəta kimi tuturlar (bax `validation.py`
+        `_finite_issue`)."""
         issues = []
-        if np.any(self.porosity.values <= 0):
-            issues.append("Məsaməlilik sıfır və ya mənfi hüceyrələr var.")
-        if np.any(self.porosity.values >= 1.0):
-            issues.append("Məsaməlilik >= 1.0 olan hüceyrələr var (fiziki cəhətdən qeyri-mümkün).")
-        if np.any(self.permx.values <= 0) or np.any(self.permy.values <= 0):
-            issues.append("Keçiricilik sıfır və ya mənfi hüceyrələr var.")
+        issues += validate_porosity(self.porosity.values, "PORO").errors
+        issues += validate_permeability(self.permx.values, "PERMX").errors
+        issues += validate_permeability(self.permy.values, "PERMY").errors
         return issues
 
     def validate_warnings(self) -> list:

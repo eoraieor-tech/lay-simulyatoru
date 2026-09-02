@@ -12,14 +12,19 @@ məqsəd, ayrıca saxlanıldı). `geology_service.py`-nin mövcud iş axını
 DİGƏR bütün rəqəmsal sütunlar kimi (`DEFAULT_RULES.get(source, Property
 Rule(source))` — heç bir xüsusi qayda yoxdur) birbaşa Kriging/IDW-yə
 göndərəcəkdi, yəni fasiya kodu 0/1/2 arasında "1.4" kimi mənasız aralıq
-dəyər çıxara bilərdi. **Bu, DƏYİŞDİRİLMƏDİ** — `geology_service.py`-a
-TOXUNULMADI (tapşırıq flow solver/PVT/SCAL-a toxunmamağı tələb etdi, və
-facies-in tam iş axınına inteqrasiyası Phase 5-in işi kimi görünür). Bu
-o deməkdir ki, əgər kimsə bu gün `WellBasedGeologicalModelBuilder`
-vasitəsilə "FACIES" sütunlu CSV yükləsə, HƏLƏ DƏ köhnə (səhv) yol
-işləyəcək — YENİ SIS modulu bundan TAMAMILƏ AYRI, paralel bir imkandır.
-**NOT DONE**: SIS-in `geology_service.py`/`GeologicalModel.property_maps`
-iş axınına drop-in əvəz kimi bağlanması.
+dəyər çıxara bilərdi. **Bu, BU FAZADA (Phase 4) DƏYİŞDİRİLMƏDİ** —
+`geology_service.py`-a TOXUNULMADI (tapşırıq flow solver/PVT/SCAL-a
+toxunmamağı tələb etdi, və facies-in tam iş axınına inteqrasiyası
+sonrakı fazanın işi kimi görünür). Bu o deməkdir ki, Phase 4-ün
+YAZILDIĞI andaca kimsə `WellBasedGeologicalModelBuilder` vasitəsilə
+"FACIES" sütunlu CSV yükləsə, köhnə (səhv) yol işləyəcəkdi — YENİ SIS
+modulu bundan TAMAMILƏ AYRI, paralel bir imkan idi.
+**YENİLƏNMƏ (Phase 4.1, bax `FACIES_INTEGRATION.md`): bu inteqrasiya
+artıq EDİLİB.** `geology/property_types.py::classify_property()`
+CATEGORICAL sütunları `_simulate_categorical_field()`/
+`model.add_facies_field()`-ə yönləndirir, `_interpolate_volume`-a
+(Kriging/IDW) YOX (bax `imex2d/application/geology_service.py:219-227`).
+Yuxarıdakı "NOT DONE" iddiası artıq CARİ deyil.
 
 ## Memarlıq: nə YENİDƏN YAZILMADI
 
@@ -189,12 +194,17 @@ realizasiya üzrə nisbət saxlanması (mean/std/min/max), etibarsız giriş
 
 ## Qalan iş / NOT DONE
 
-* **SIS-in `geology_service.py`/`GeologicalModel` iş axınına inteqrasiyası**
-  — bax yuxarı, "Memarlıq" bölməsi. Hazırkı modul MÜSTƏQİL API-dir.
+* ~~SIS-in `geology_service.py`/`GeologicalModel` iş axınına inteqrasiyası~~
+  — **BAĞLANDI (Phase 4.1), bax `FACIES_INTEGRATION.md`**: Phase 4-ün
+  yazıldığı andaca modul müstəqil idi, indi `geology_service.py`
+  CATEGORICAL sütunları avtomatik ora yönləndirir.
 * Performans optimallaşdırması (k-d ağacı, inkremental axtarış) —
-  bilərəkdən edilmədi (bax "Mürəkkəblik").
-* SGS (Sequential Gaussian Simulation), fasiya-şərtli poroziya/keçiricilik
-  paylanması, MPFA, tarixi uyğunlaşdırma, EOR, qeyri-müəyyənlik
+  bilərəkdən edilmədi (bax "Mürəkkəblik") — **Phase 4.1-də QİSMƏN
+  edildi** (`spatial_search.py`, bax `FACIES_INTEGRATION.md` §7).
+* SGS (Sequential Gaussian Simulation) — **bu da artıq YAZILIB (Phase 5,
+  bax `SGS.md`)**, kəsilməz xassələr (PORO/PERMX/Y/Z) üçün, o cümlədən
+  fasiya-şərtli variantı. Qalan siyahı: MPFA, tarixi uyğunlaşdırma
+  (bu da artıq yazılıb, bax `HISTORY_MATCHING.md`), EOR, qeyri-müəyyənlik
   kəmiyyətləndirməsi — tapşırıqda AÇIQ İSTİSNA EDİLİB, bu fazada YOXDUR.
 * Paralel realizasiya icrası YOXDUR (sadə ardıcıl Python siyahı-anlayışı)
   — tapşırıq bunu bu fazada tələb ETMƏDİ.

@@ -21,7 +21,6 @@ from ..interfaces.providers import (ICapillaryPressureProvider,
                                     IRelativePermeabilityProvider)
 from ..interfaces.services import ILinearSolver, IProgressReporter
 from ..simulation.impes_engine import ImpesEngine
-from ..simulation.implicit.engine import FullyImplicitEngine
 from ..simulation.capillary import BrooksCoreyCapillaryProvider
 from ..simulation.initialization.equilibrium import (
     EquilibriumInitializationProvider)

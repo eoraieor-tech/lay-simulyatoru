@@ -21,7 +21,7 @@ from typing import Optional
 
 import numpy as np
 
-from ..domain.scal_tables import SaturationTable, SaturationTableSet
+from ..domain.scal_tables import SaturationTableSet
 from ..interfaces.providers import (ICapillaryPressureProvider,
                                     IRelativePermeabilityProvider)
 
@@ -44,9 +44,25 @@ class TableRelativePermeabilityProvider(IRelativePermeabilityProvider):
     # ─────────────────────────────────────────── region köməkçisi
     def _evaluate(self, sw, extractor, region: Optional[np.ndarray] = None):
         sw = np.asarray(sw, float)
+        if region is not None and np.ndim(region) > 0:
+            # TAPILAN SƏHV (bax UNITS/SCAL auditi): əvvəllər hüceyrə-üzrə
+            # `region` massivi bura çatanda SƏSSİZCƏ atılırdı (yalnız
+            # `self.region_ids[0]` işlədilirdi) — çağıran açıq per-hüceyrə
+            # region massivi versə də, HAMISI YANLIŞLIQLA eyni cədvəldən
+            # hesablanırdı. İndi `self.region_ids`-ə tətbiq olunan eyni
+            # maska-üzrə çevirmə `region`-a da tətbiq olunur.
+            ids = np.asarray(region, int).ravel()
+            if ids.size == sw.size:
+                result = np.empty_like(sw)
+                for region_id in np.unique(ids):
+                    mask = ids == region_id
+                    result[mask] = extractor(self.tables.get(int(region_id)), sw[mask])
+                return result
+            # ölçü uyğun gəlmir (məs. tək elementli massiv) -> skalyar kimi davam et
+            region = int(ids[0]) if ids.size else None
         if self._single or region is not None:
             index = None
-            if region is not None and np.ndim(region) == 0:
+            if region is not None:
                 index = int(region)
             elif self.region_ids is not None and self.region_ids.size:
                 index = int(self.region_ids[0])

@@ -511,7 +511,6 @@ class VtkReservoirScene:
         — dərinlik hissi düzgün verilir, model fırlananda lülə də
         həqiqi 3D obyekt kimi davranır.
         """
-        import vtk
         from ..domain.wells import WellType
 
         for actor in self._well_actors:

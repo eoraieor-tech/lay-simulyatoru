@@ -110,6 +110,31 @@ def test_regions_give_different_curves_at_the_same_saturation():
     assert krw[0] > krw[5] * 2, krw
 
 
+def test_explicit_region_array_overrides_the_stored_region_ids():
+    """TAPILAN SƏHV (audit): `krw(sw, region=<massiv>)` çağırılanda
+    `region` massivi əvvəllər SƏSSİZCƏ atılırdı — yalnız konstruktorda
+    verilmiş `self.region_ids`-in İLK elementi bütün sorğu üçün işlədilirdi.
+    Mühərrikin özü `region` arqumentini heç vaxt ötürmür (bax
+    `IRelativePermeabilityProvider` çağırış yerləri), ona görə bu, indiyə
+    qədər TUTULMAMIŞDI — amma interfeys `region: Optional[np.ndarray]`
+    elan edir və çağıran açıq per-hüceyrə massivi ötürə bilər."""
+    tables = _two_regions()
+    provider = TableRelativePermeabilityProvider(tables, region_ids=np.array([1, 1, 2]))
+    sw = np.full(3, 0.55)
+
+    default = provider.krw(sw)                              # self.region_ids: [1,1,2]
+    override = provider.krw(sw, region=np.array([2, 2, 2]))  # açıq per-hüceyrə override
+    mixed = provider.krw(sw, region=np.array([1, 2, 1]))
+
+    table1, table2 = tables.get(1), tables.get(2)
+    expected1 = table1.interpolate_krw(sw)
+    expected2 = table2.interpolate_krw(sw)
+
+    assert np.allclose(default, [expected1[0], expected1[0], expected2[0]])
+    assert np.allclose(override, expected2)                  # HAMISI region-2
+    assert np.allclose(mixed, [expected1[0], expected2[0], expected1[0]])
+
+
 def test_saturation_limits_take_the_narrowest_interval():
     """Mühərrik bir hədd cütü ilə kəsir — ən məhdudlaşdırıcı lazımdır.
 

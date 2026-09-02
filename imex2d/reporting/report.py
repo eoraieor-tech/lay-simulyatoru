@@ -37,7 +37,6 @@ from ..history.optimizer import MatchResult
 from ..history.sensitivity import SensitivityReport
 from ..logging_setup import get_logger
 from ..rendering import renderers as R
-from ..rendering.theme import PALETTE
 from ..simulation.results import SimulationResult
 from ..version import VERSION
 

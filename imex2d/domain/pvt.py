@@ -9,7 +9,6 @@ Vahidlər (METRIC): p [bar], Bo/Bw [rm3/sm3], Rs [sm3/sm3], μ [cP].
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 

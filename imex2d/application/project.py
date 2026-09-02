@@ -16,6 +16,7 @@ from ..domain.geological_model import GeologicalModel
 from ..domain.geology import GeologicalWell
 from ..domain.reservoir_model import ReservoirModel
 from .config import SimulationConfig
+from .geology_service import ContinuousSGSConfig, FaciesBuildConfig
 
 
 @dataclass
@@ -42,6 +43,13 @@ class Project:
     geology_method: str = "Kriging (adi)"
     geology_params: Dict[str, float] = field(default_factory=dict)
     geology_defaults: Dict[str, float] = field(default_factory=lambda: {"sw": 0.30})
+    #: Sütun adına görə (məs. "FACIES", "PORO") saxlanılan SIS/SGS
+    #: konfiqurasiyası — layihə save/load-da İTİRİLMİR (bax
+    #: `serialization._facies_build_config_to_dict`/
+    #: `_continuous_sgs_config_to_dict`). RNG-in ÖZÜ DEYİL, yalnız onu
+    #: yaradan parametrlər (seed daxil, təkrarlana bilmə üçün) saxlanılır.
+    geology_facies_configs: Dict[str, FaciesBuildConfig] = field(default_factory=dict)
+    geology_sgs_configs: Dict[str, ContinuousSGSConfig] = field(default_factory=dict)
     _counter: int = 0
 
     @property

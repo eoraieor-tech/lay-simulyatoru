@@ -281,15 +281,27 @@ Məhərrik `IRelativePermeabilityProvider` interfeysindən asılıdır,
 region əsaslı SCAL cədvəlləri, histerezis və ya maşın öyrənmə əsaslı
 model gələndə mühərrikin bir sətri belə dəyişməyəcək.
 
-PVT, kapilyar təzyiq və initialization provider-ləri **inject edilə
-bilər, lakin implementasiya edilməyib** — tapşırığın tələbi budur.
-Məhərrik onlar `None` olanda modelin statik dəyərləri ilə işləyir,
-`None` olmayanda isə açıq `NotImplementedError` verir. Bu, "səssizcə
-yanlış nəticə" verməkdən yaxşıdır.
+PVT, kapilyar təzyiq və initialization provider-ləri həmin vaxt
+**inject edilə bilər, lakin implementasiya edilməmişdi**. Bu, artıq
+CARİ deyil: hər üçü sonradan implementasiya edildi —
+`BlackOilPVTProvider` (`imex2d/simulation/pvt/black_oil.py`),
+`BrooksCoreyCapillaryProvider` (`imex2d/simulation/capillary.py`) və
+onun cədvəl-əsaslı qardaşı `TableCapillaryPressureProvider`
+(`imex2d/simulation/scal_tables_provider.py`),
+`EquilibriumInitializationProvider`
+(`imex2d/simulation/initialization/equilibrium.py`). Məhərrik onlar
+`None` olanda YENƏ DƏ modelin statik dəyərləri ilə işləyir (geriyə
+uyğunluq qorunur) — Dependency Inversion qərarının özü dəyişməyib,
+sadəcə interfeyslər artıq boş deyil.
 
 ### 5.6 Corey adapteri müvəqqətidir
 `CoreyRelativePermeabilityAdapter` yeni modul deyil — mövcud düsturları
-interfeysə bağlayan nazik təbəqədir. Real SCAL modulu yazılanda silinir.
+interfeysə bağlayan nazik təbəqədir. Real (cədvəl-əsaslı) SCAL modulu
+(`TableRelativePermeabilityProvider`, bax `imex2d/simulation/
+scal_tables_provider.py`) artıq yazılıb, AMMA Corey adapteri **silinmədi**
+— sadə modellər üçün hələ də faydalıdır və bütün mövcud testlər ondan
+asılıdır. Model `scal_tables` təyin edilibsə cədvəl provideri, olmasa
+Corey adapteri işlədir (ikisi eyni interfeysi paylaşır, bax `SCAL.md`).
 Alternativ (mühərrikin `CoreyParameters`-i birbaşa oxuması) interfeysi
 mənasız edərdi.
 
@@ -334,14 +346,14 @@ service = SimulationService(
 
 ## 6. Növbəti modulun necə qoşulacağı
 
-PVT modulu üçün ediləcəklər:
-1. `simulation/pvt/black_oil.py` — `IPVTProvider` implementasiyası
-2. `ImpesEngine._solve_pressure` içində `self._ct` sabit əvəzinə
-   `self.pvt.total_compressibility(p, sw)` çağırışı
-3. `app.py`-də bir sətir
-
-`domain`, `application`, `rendering`, `ui` qatlarına toxunulmayacaq.
-Refaktorinqin əsas məqsədi məhz budur.
+Bu bölmə refaktorinqin sübutu kimi PVT modulunun əlavəsini nümunə
+göstərirdi — **bu iş artıq edilib** (`imex2d/simulation/pvt/
+black_oil.py::BlackOilPVTProvider`, bax 5.5). Faktiki qoşulma
+planlaşdırılan üç addımla üst-üstə düşdü: yeni provider sinfi yazıldı,
+mühərrik onu `None` olanda köhnə sabit dəyərlərlə, veriləndə isə
+provider vasitəsilə işlədir, `app.py`/`SimulationService`-də inject
+edilir. `domain`, `rendering`, `ui` qatlarına toxunulmadı — refaktorinqin
+məqsədi olan qat ayrılığı bu əlavə ilə TƏSDİQLƏNDİ.
 
 ---
 

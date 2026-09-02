@@ -249,6 +249,41 @@ def test_cumulative_production_is_monotonic():
     assert np.all(np.diff(series.cumulative_water) >= -1e-9)
 
 
+def test_water_material_balance_is_conserved():
+    """`test_physics.py::test_water_material_balance_is_conserved`-in
+    FullyImplicitEngine üçün ekvivalenti — audit zamanı aşkarlandı ki, bu
+    yoxlama yalnız IMPES üçün mövcud idi, implicit mühərrik üçün YOX.
+
+    Trapesoid ƏVƏZİNƏ düzbucaqlı (rectangle) inteqrasiya işlədilir:
+    `series.time` burada IMPES-dən qat-qat seyrəkdir (adaptiv Δt ilə
+    ~20-30 addım, IMPES-də isə eyni müddətdə 1000+), trapesoid seyrək
+    sırada süni kvadratura xətası yaradır (ölçülüb: ~0.70 %, real
+    balans səhvi DEYİL — sadəcə inteqrasiya artefaktı). Düzbucaqlı
+    qayda mühərrikin öz yığım üsulu ilə EYNİDİR (bax `engine.py`:
+    `cumulative_water += water_rate * dt`), ona görə düzgün müqayisə
+    məhz budur (ölçülmüş xəta bu üsulla ~0.09 %)."""
+    scal = default_scal()
+    model = five_spot_model(scal=scal)
+    engine = _engine(model, scal, SimulationConfig(
+        end_time=400.0, output=OutputConfig(snapshot_count=10)))
+    result = engine.run()
+
+    pore_volume = model.pore_volume()
+    initial_sw = model.initial_conditions.water_saturation
+    accumulated = float(np.sum(pore_volume * (engine.sw - initial_sw)))
+
+    series = result.series
+    times = np.asarray(series.time)
+    dt = np.diff(np.concatenate(([0.0], times)))
+    injected = float(np.sum(np.asarray(series.water_injection_rate) * dt))
+    produced = (float(np.sum(np.asarray(series.water_rate) * dt))
+               * model.fluids.water_fvf)
+    net = injected - produced
+
+    error = abs(accumulated - net) / max(injected, 1e-9) * 100.0
+    assert error < 0.5, f"Material balans xətası {error:.3f} % (limit 0.5 %)"
+
+
 def test_engine_works_in_three_dimensions():
     from imex2d.application.model_builder import ReservoirModelBuilder
     from imex2d.application.scenarios import (SyntheticGeologicalModelBuilder,

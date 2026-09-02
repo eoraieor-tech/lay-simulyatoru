@@ -20,7 +20,7 @@ Kriging/IDW) KEÇMİR. Bu, `_interpolate_volume` daxilində AÇIQ yoxlanılır
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 

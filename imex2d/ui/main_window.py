@@ -52,7 +52,6 @@ from ..rendering.volume import (VIEW_ANGLES, VolumeFilter, VolumeRenderer,
                                 apply_zoom)
 
 from ..rendering.theme import PALETTE
-from ..domain.observations import ObservationSet
 from ..history.mismatch import MismatchCalculator
 from ..history.optimizer import HistoryMatchingService
 from ..history.sensitivity import OUTPUT_METRICS, SensitivityAnalyzer

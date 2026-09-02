@@ -18,6 +18,7 @@ from typing import Optional
 
 import numpy as np
 
+from ..domain.facies_field import FaciesField
 from ..domain.geological_model import Fault, GeologicalModel, Horizon
 from ..domain.geology import GeologicalWell
 from ..domain.geometry import CellGeometry
@@ -31,9 +32,13 @@ from ..domain.structure import FaultReference, HorizonReference, RegionSet
 from ..domain.units import FIELD, METRIC
 from ..domain.wells import (ControlMode, Perforation, Phase, Well, WellControl,
                             WellType)
+from ..geology.facies import FaciesVariogramParams
+from ..geology.sgs import (DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL, FaciesPropertyConfig,
+                           PropertyVariogramParams)
 from ..simulation.results import SimulationResult, Snapshot, TimeSeries
 from .config import (LinearSolverConfig, OutputConfig, SimulationConfig,
                      TimeSteppingConfig)
+from .geology_service import ContinuousSGSConfig, FaciesBuildConfig
 from .project import Project, SimulationRun
 
 FORMAT_VERSION = 2
@@ -73,6 +78,151 @@ def _property_map_from(data: Optional[dict]) -> Optional[PropertyMap]:
 
 def _dataclass_to_dict(obj, fields) -> dict:
     return {field: getattr(obj, field) for field in fields}
+
+
+def _facies_field_to_dict(facies: FaciesField) -> dict:
+    """`FaciesField` (SIS realizasiyası) tam saxlanılır — kod, kateqoriya
+    adları, tələb/reallaşan nisbətlər, variogram/anizotropluq metadatası,
+    kondisioner statistikası, xəbərdarlıqlar. RNG-in ÖZÜ (transient) yox,
+    yalnız NƏTİCƏ (`.codes`) və onu YARADAN parametrlər (`.seed` daxil,
+    təkrarlana bilmə üçün) saxlanılır — bax modul §4 tələbi."""
+    return {
+        "name": facies.name,
+        "codes": [int(c) for c in facies.codes.tolist()],
+        "category_names": {str(k): v for k, v in facies.category_names.items()},
+        "realization_id": facies.realization_id,
+        "seed": facies.seed,
+        "requested_proportions": {str(k): v for k, v in facies.requested_proportions.items()},
+        "realized_proportions": {str(k): v for k, v in facies.realized_proportions.items()},
+        "variogram_metadata": {str(k): v for k, v in facies.variogram_metadata.items()},
+        "anisotropy_metadata": {str(k): v for k, v in facies.anisotropy_metadata.items()},
+        "conditioning_data_stats": dict(facies.conditioning_data_stats),
+        "warnings": list(facies.warnings),
+    }
+
+
+def _facies_field_from_dict(data: dict) -> FaciesField:
+    return FaciesField(
+        name=data["name"],
+        codes=np.asarray(data["codes"], dtype=int),
+        category_names={int(k): v for k, v in data.get("category_names", {}).items()},
+        realization_id=data.get("realization_id", 0),
+        seed=data.get("seed", 0),
+        requested_proportions={int(k): v
+                               for k, v in data.get("requested_proportions", {}).items()},
+        realized_proportions={int(k): v
+                              for k, v in data.get("realized_proportions", {}).items()},
+        variogram_metadata={int(k): v for k, v in data.get("variogram_metadata", {}).items()},
+        anisotropy_metadata={int(k): v for k, v in data.get("anisotropy_metadata", {}).items()},
+        conditioning_data_stats=dict(data.get("conditioning_data_stats", {})),
+        warnings=list(data.get("warnings", [])))
+
+
+def _variogram_params_to_dict(vp) -> Optional[dict]:
+    """`FaciesVariogramParams` VƏ `PropertyVariogramParams`-ın İKİSİ üçün
+    də işləyir — sahə çoxluğu eynidir (bax `sgs.py`/`facies.py`)."""
+    if vp is None:
+        return None
+    return {"model": vp.model, "nugget": vp.nugget, "sill": vp.sill, "range_": vp.range_,
+            "range_v": vp.range_v, "azimuth_deg": vp.azimuth_deg,
+            "range_minor": vp.range_minor}
+
+
+def _facies_build_config_to_dict(config: FaciesBuildConfig) -> dict:
+    return {
+        "proportions": ({str(k): v for k, v in config.proportions.items()}
+                       if config.proportions is not None else None),
+        "category_names": ({str(k): v for k, v in config.category_names.items()}
+                           if config.category_names is not None else None),
+        "variograms": ({str(k): _variogram_params_to_dict(v)
+                        for k, v in config.variograms.items()}
+                       if config.variograms is not None else None),
+        "seed": config.seed,
+        "realization_id": config.realization_id,
+        "search_radius": config.search_radius,
+        "max_neighbors": config.max_neighbors,
+        "min_neighbors": config.min_neighbors,
+        "on_conflict": config.on_conflict,
+    }
+
+
+def _facies_build_config_from_dict(data: dict) -> FaciesBuildConfig:
+    proportions = data.get("proportions")
+    category_names = data.get("category_names")
+    variograms = data.get("variograms")
+    return FaciesBuildConfig(
+        proportions=({int(k): v for k, v in proportions.items()}
+                    if proportions is not None else None),
+        category_names=({int(k): v for k, v in category_names.items()}
+                        if category_names is not None else None),
+        variograms=({int(k): FaciesVariogramParams(**v) for k, v in variograms.items()}
+                   if variograms is not None else None),
+        seed=data.get("seed", 0),
+        realization_id=data.get("realization_id", 0),
+        search_radius=data.get("search_radius"),
+        max_neighbors=data.get("max_neighbors", 24),
+        min_neighbors=data.get("min_neighbors", 1),
+        on_conflict=data.get("on_conflict", "raise"))
+
+
+def _facies_property_config_to_dict(fpc: FaciesPropertyConfig) -> dict:
+    return {
+        "variogram": _variogram_params_to_dict(fpc.variogram),
+        "log_space": fpc.log_space,
+        "bounds": (list(fpc.bounds) if fpc.bounds is not None else None),
+    }
+
+
+def _facies_property_config_from_dict(data: dict) -> FaciesPropertyConfig:
+    variogram = data.get("variogram")
+    bounds = data.get("bounds")
+    return FaciesPropertyConfig(
+        variogram=(PropertyVariogramParams(**variogram) if variogram is not None else None),
+        log_space=data.get("log_space"),
+        bounds=(tuple(bounds) if bounds is not None else None))
+
+
+def _continuous_sgs_config_to_dict(config: ContinuousSGSConfig) -> dict:
+    return {
+        "variogram": _variogram_params_to_dict(config.variogram),
+        "log_space": config.log_space,
+        "bounds": (list(config.bounds) if config.bounds is not None else None),
+        "seed": config.seed,
+        "realization_id": config.realization_id,
+        "search_radius": config.search_radius,
+        "max_neighbors": config.max_neighbors,
+        "min_neighbors": config.min_neighbors,
+        "on_conflict": config.on_conflict,
+        "conflict_tolerance": config.conflict_tolerance,
+        "facies_field_name": config.facies_field_name,
+        "facies_configs": ({str(k): _facies_property_config_to_dict(v)
+                            for k, v in config.facies_configs.items()}
+                           if config.facies_configs is not None else None),
+        "min_hard_data_for_own_model": config.min_hard_data_for_own_model,
+    }
+
+
+def _continuous_sgs_config_from_dict(data: dict) -> ContinuousSGSConfig:
+    variogram = data.get("variogram")
+    bounds = data.get("bounds")
+    facies_configs = data.get("facies_configs")
+    return ContinuousSGSConfig(
+        variogram=(PropertyVariogramParams(**variogram) if variogram is not None else None),
+        log_space=data.get("log_space"),
+        bounds=(tuple(bounds) if bounds is not None else None),
+        seed=data.get("seed", 0),
+        realization_id=data.get("realization_id", 0),
+        search_radius=data.get("search_radius"),
+        max_neighbors=data.get("max_neighbors", 24),
+        min_neighbors=data.get("min_neighbors", 1),
+        on_conflict=data.get("on_conflict", "raise"),
+        conflict_tolerance=data.get("conflict_tolerance", 0.0),
+        facies_field_name=data.get("facies_field_name"),
+        facies_configs=({int(k): _facies_property_config_from_dict(v)
+                        for k, v in facies_configs.items()}
+                       if facies_configs is not None else None),
+        min_hard_data_for_own_model=data.get("min_hard_data_for_own_model",
+                                             DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL))
 
 
 def _phase_or_water(value) -> Phase:
@@ -153,6 +303,10 @@ class ProjectSerializer:
             "geology_method": project.geology_method,
             "geology_params": dict(project.geology_params),
             "geology_defaults": dict(project.geology_defaults),
+            "geology_facies_configs": {name: _facies_build_config_to_dict(cfg)
+                                       for name, cfg in project.geology_facies_configs.items()},
+            "geology_sgs_configs": {name: _continuous_sgs_config_to_dict(cfg)
+                                    for name, cfg in project.geology_sgs_configs.items()},
         }
 
     def project_from_dict(self, data: dict) -> Project:
@@ -174,6 +328,12 @@ class ProjectSerializer:
         project.geology_method = data.get("geology_method", project.geology_method)
         project.geology_params = data.get("geology_params", project.geology_params)
         project.geology_defaults = data.get("geology_defaults", project.geology_defaults)
+        project.geology_facies_configs = {
+            name: _facies_build_config_from_dict(item)
+            for name, item in data.get("geology_facies_configs", {}).items()}
+        project.geology_sgs_configs = {
+            name: _continuous_sgs_config_from_dict(item)
+            for name, item in data.get("geology_sgs_configs", {}).items()}
         return project
 
     @staticmethod
@@ -231,6 +391,7 @@ class ProjectSerializer:
             "faults": [{"name": f.name, "throw": f.throw, "dip": f.dip}
                        for f in model.faults],
             "coordinate_system": model.coordinate_system,
+            "facies_fields": [_facies_field_to_dict(f) for f in model.facies_fields.values()],
         }
 
     def geological_model_from_dict(self, data: dict) -> GeologicalModel:
@@ -247,6 +408,8 @@ class ProjectSerializer:
             coordinate_system=data.get("coordinate_system", "LOCAL"))
         for item in data.get("property_maps", []):
             model.add_property(_property_map_from(item))
+        for item in data.get("facies_fields", []):
+            model.add_facies_field(_facies_field_from_dict(item))
         return model
 
     # --------------------------------------------------- reservoir model

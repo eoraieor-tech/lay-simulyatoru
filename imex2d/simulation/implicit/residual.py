@@ -28,7 +28,6 @@ from ...domain.wells import ControlMode
 from ...interfaces.providers import (ICapillaryPressureProvider, IPVTProvider,
                                      IRelativePermeabilityProvider)
 from ..discretization import DiscretizedGrid
-from ..well_model import WellConnection
 from .state import ReservoirState, VARIABLES_PER_CELL
 
 #: Mərkəzləşdirilmiş sabitlər (bax `domain/unit_conversions.py`) — dəyərlər

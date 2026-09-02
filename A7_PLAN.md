@@ -1,5 +1,18 @@
 # A7 — Qaz fazası (üç fazalı black-oil)
 
+> **ARXİVLƏŞDİRİLİB (v69) — bu iş kod bazasından ÇIXARILIB.**
+> Bu fayl aşağıda TAM üç fazalı (neft-su-qaz) həlledicinin (`ThreePhase
+> SimulationEngine`, `ThreePhaseNewtonSolver`) mərhələ-mərhələ necə
+> qurulduğunu sənədləşdirir və həmin iş bir müddət faktiki işləyirdi.
+> Lakin v69-da qaz fazası TAMAMILƏ kod bazasından çıxarıldı (bax
+> `imex2d/simulation/implicit/standard_well.py:3`, `coupled_newton.py:3`,
+> `imex2d/application/serialization.py:229-233` — "Qaz fazası v69-da
+> silindi"). `ThreePhaseSimulationEngine`/`ThreePhaseNewtonSolver`
+> sinifləri artıq mövcud DEYİL. Hazırkı mühərrik (`imex2d/simulation/
+> implicit/`) YALNIZ iki fazalıdır (neft-su) — bax `residual.py`-in
+> `WATER`/`OIL` sabitləri, üçüncü faza yoxdur. Aşağıdakı mətn TARİXİ
+> qeyddir, CARİ davranışı TƏSVİR ETMİR.
+
 Məqsəd: modelin **yeganə qalan fiziki məhdudiyyətini** aradan
 qaldırmaq. `A6_PLAN.md`-də sənədləşdirildiyi kimi, hazırkı iki fazalı
 model doyma təzyiqini (Pb) kəsəndə Nyuton osilyasiya edir — çünki

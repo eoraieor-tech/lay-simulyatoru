@@ -59,7 +59,6 @@ class CellGeometry:
         yox.
         """
         grid = self.grid
-        k = np.repeat(np.arange(grid.nz), grid.nx * grid.ny)
         layer_top_offset = np.concatenate(([0.0], np.cumsum(self.dz)[:-1]))
         layer_centre_offset = layer_top_offset + self.dz * 0.5
         centre_offset = np.repeat(layer_centre_offset, grid.nx * grid.ny)

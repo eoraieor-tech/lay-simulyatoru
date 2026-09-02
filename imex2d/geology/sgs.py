@@ -33,11 +33,11 @@ seçilmiş variogram/paylanma modeli ilə mümkündür.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .distribution_analysis import log_transform_is_justified, summarize_distribution
+from .distribution_analysis import log_transform_is_justified
 from .gaussian_transform import NormalScoreTransform
 from .hard_data import find_exact_matches
 from .interpolation import OrdinaryKriging
@@ -251,12 +251,25 @@ def simulate_sgs(points, values, targets, variogram: Optional[PropertyVariogramP
     rng = np.random.default_rng(seed)
     path = rng.permutation(to_simulate)
 
-    sim_points = points3.copy()
-    sim_gaussian = gaussian_values.copy()
+    # ƏVVƏLCƏDƏN AYRILMIŞ bufer: kondisioner çoxluğu hər addımda bir
+    # sətir/dəyər böyüyür. `np.vstack`/`np.append` hər dəfə BÜTÜN massivi
+    # YENİDƏN köçürürdü (O(n²) məcmu köçürmə — profillə təsdiqlənib: 150×150
+    # şəbəkədə ~%8 ümumi vaxt və ölçü ilə superxətti artır). Son ölçü
+    # ƏVVƏLCƏDƏN MƏLUMDUR (sərt data + hədəf sayı), ona görə tək dəfə
+    # ayrılıb doldurulur. Nəticə EYNİDİR: eyni sətir/dəyər sırası, eyni RNG
+    # çağırış ardıcıllığı — YALNIZ yaddaş idarəetməsi dəyişib.
+    max_conditioning = points3.shape[0] + to_simulate.size
+    sim_points = np.empty((max_conditioning, points3.shape[1]), dtype=points3.dtype)
+    sim_points[:points3.shape[0]] = points3
+    sim_gaussian = np.empty(max_conditioning, dtype=gaussian_values.dtype)
+    sim_gaussian[:gaussian_values.size] = gaussian_values
+    n_conditioning = points3.shape[0]
 
     for idx in path:
         target_point = targets3[idx:idx + 1]
         diag.n_cells_simulated += 1
+        active_points = sim_points[:n_conditioning]
+        active_gaussian = sim_gaussian[:n_conditioning]
 
         if use_fast_search:
             neighbor_idx = search.query(target_point, search_radius=search_radius,
@@ -266,10 +279,11 @@ def simulate_sgs(points, values, targets, variogram: Optional[PropertyVariogramP
                 diag.nan_fallback_cells += 1
             else:
                 est, var = estimator.interpolate_with_variance(
-                    sim_points[neighbor_idx], sim_gaussian[neighbor_idx], target_point)
+                    active_points[neighbor_idx], active_gaussian[neighbor_idx], target_point)
                 mean_g, var_g = float(est[0]), float(var[0])
         else:
-            est, var = estimator.interpolate_with_variance(sim_points, sim_gaussian, target_point)
+            est, var = estimator.interpolate_with_variance(
+                active_points, active_gaussian, target_point)
             mean_g, var_g = float(est[0]), float(var[0])
             if not np.isfinite(mean_g) or not np.isfinite(var_g):
                 mean_g, var_g = 0.0, 1.0
@@ -277,8 +291,9 @@ def simulate_sgs(points, values, targets, variogram: Optional[PropertyVariogramP
 
         sample_g = rng.normal(mean_g, np.sqrt(max(var_g, 0.0)))
         simulated_g_value = sample_g
-        sim_points = np.vstack([sim_points, target_point])
-        sim_gaussian = np.append(sim_gaussian, simulated_g_value)
+        sim_points[n_conditioning] = target_point[0]
+        sim_gaussian[n_conditioning] = simulated_g_value
+        n_conditioning += 1
         if use_fast_search:
             search.add_point(target_point)
         simulated[idx] = simulated_g_value   # müvəqqəti: tərs çevirmə AŞAĞIDA toplu aparılır
@@ -327,6 +342,36 @@ class FaciesPropertyConfig:
     bounds: Optional[Tuple[Optional[float], Optional[float]]] = None
 
 
+def _global_fallback_structural_model(points: np.ndarray, values: np.ndarray
+                                      ) -> Tuple[Optional["PropertyVariogramParams"],
+                                                 Optional[NormalScoreTransform]]:
+    """Fasiyaya-xas model qurmaq mümkün olmayanda (çox az/sıfır ÖZ sərt
+    data) istifadə olunan PAYLAŞILAN (bütün fasiyalar üzrə pooled) STRUKTUR
+    modeli — variogram forması/aralığı VƏ marjinal paylanma forması.
+
+    KRİTİK AYRIM: bu, YALNIZ struktur/forma məlumatıdır. Heç bir fasiyanın
+    FAKTİKİ sərt-data DƏYƏRİ bu yolla başqa fasiyaya "hard-conditioning"
+    kimi keçmir — çağıran (`simulate_sgs_facies_conditioned`) hər zaman
+    yalnız fasiyanın ÖZ nöqtələrini `simulate_sgs`-ə sərt-data kimi verir,
+    bu funksiya isə yalnız (əgər fasiyaya-xas fit mümkün deyilsə) variogram
+    aralığı/nisbətini və ya (heç bir öz nöqtə olmayanda) marjinal paylanma
+    formasını borc verir — standart geostatistik təcrübə (bax: seyrək
+    alt-populyasiya üçün qlobal variogramdan struktur borc almaq).
+    """
+    if points.shape[0] < 2 or np.ptp(values) < 1e-12:
+        return None, None
+    points_xy = points[:, :2] if points.shape[1] >= 2 else points
+    transform = NormalScoreTransform.fit(values)
+    gaussian_values = transform.forward(values)
+    span = _domain_span(points_xy)
+    kwargs, _ = _resolve_property_variogram(points_xy, gaussian_values, None, span)
+    vp = PropertyVariogramParams(model=kwargs["model"], nugget=kwargs["nugget"],
+                                 sill=kwargs["sill"], range_=kwargs["range_"],
+                                 range_v=kwargs.get("range_v"), azimuth_deg=kwargs.get("azimuth_deg"),
+                                 range_minor=kwargs.get("range_minor"))
+    return vp, transform
+
+
 def simulate_sgs_facies_conditioned(
         points, values, facies_at_points, targets, facies_at_targets,
         facies_configs: Optional[Dict[int, FaciesPropertyConfig]] = None,
@@ -336,10 +381,30 @@ def simulate_sgs_facies_conditioned(
     """Fasiya-şərtli SGS: hər fasiya ÖZ paylanması/variogramı ilə, YALNIZ
     öz sərt datası VƏ öz hədəf hüceyrələri üzərində simulyasiya olunur.
 
+    QAT-İ QAYDA (elmi düzgünlük): bir fasiyanın hard-conditioning-i HEÇ
+    VAXT başqa fasiyanın sərt-data DƏYƏRLƏRİNDƏN istifadə etmir — bu,
+    fasiyalar arası "sızma" (cross-facies contamination) yaradardı (məs.
+    Facies A-nın hədəf hüceyrəsi Facies B-nin PORO=100-130 kimi dəyərini
+    "dəqiq" sərt-data kimi ala bilərdi, halbuki bu nöqtə fiziki olaraq
+    Facies A-ya aid deyil).
+
     Kifayət qədər sərt data (< `min_hard_data_for_own_model`) OLMAYAN
-    fasiya üçün AYRICA model UYDURULMUR — BÜTÜN (fasiyalar-arası) sərt
-    data ilə FALLBACK edilir, bu AÇIQ xəbərdarlıqla bildirilir (tapşırıq
-    §5: "do not fabricate a variogram... report that fallback").
+    fasiya üçün fasiyaya-xas variogram/paylanma AYRICA qurula bilmir.
+    Bu halda:
+
+    - `0 < n_own < min_hard_data_for_own_model` — hard-conditioning YENƏ
+      DƏ yalnız bu fasiyanın öz nöqtələri ilə aparılır; YALNIZ variogram
+      STRUKTURU (aralıq/nisbət) bütün fasiyalar üzrə PAYLAŞILAN (qlobal)
+      modeldən borc alınır (`_global_fallback_structural_model`) —
+      standart geostatistik təcrübə (seyrək alt-populyasiya üçün qlobal
+      struktur borcu), FAKTİKİ DƏYƏR borcu DEYİL.
+    - `n_own == 0` — heç bir kondisiyalaşdırma mümkün deyil (kondisiyalaşdırmaq
+      üçün başqa fasiyanın dəyərini götürmək QADAĞANDIR); ƏVƏZİNƏ bütün
+      fasiyalar üzrə paylaşılan qlobal marjinal paylanmadan ŞƏRTSİZ
+      (məkan kondisiyası olmadan) nümunə çəkilir.
+
+    Hər iki fallback AÇIQ xəbərdarlıqla bildirilir (tapşırıq §5: "do not
+    fabricate a variogram... report that fallback").
     """
     points = np.atleast_2d(np.asarray(points, float))
     values = np.asarray(values, float).ravel()
@@ -358,6 +423,11 @@ def simulate_sgs_facies_conditioned(
     combined_diag = PropertyDiagnostics()
     per_facies_metadata: Dict[int, dict] = {}
 
+    # PAYLAŞILAN struktur modeli (variogram forması + marjinal paylanma) —
+    # bax `_global_fallback_structural_model` docstring-i: YALNIZ struktur
+    # borc alınır, heç bir fasiyanın DƏYƏRİ başqasına hard-data kimi keçmir.
+    global_variogram, global_transform = _global_fallback_structural_model(points, values)
+
     facies_list = sorted(set(np.unique(facies_at_targets).tolist()))
     for facies in facies_list:
         target_mask = facies_at_targets == facies
@@ -366,23 +436,71 @@ def simulate_sgs_facies_conditioned(
         point_mask = facies_at_points == facies
         facies_points, facies_values = points[point_mask], values[point_mask]
         config = facies_configs.get(facies, FaciesPropertyConfig())
+        n_own = facies_points.shape[0]
+
+        if n_own == 0:
+            # QAYDA: başqa fasiyanın sərt-data DƏYƏRLƏRİ bu fasiya üçün
+            # HEÇ VAXT hard-conditioning kimi istifadə OLUNMUR — heç bir öz
+            # nöqtə olmadıqda kondisiyalı simulyasiya sadəcə MÜMKÜN DEYİL.
+            # Yeganə elmi cəhətdən düzgün seçim: bütün fasiyalar üzrə
+            # PAYLAŞILAN qlobal marjinal paylanmadan ŞƏRTSİZ (heç bir məkan
+            # kondisiyası olmadan) nümunə çəkmək.
+            n_cells = int(np.sum(target_mask))
+            all_warnings.append(
+                f"Fasiya {facies}: HEÇ bir öz sərt nöqtə yoxdur — fasiyaya-xas VƏ YA "
+                "kondisiyalı simulyasiya mümkün deyil. Başqa fasiyanın sərt-data "
+                "dəyərləri hard-conditioning kimi İSTİFADƏ OLUNMUR (elmi qayda). "
+                "ƏVƏZİNƏ bütün fasiyalar üzrə paylaşılan qlobal marjinal "
+                "paylanmadan ŞƏRTSİZ nümunə çəkildi — nəticə heç bir konkret "
+                "quyu ilə MƏKANCA əlaqələndirilməyib.")
+            rng = np.random.default_rng(seed + int(facies) * 7919)
+            if global_transform is None:
+                fallback_value = float(values[0]) if values.size else 0.0
+                facies_values_out = np.full(n_cells, fallback_value)
+            else:
+                facies_values_out = global_transform.inverse(rng.normal(0.0, 1.0, size=n_cells))
+            n_corrected = 0
+            if config.bounds is not None:
+                lo, hi = config.bounds
+                if lo is not None:
+                    below = facies_values_out < lo
+                    n_corrected += int(np.sum(below))
+                    facies_values_out[below] = lo
+                if hi is not None:
+                    above = facies_values_out > hi
+                    n_corrected += int(np.sum(above))
+                    facies_values_out[above] = hi
+            result_values[target_mask] = facies_values_out
+            combined_diag.n_cells_simulated += n_cells
+            combined_diag.bound_corrections += n_corrected
+            per_facies_metadata[int(facies)] = {
+                "used_cross_facies_fallback": False,
+                "used_unconditional_global_fallback": True,
+                "n_hard_points": 0,
+            }
+            continue
 
         used_fallback = False
-        if facies_points.shape[0] < min_hard_data_for_own_model:
-            all_warnings.append(
-                f"Fasiya {facies}: yalnız {facies_points.shape[0]} sərt nöqtə var "
-                f"(minimum {min_hard_data_for_own_model} tələb olunur) — fasiyaya-xas "
-                "paylanma/variogram QURULMADI, ehtiyat olaraq BÜTÜN (fasiyalar-arası) "
-                "sərt data işlədildi.")
-            facies_points, facies_values = points, values
+        variogram_override = config.variogram
+        if n_own < min_hard_data_for_own_model:
             used_fallback = True
+            all_warnings.append(
+                f"Fasiya {facies}: yalnız {n_own} sərt nöqtə var "
+                f"(minimum {min_hard_data_for_own_model} tələb olunur) — fasiyaya-xas "
+                "variogram etibarlı fit edilə bilmədi. ƏVƏZİNƏ bütün fasiyalar üzrə "
+                "PAYLAŞILAN (qlobal) variogram STRUKTURU (aralıq/nisbət) istifadə "
+                f"olundu — AMMA hard-conditioning YALNIZ bu fasiyanın öz {n_own} "
+                "nöqtəsi ilə aparılır, başqa fasiyanın sərt-data DƏYƏRLƏRİ heç vaxt "
+                "bu fasiyaya keçmir.")
+            if variogram_override is None:
+                variogram_override = global_variogram
 
         log_space = config.log_space
         if log_space is None:
             log_space = log_transform_is_justified(facies_values)
 
         sub = simulate_sgs(facies_points, facies_values, targets[target_mask],
-                           variogram=config.variogram, seed=seed, realization_id=realization_id,
+                           variogram=variogram_override, seed=seed, realization_id=realization_id,
                            bounds=config.bounds, log_space=log_space,
                            facies_reference=facies_reference, **kwargs)
         result_values[target_mask] = sub.values
@@ -392,7 +510,7 @@ def simulate_sgs_facies_conditioned(
         combined_diag.nan_fallback_cells += sub.diagnostics.nan_fallback_cells
         per_facies_metadata[int(facies)] = {
             **sub.metadata, "used_cross_facies_fallback": used_fallback,
-            "n_hard_points": int(facies_points.shape[0]),
+            "n_hard_points": int(n_own),
             "log_space": log_space,
         }
         all_warnings.extend(f"[fasiya {facies}] {w}" for w in sub.warnings)

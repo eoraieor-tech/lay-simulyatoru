@@ -62,10 +62,24 @@ ORİJİNAL dəyərin çarpıqlığından KİÇİKSƏ (mütləq qiymətcə) log f
 ## Fasiya-şərtli SGS
 
 `simulate_sgs_facies_conditioned()`: hər fasiya ÖZ sərt datası VƏ öz
-hədəf hüceyrələri üzərində AYRI SGS. Kifayət qədər sərt data (<8,
-`DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL`) OLMAYAN fasiya üçün AYRICA
-model UYDURULMUR — BÜTÜN fasiyalar-arası data ilə FALLBACK, AÇIQ
-xəbərdarlıqla (`used_cross_facies_fallback` metadata sahəsi).
+hədəf hüceyrələri üzərində AYRI SGS. Bir fasiyanın hard-conditioning-i
+HEÇ VAXT başqa fasiyanın sərt-data DƏYƏRLƏRİNDƏN istifadə etmir (bu,
+fasiyalar arası "sızma" yaradardı) — YALNIZ iki halda paylaşılan
+qlobal modeldən STRUKTUR (heç vaxt dəyər) borc alınır:
+
+* `0 < n_own < min_hard_data_for_own_model` (defolt 8,
+  `DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL`) — hard-conditioning YENƏ DƏ
+  yalnız bu fasiyanın öz nöqtələri ilə aparılır, YALNIZ variogram
+  STRUKTURU (aralıq/nisbət) bütün fasiyalar üzrə paylaşılan qlobal
+  modeldən (`_global_fallback_structural_model`) borc alınır
+  (`used_cross_facies_fallback` metadata sahəsi).
+* `n_own == 0` (heç bir öz sərt nöqtə yoxdur) — kondisiyalı simulyasiya
+  mümkün deyil; ƏVƏZİNƏ qlobal marjinal paylanmadan ŞƏRTSİZ (məkan
+  kondisiyası olmadan) nümunə çəkilir (`used_unconditional_global_
+  fallback` metadata sahəsi). Bax `imex2d/geology/sgs.py::simulate_sgs_
+  facies_conditioned` (n_own qolları).
+
+Hər iki fallback AÇIQ xəbərdarlıqla bildirilir.
 
 ## PORO/PERMX/PERMY/PERMZ
 

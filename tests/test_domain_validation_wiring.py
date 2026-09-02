@@ -95,6 +95,33 @@ def test_rock_properties_warnings_flag_extreme_permeability_without_rejecting():
     assert rock.validate_warnings()
 
 
+def test_rock_properties_validate_rejects_nan_porosity():
+    """Reqressiya: `validate()` əvvəllər `values <= 0` kimi XAM müqayisə
+    işlədirdi — `NaN <= 0` HƏMİŞƏ `False` olduğu üçün NaN PORO SƏSSİZCƏ
+    keçib gedirdi (bax `properties.py::RockProperties.validate`)."""
+    n = 3
+    rock = RockProperties(
+        porosity=PropertyMap.from_array("PORO", np.array([0.2, np.nan, 0.3]), n),
+        permx=PropertyMap.uniform("PERMX", 100.0, n),
+        permy=PropertyMap.uniform("PERMY", 100.0, n))
+    assert rock.validate()
+
+
+def test_rock_properties_validate_rejects_nan_and_inf_permeability():
+    n = 3
+    rock_nan = RockProperties(
+        porosity=PropertyMap.uniform("PORO", 0.2, n),
+        permx=PropertyMap.from_array("PERMX", np.array([100.0, np.nan, 100.0]), n),
+        permy=PropertyMap.uniform("PERMY", 100.0, n))
+    assert rock_nan.validate()
+
+    rock_inf = RockProperties(
+        porosity=PropertyMap.uniform("PORO", 0.2, n),
+        permx=PropertyMap.uniform("PERMX", 100.0, n),
+        permy=PropertyMap.from_array("PERMY", np.array([100.0, np.inf, 100.0]), n))
+    assert rock_inf.validate()
+
+
 # ── FluidProperties (əvvəllər HEÇ BİR yoxlama yox idi) ──────────────────
 def test_fluid_properties_default_is_valid():
     assert FluidProperties().validate() == []

@@ -34,7 +34,7 @@ from ..application.simulation_service import SimulationService
 from ..domain.reservoir_model import ReservoirModel
 from ..logging_setup import get_logger
 from ..simulation.results import SimulationResult
-from .parameters import ModelModifier, ParameterDefinition, ParameterSet
+from .parameters import ModelModifier, ParameterSet
 
 LOG = get_logger(__name__)
 

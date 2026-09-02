@@ -154,9 +154,21 @@ təşkil edir. Böyük `n`-də (~10⁴+) asimptotik üstünlük qalib gəlir.
 
 ## 11. Qalan iş / NOT DONE
 
-- `FaciesPanel` (UI) HƏLƏ `main_window.py`-nin saxla/yüklə (layihə
-  serializasiyası) iş axınına BAĞLANMAYIB — dəyərləri oxumaq mümkündür,
-  amma layihə faylında SAXLANMIR. **NOT DONE**.
+- `FaciesPanel` (UI) HƏLƏ `main_window.py`-yə (widget-in özü model
+  qurma çağırışına qoşulması) BAĞLANMAYIB — dəyərləri oxumaq mümkündür,
+  amma heç bir kod yolu onları `build()`-ə ötürmür. **NOT DONE**.
+  **YENİLƏNMƏ:** bu, artıq "layihə faylında ÜMUMİYYƏTLƏ saxlanmır"
+  demək DEYİL — nəticə obyekti `GeologicalModel.facies_fields`
+  (CSV-dəki "FACIES" sütunundan SIS ilə qurulan hər realizasiya, seed
+  və nisbətləri daxil) VƏ tikinti konfiqurasiyaları
+  (`Project.geology_facies_configs`/`geology_sgs_configs`, tip
+  `FaciesBuildConfig`/`ContinuousSGSConfig`) indi save/load-da TAM
+  saxlanılır (bax `imex2d/application/serialization.py`:
+  `_facies_field_to_dict`/`_facies_field_from_dict`,
+  `_facies_build_config_to_dict`, `_continuous_sgs_config_to_dict`;
+  testlər `tests/test_serialization.py`). Qalan boşluq YALNIZ
+  `FaciesPanel` widget-inin özünün heç bir model-qurma/layihə axınına
+  qoşulmamasıdır, saxlama formatının çatışmazlığı DEYİL.
 - `WellPanel`/`GeologyPanel` (quyu CƏDVƏLLƏRİ) hələ fasiya sütunu
   seçimi TƏQDİM ETMİR — YALNIZ CSV idxalı ilə fasiya datası daxil edilə
   bilər. **NOT DONE**.

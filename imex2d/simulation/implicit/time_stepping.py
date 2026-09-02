@@ -21,7 +21,7 @@ from typing import List, Optional
 import numpy as np
 
 from ...logging_setup import get_logger
-from .newton import NewtonResult, NewtonSolver, NewtonStatus
+from .newton import NewtonSolver
 from .state import ReservoirState
 
 LOG = get_logger(__name__)

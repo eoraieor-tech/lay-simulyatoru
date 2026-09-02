@@ -2,9 +2,15 @@
 
 ## Fikir
 
-A7-nin öz üç fazalı Nyuton həlledicisi hələ açıq bir davamlılıq
-problemi daşıyır (bax `A7_PLAN.md`) — quyu öz BHP sərhədinə çox
-yaxınlaşanda bəzən yığılmır.
+A7-nin öz üç fazalı Nyuton həlledicisi açıq bir davamlılıq problemi
+daşıyırdı (bax `A7_PLAN.md`) — quyu öz BHP sərhədinə çox yaxınlaşanda
+bəzən yığılmırdı. **Yenilənmə:** həmin üç fazalı (qaz) həlledici v69-da
+kod bazasından TAMAMILƏ ÇIXARILDI (bax `imex2d/simulation/implicit/
+standard_well.py:3`, `coupled_newton.py:3`) — hazırkı mühərrik yalnız
+iki fazalıdır (neft-su). Aşağıdakı OPM idxalı bu tarixi qərarın
+NƏTİCƏSİ olaraq qalıb və müstəqil şəkildə faydalıdır, lakin "qaz
+fazasının OPM-dən idxalı" ideyası (aşağıda, "Növbəti addımlar") heç vaxt
+tətbiq olunmayıb və hazırda planlaşdırılmır.
 
 Bunun əvəzinə strateji qərar verildi: **fizikanı** real, sınanmış bir
 simulyatora (OPM Flow — açıq mənbəli, Eclipse formatına uyğun) həvalə

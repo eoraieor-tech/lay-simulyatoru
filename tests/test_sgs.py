@@ -175,9 +175,94 @@ def test_facies_conditioned_sgs_falls_back_with_warning_for_sparse_facies():
     realization = simulate_sgs_facies_conditioned(
         points, values, facies_at_points, targets, target_facies, seed=1,
         min_hard_data_for_own_model=8)
-    assert any("fallback" in w or "QURULMADI" in w for w in realization.warnings)
+    assert any("PAYLAŞILAN" in w or "fallback" in w or "QURULMADI" in w
+              for w in realization.warnings)
     assert realization.metadata["per_facies"][1]["used_cross_facies_fallback"] is True
     assert realization.metadata["per_facies"][0]["used_cross_facies_fallback"] is False
+    # KRİTİK: fallback İNDİ artıq başqa fasiyanın DƏYƏRLƏRİNİ pooled hard-data
+    # kimi istifadə ETMİR — fasiya 1-in öz 2 nöqtəsi hələ də YALNIZ öz
+    # dəyərləri ilə (0.20 ətrafı) kondisiyalaşdırılıb, fasiya 0-ın 13
+    # nöqtəsinin heç biri fasiya 1-ə "sərt data" kimi keçməyib.
+    assert realization.metadata["per_facies"][1]["n_hard_points"] == 2
+
+
+def test_sparse_facies_fallback_never_uses_other_facies_value_as_hard_data():
+    """KRİTİK REQRESSIYA TESTİ — bax audit tapşırığı §2.
+
+    Ssenari: Facies A seyrəkdir (2 nöqtə, < minimum). Facies B-nin YAXŞI
+    dəstəklənmiş bir quyu koordinatı ADVERSARIAL olaraq hədəf şəbəkəyə
+    Facies A kimi ETİKETLƏNİR (real dünyada bu, fasiya sərhədinin sərt-data
+    quyusundan bir qədər fərqli çəkilməsi ilə baş verə bilər). Əvvəlki
+    (səhv) implementasiyada bu, `find_exact_matches`-in koordinat
+    üst-üstə-düşməsini tapıb Facies B-nin dəyərini "dəqiq sərt-data" kimi
+    Facies A-ya ötürməsinə səbəb olurdu — Facies A-nın diapazonundan
+    (10-15) TAM KƏNAR bir dəyər (Facies B-nin ~100-130 diapazonu) həmin
+    hüceyrəyə "hörmət edilmiş sərt-data" kimi yazılırdı.
+
+    Düzəlişdən sonra: fasiyanın hard-conditioning-i YALNIZ öz nöqtələri
+    ilə aparılır, ona görə bu adversarial hüceyrə ARTIQ dəqiq-uyğunluq
+    almır və Facies B-nin dəyəri ilə TƏSADÜFƏN üst-üstə düşmür.
+    """
+    rng = np.random.default_rng(7)
+    facies_b_points = rng.uniform(0.0, 100.0, size=(10, 2))
+    facies_b_values = rng.uniform(100.0, 130.0, size=10)
+
+    facies_a_points = np.array([[5.0, 5.0], [6.0, 6.0]])
+    facies_a_values = np.array([10.0, 12.0])
+
+    points = np.vstack([facies_a_points, facies_b_points])
+    values = np.concatenate([facies_a_values, facies_b_values])
+    facies_at_points = np.array([0, 0] + [1] * 10)
+
+    # Hədəf şəbəkəyə Facies B-nin BİRİNCİ quyu koordinatını ADVERSARIAL
+    # olaraq daxil edirik, AMMA Facies A kimi ETİKETLƏYİRİK.
+    adversarial_target = facies_b_points[0:1]
+    other_targets = rng.uniform(0.0, 100.0, size=(20, 2))
+    targets = np.vstack([adversarial_target, other_targets])
+    facies_at_targets = np.zeros(targets.shape[0], dtype=int)   # HAMISI Facies A
+
+    realization = simulate_sgs_facies_conditioned(
+        points, values, facies_at_points, targets, facies_at_targets,
+        seed=1, min_hard_data_for_own_model=8)
+
+    # Facies B-nin dəyəri Facies A-nın adversarial hüceyrəsinə HEÇ VAXT
+    # "dəqiq sərt-data" kimi keçməməlidir.
+    assert not np.isclose(realization.values[0], facies_b_values[0], atol=1e-6)
+    assert not realization.hard_data_mask[0]
+    # Fallback YENƏ DƏ işə düşməlidir (2 < 8), AMMA yalnız struktur borcu ilə.
+    assert realization.metadata["per_facies"][0]["used_cross_facies_fallback"] is True
+    assert realization.metadata["per_facies"][0]["n_hard_points"] == 2
+    # Facies A-nın ÖZ 2 nöqtəsi hədəflərdə olsaydı, onlar YENƏ DƏ dəqiq
+    # hörmət edilməlidir (fix hard-data honoring-i pozmayıb).
+    own_targets = np.vstack([facies_a_points, targets])
+    own_facies = np.concatenate([np.zeros(2, dtype=int), facies_at_targets])
+    realization2 = simulate_sgs_facies_conditioned(
+        points, values, facies_at_points, own_targets, own_facies,
+        seed=1, min_hard_data_for_own_model=8)
+    assert np.allclose(realization2.values[:2], facies_a_values, atol=1e-6)
+
+
+def test_facies_with_literally_zero_own_hard_data_uses_unconditional_global_fallback():
+    """§2: bir fasiyanın ÖZ sərt datası SIFIR olduqda belə, başqa
+    fasiyanın dəyərləri ona hard-conditioning kimi VERİLMİR — ƏVƏZİNƏ
+    paylaşılan qlobal marjinal paylanmadan şərtsiz nümunə çəkilir."""
+    rng = np.random.default_rng(3)
+    points, values = _sample_wells(n=12, seed=3, mean=0.20, sigma=0.03)
+    facies_at_points = np.zeros(12, dtype=int)   # bütün quyular Facies 0-a aiddir
+
+    targets = _grid_targets(6, 6, dx=20.0, dy=20.0)
+    facies_at_targets = np.zeros(targets.shape[0], dtype=int)
+    facies_at_targets[:5] = 1   # Facies 1: heç bir öz quyusu YOXDUR
+
+    realization = simulate_sgs_facies_conditioned(
+        points, values, facies_at_points, targets, facies_at_targets, seed=2,
+        min_hard_data_for_own_model=8)
+
+    assert np.all(np.isfinite(realization.values))
+    assert not np.any(realization.hard_data_mask[:5])
+    assert realization.metadata["per_facies"][1]["n_hard_points"] == 0
+    assert realization.metadata["per_facies"][1]["used_unconditional_global_fallback"] is True
+    assert any("HEÇ bir öz sərt nöqtə" in w for w in realization.warnings)
 
 
 def test_facies_conditioned_sgs_honors_hard_data():

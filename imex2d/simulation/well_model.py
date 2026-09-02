@@ -12,7 +12,7 @@ from typing import List
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode, Well, WellType
+from ..domain.wells import ControlMode, WellType
 
 
 @dataclass
