@@ -45,3 +45,27 @@ class IFluxDiscretization(ABC):
         müqaviləyə (duck-typing) əməl etməlidir ki, `ResidualAssembler`
         dəyişməsin.
         """
+
+    # ── Phase 5A ƏLAVƏSİ (GERİYƏ UYĞUN) ─────────────────────────────────
+    def supports_multipoint_stencil(self) -> bool:
+        """Bu sxem ÇOXNÖQTƏLİ stensil (bir üzdə 2-dən çox hüceyrə)
+        qururmu?
+
+        DEFOLT `False` — ona görə MÖVCUD implementasiyalar (`TwoPoint
+        FluxDiscretization`) HEÇ DƏYİŞMƏDƏN doğru cavab verir; bu metod
+        ABSTRAKT DEYİL, geriyə uyğunluq POZULMUR (tapşırıq §23).
+
+        `True` qaytaran sxem (`MPFAODiscretization`, bax
+        `imex2d/discretization/mpfa_o.py`) üçün:
+          - `compute_flux(d_phi)` müqaviləsi TƏTBİQ EDİLMİR (çoxnöqtəli
+            axın tək üzün ΔΦ-sindən çıxarıla bilməz);
+          - `build()`-in qaytardığı obyekt bunun ƏVƏZİNƏ TAM təzyiq
+            vektoru qəbul edən bir metod verir (`compute_flux_from_
+            pressure`), və `JacobianAssembler._build_pattern`-in 2-
+            hüceyrəli blok fərziyyəsi Phase 5B-də genişləndirilməlidir
+            (bax `simulation/discretization.py` modul docstring-i).
+
+        `ResidualAssembler`/`JacobianAssembler` BU FAZADA bu metodu
+        ÇAĞIRMIR — o, Phase 5B inteqrasiyasının AÇIQ giriş nöqtəsidir.
+        """
+        return False

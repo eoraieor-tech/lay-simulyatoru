@@ -546,6 +546,85 @@ artıq dəstəklənir — amma FAKTİKİ ACTNUM oxunması YOXDUR), fay
 transmissivlik çarpanlarının bu qata daxil edilməsi (bu, DİSKRETİZASİYA
 işidir, HƏNDƏSƏ yox) — hamısı gələcək faza.
 
+### 5.16 MPFA-O riyazi nüvəsi (Phase 5A)
+
+Yeni paket: `imex2d/discretization/` — **TAM tenzorlu, çoxnöqtəli**
+MPFA-O (O-method) LOKAL diskretizasiya nüvəsi. TAM riyazi spesifikasiya:
+**`docs/mpfa_o_phase5a.md`** (bu bölmə YALNIZ arxitektura xülasəsidir).
+
+```text
+Geometry  (domain/general_grid_geometry.py::GeneralGridGeometry)
+    ↓
+Interaction Region  (mpfa_o_interaction.py::MPFAOInteractionRegion)
+    ↓
+Lokal MPFA-O riyaziyyatı  (mpfa_o_local_system.py::MPFAOLocalSystem)
+    ↓
+Axın əmsalları  (mpfa_o.py::MPFAOCoefficients / MPFAODiscretization)
+```
+
+**Riyaziyyat.** Hər grid TƏPƏSİ ətrafında bölgə qurulur; bölgədəki hər
+hüceyrə payında (sub-control volume) təzyiq XƏTTİDİR, `p = p_c + g·(x−x_c)`.
+Qradiyent `g` həmin payın DƏQİQ 3 sub-üzündəki kəsilməzlik nöqtəsi
+şərtindən çıxır: `D g = π − p_c·1`. Yarım-axın
+`q = −Γ a_σᵀ K_c D⁻¹ (π − p_c·1)` — burada `K_c` **TAM 3×3 simmetrik
+matrisdir**, heç bir mərhələdə `nᵀKn` skalyarına yığılMIR. Sub-üzlərdə
+axın kəsilməzliyi lokal sistem verir (`C π = D p + E π_bnd`), həlli isə
+ÇOXNÖQTƏLİ transmissivlik matrisini: `T_cell = F C⁻¹ D + G`.
+
+**Tenzor K necə daxil olur**: `RockProperties.permeability_tensor`
+(`PermeabilityTensor.as_matrices()`) — 6 komponentin HAMISI
+(Kxx,Kyy,Kzz,Kxy,Kxz,Kyz). Tenzor verilməyibsə diaqonal
+`diag(PERMX,PERMY,PERMZ)` qurulur və bu, AÇIQ xəbərdarlıqla bildirilir.
+Etibarsız tenzor (NaN/Inf, qeyri-simmetrik, qeyri-SPD) RƏDD EDİLİR —
+klipləmə/ε-əlavəsi/simmetrikləşdirmə YOXDUR.
+
+**Stensil**: daxili üz üçün 3D-də ≤18 hüceyrə. K-ortoqonal Kartezian
+gridd-də (η=1) formulyasiya ÖZÜ 2 nöqtəyə yığılır və TPFA düsturunu
+`1e-11` nisbi dəqiqliklə bərpa edir — MPFA DAXİLƏN TPFA ÇAĞIRMIR.
+
+**Sərhəd**: `MPFAOBoundaryClosure.DIRICHLET` (defolt) sərhəd `π`-lərini
+XARİCİ giriş kimi saxlayır və `T_bnd` əmsallarını verir — fiziki BC
+İCAD EDİLMİR, yalnız gələcək BC qatı üçün struktur. `NEUMANN_ZERO`
+(axınsız) AÇIQ opt-in seçimdir.
+
+**Diaqnostika**: hər bölgə üçün `condition_number`, `rank`,
+`determinant`, `singular`, `ill_conditioned`, `max_sub_cell_condition`
+(`MPFAORegionDiagnostics`); sinqulyar sistem AÇIQ `MPFAOSingular
+SystemError` verir — səssiz requlyarizasiya və ya TPFA-ya keçid YOXDUR.
+
+**Yaddaş/performans**: bölgə qurulması TAM TOPOLOJİDİR (koordinat
+axtarışı yox) → `O(N)`; lokal həll bölgə başına SABİT ölçülüdür (≤12×12);
+`T_cell`/`T_bnd` `scipy.sparse.csr_matrix`-dir (sətir başına ≤18 əmsal)
+— sıx saxlama `O(N²)` yaddaş olardı.
+
+**Status (DÜRÜST təsnifat)**:
+
+| | vəziyyət |
+|---|---|
+| 2D (tək lay, məhdud 3D lay kimi) | **implement + validasiya edilib** |
+| 3D (tam formulyasiya) | **implement + validasiya edilib** |
+| Xətti/manufactured həll dəqiqliyi | **validasiya edilib** (≈1e-13, nisbi ≈5e-15) |
+| Lokal konservasiya | **validasiya edilib** (≈3e-13) |
+| Ortoqonal izotrop limit ≡ TPFA | **validasiya edilib** (nisbi 9e-15) |
+| Fırlanmış tam tenzor / skew grid | **validasiya edilib** |
+| Residual/Jacobian/Nyuton inteqrasiyası | **YOXDUR** (Phase 5B) |
+| Mobilite/upstream/PVT | **YOXDUR** (Phase 5B) |
+| Analitik törəmələr | **YOXDUR** (Phase 5C) |
+| Corner-point/struktursuz bölgə qurucusu | **YOXDUR** (Phase 5D) |
+| Fay (fault) çarpanları MPFA-da | **YOXDUR** (Phase 5D, AÇIQ xəbərdarlıq verilir) |
+
+**TPFA reqressiyası**: `TwoPointFluxDiscretization` HEÇ DƏYİŞMƏYİB —
+düsturu, nəticələri, `default_flux_discretization()` DEFOLTU eynidir.
+`IFluxDiscretization`-a YALNIZ NON-ABSTRAKT, defoltu `False` olan
+`supports_multipoint_stencil()` əlavə edilib (geriyə uyğunluq pozulmur).
+`MPFADiscretizedGrid.compute_flux(d_phi)` QƏSDƏN `NotImplementedError`
+verir — çoxnöqtəli axını tək üzün `ΔΦ`-sindən uydurmaq metodu TPFA-ya
+çevirmək olardı.
+
+**Testlər**: `tests/test_mpfa_o.py` — 67 test (A–R kateqoriyaları,
+anti-pseudo-MPFA sübutu, əl ilə yoxlanıla bilən istinad halı,
+performans/yaddaş reqressiyası).
+
 ---
 
 ## 6. Növbəti modulun necə qoşulacağı

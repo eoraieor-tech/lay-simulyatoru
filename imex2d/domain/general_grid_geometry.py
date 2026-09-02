@@ -111,6 +111,15 @@ class GeneralGridGeometry:
         self.faces: List[GridFace] = []
         self._cell_face_indices: List[List[int]] = [[] for _ in range(self.ncell)]
         self._neighbor_lists: List[List[int]] = [[] for _ in range(self.ncell)]
+        #: (hüceyrə, YERLİ üz adı) -> qlobal üz indeksi. Phase 5A ƏLAVƏSİ
+        #: (bax `docs/mpfa_o_phase5a.md` §12) — MPFA-O bölgə qurucusu
+        #: "hüceyrə c-nin X+ üzü hansı qlobal üzdür?" sualına O(1)
+        #: cavab tələb edir. Qonşu üçün ƏKS ad qeyd olunur (EYNİ fiziki
+        #: üz, bax `_OPPOSITE_LOCAL_NAME`). HEÇ BİR mövcud davranış
+        #: dəyişmir — sadəcə əlavə axtarış cədvəli.
+        self._cell_local_face: Dict[Tuple[int, str], int] = {}
+        #: `Connections` sırası ilə hər əlaqənin qlobal üz indeksi.
+        self._connection_faces: List[int] = []
         self._build_faces()
 
         self._face_areas = np.array([gf.face.area() for gf in self.faces])
@@ -133,6 +142,7 @@ class GeneralGridGeometry:
                                          int(conn.axis[k]))
                 owner_name = _AXIS_LOCAL_NAMES[axis][1]        # owner-un + üzü
                 neighbor_name = _AXIS_LOCAL_NAMES[axis][0]     # neighbor-un - üzü (EYNİ fiziki üz)
+                self._connection_faces.append(len(self.faces))
                 self._add_face(owner, owner_name, neighbor)
                 covered.add((owner, owner_name))
                 covered.add((neighbor, neighbor_name))
@@ -149,8 +159,10 @@ class GeneralGridGeometry:
                      neighbor=neighbor, face=face_obj)
         self.faces.append(gf)
         self._cell_face_indices[owner].append(idx)
+        self._cell_local_face[(owner, owner_local_name)] = idx
         if neighbor is not None:
             self._cell_face_indices[neighbor].append(idx)
+            self._cell_local_face[(neighbor, _OPPOSITE_LOCAL_NAME[owner_local_name])] = idx
             self._neighbor_lists[owner].append(neighbor)
             self._neighbor_lists[neighbor].append(owner)
 
@@ -201,6 +213,31 @@ class GeneralGridGeometry:
 
     def is_boundary_face(self, face_index: int) -> bool:
         return self.faces[face_index].is_boundary
+
+    def face_index(self, cell: int, local_name: str) -> int:
+        """`cell` hüceyrəsinin YERLİ adı `local_name` ("X+", "Z-", ...)
+        olan üzünün QLOBAL indeksi — O(1) (bax `_cell_local_face`).
+
+        Phase 5A ƏLAVƏSİ (bax `docs/mpfa_o_phase5a.md` §12). Qonşu
+        tərəfdən soruşulanda EYNİ fiziki üzü qaytarır (məs. `cell_a`-nın
+        "X+" üzü ilə `cell_b`-nin "X-" üzü EYNİ indeksdir) — bu, MPFA-O
+        bölgəsində sub-üzlərin DEDUPLİKASİYASINI koordinat müqayisəsi
+        OLMADAN təmin edir."""
+        try:
+            return self._cell_local_face[(cell, local_name)]
+        except KeyError:
+            raise KeyError(f"Hüceyrə {cell} üçün '{local_name}' yerli üzü yoxdur "
+                           f"(etibarlı adlar: {sorted(HEX_FACE_VERTEX_INDICES)}).") from None
+
+    def connection_faces(self) -> np.ndarray:
+        """`Connections` sırası ilə hər əlaqəyə uyğun QLOBAL üz indeksi
+        — `(nconn,)`. `connections=None` verilibsə boş massiv.
+
+        Bu, TPFA (`Connections` üzərində işləyir) ilə MPFA-O
+        (`GeneralGridGeometry` üz indeksləri üzərində işləyir)
+        nəticələrini MÜQAYİSƏ etmək üçün YEGANƏ düzgün körpüdür —
+        indeks sırasının təsadüfən üst-üstə düşməsinə güvənmək YOX."""
+        return np.array(self._connection_faces, dtype=int)
 
     # ────────────────────────────────────── MPFA-yönlü həndəsi vektorlar
     def d_ij(self, face_index: int) -> np.ndarray:
