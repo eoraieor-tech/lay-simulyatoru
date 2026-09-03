@@ -168,13 +168,39 @@ class ExperimentalVariogram:
         return int(self.lags.size)
 
 
-def _pair_arrays(points: np.ndarray, values: np.ndarray):
-    """Yuxarı üçbucaq cüt indeksləri üçün `(dxy, dz, dv, horiz_dist)`."""
+#: Deneysel variogramda işlədilən MAKSİMUM cüt sayı. Bundan çox cüt
+#: olanda DETERMİNİSTİK təsadüfi alt-nümunə götürülür (bax
+#: `_pair_arrays`). 2·10⁶ hədd `n ≈ 2000` nöqtəyə uyğundur — bütün mövcud
+#: testlər (ən böyüyü 400 nöqtə = 80 min cüt) bu həddin ALTINDADIR, ona
+#: görə onların nəticəsi DƏQİQ və DƏYİŞMƏZ qalır.
+MAX_VARIOGRAM_PAIRS = 2_000_000
+
+#: Alt-nümunənin seed-i — SABİT, ona görə nəticə təkrarlana biləndir.
+_PAIR_SUBSAMPLE_SEED = 20240917
+
+
+def _pair_arrays(points: np.ndarray, values: np.ndarray,
+                 max_pairs: Optional[int] = MAX_VARIOGRAM_PAIRS):
+    """Yuxarı üçbucaq cüt indeksləri üçün `(dxy, dz, dv, horiz_dist, has_z)`.
+
+    `max_pairs` — cüt sayı bu həddi keçəndə DETERMİNİSTİK (sabit seed-li)
+    təsadüfi alt-nümunə götürülür. Səbəb: cüt sayı `n(n−1)/2`, yəni 5000
+    nöqtə üçün 12.5 milyon cüt — ölçülüb ki, bu, 858 MB pik yaddaş və
+    1.6 s vaxt deməkdir, halbuki variogram üçün bir neçə yüz min cüt
+    onsuz da statistik olaraq kifayətdir (hər lag-bində minlərlə cüt).
+
+    Alt-nümunə BƏRABƏR ehtimallıdır, ona görə lag paylanmasını TƏHRİF
+    ETMİR; `max_pairs=None` tam (dəqiq) hesablamanı bərpa edir."""
     n = points.shape[0]
     has_z = points.shape[1] == 3
     xy = points[:, :2]
     z = points[:, 2] if has_z else np.zeros(n)
     iu, ju = np.triu_indices(n, k=1)
+    if max_pairs is not None and iu.size > max_pairs:
+        rng = np.random.default_rng(_PAIR_SUBSAMPLE_SEED)
+        keep = rng.choice(iu.size, size=int(max_pairs), replace=False)
+        keep.sort()
+        iu, ju = iu[keep], ju[keep]
     dxy = xy[iu] - xy[ju]
     dz = z[iu] - z[ju]
     dv = values[iu] - values[ju]
@@ -213,7 +239,8 @@ def experimental_variogram(points: np.ndarray, values: np.ndarray, n_lags: int =
                            dip_tolerance_deg: float = 22.5,
                            min_pairs: int = 1,
                            bandwidth: Optional[float] = None,
-                           vertical_tolerance: Optional[float] = None
+                           vertical_tolerance: Optional[float] = None,
+                           max_pairs: Optional[int] = MAX_VARIOGRAM_PAIRS
                            ) -> ExperimentalVariogram:
     """Cüt-cüt lag məsafələrindən binlənmiş yarım-dəyişkənlik hesablayır::
 
@@ -252,6 +279,9 @@ def experimental_variogram(points: np.ndarray, values: np.ndarray, n_lags: int =
     `min_pairs` — bu qədər cütü olmayan binlər NƏTİCƏYƏ DAXİL EDİLMİR
     (mənasız `γ` nöqtəsi istehsal edilmir, A3.1).
 
+    `max_pairs` — çox böyük nöqtə çoxluğunda cüt alt-nümunəsi (bax
+    `_pair_arrays`); `None` tam hesablamadır.
+
     `vertical=True` — şaquli variogram: yalnız üfüqi məsafəsi
     `horizontal_tolerance`-dan kiçik olan cütlər (eyni/yaxın quyu, fərqli
     dərinlik) saxlanılır, lag isə |Δz|-dir. Uyğun cüt tapılmazsa `ValueError`
@@ -270,7 +300,7 @@ def experimental_variogram(points: np.ndarray, values: np.ndarray, n_lags: int =
     if n_lags < 1:
         raise ValueError(f"n_lags ≥ 1 olmalıdır, alındı: {n_lags}")
 
-    dxy, dz, dv, horiz_dist, has_z = _pair_arrays(points, values)
+    dxy, dz, dv, horiz_dist, has_z = _pair_arrays(points, values, max_pairs)
     warnings: List[str] = []
 
     if vertical:
@@ -443,6 +473,52 @@ class VariogramParameters:
         """Bax `validate_variogram_parameters` — metod formasında."""
         return validate_variogram_parameters(self.model, self.nugget, self.sill,
                                              self.range_, strict=strict)
+
+
+#: QAUSS modeli üçün MİNİMUM nugget (sillə nisbətdə) — bax
+#: `stabilizing_nugget()`. GSLIB-in klassik tövsiyəsi (~1%).
+GAUSSIAN_MIN_NUGGET_RATIO = 0.01
+
+
+def stabilizing_nugget(model: str, nugget: float, sill: float,
+                       ratio: float = GAUSSIAN_MIN_NUGGET_RATIO
+                       ) -> Tuple[float, Optional[str]]:
+    """QAUSS modelinin Kriging sistemini SABİTLƏŞDİRƏN minimum nugget.
+
+    PROBLEM (bu repozitoriyada ÖLÇÜLÜB, nəzəri iddia deyil): qauss
+    variogramı başlanğıcda PARABOLİKDİR (`γ ∝ h²`), ona görə bir-birinə
+    yaxın nöqtələrin kovariasiya matrisi demək olar TƏKİLDİR. Sistem
+    "uğurla" həll olunur (`Σwᵢ = 1` ödənir, solver `direct` bildirir),
+    AMMA çəkilər böyük müsbət/mənfi qiymətlərlə OSSİLYASİYA edir və
+    qiymət məlumat diapazonundan kənara çıxır.
+
+    ÖLÇÜLMÜŞ nümunə (60 nöqtə, `range=557`, `sill=2.6e-5`, 24 qonşu;
+    məlumat aralığı `[0.1508, 0.2100]`)::
+
+        nugget/sill = 0       → qiymət aralığı [−0.300, +1.126]   ← YARARSIZ
+        nugget/sill = 1e-6    → [−0.089, 0.794]
+        nugget/sill = 1e-4    → [ 0.028, 0.295]
+        nugget/sill = 1e-2    → [ 0.147, 0.225]                   ← sabit
+        (eksponensial/sferik model HƏR nugget üçün sabitdir)
+
+    HƏLL: qauss modeli seçiləndə nugget sillin ən azı `ratio` hissəsinə
+    qaldırılır. Bu, standart geostatistik təcrübədir (Deutsch & Journel,
+    GSLIB: qauss modeli HƏMİŞƏ kiçik nugget-lə işlədilir) və AÇIQ
+    xəbərdarlıqla bildirilir — səssiz düzəliş DEYİL.
+
+    Qaytarır: `(nugget, xəbərdarlıq|None)`. `ratio = 0` bu davranışı
+    tamamilə söndürür (istifadəçinin AÇIQ seçimi)."""
+    if model != MODEL_GAUSSIAN or ratio <= 0.0:
+        return float(nugget), None
+    minimum = float(ratio) * float(sill)
+    if nugget >= minimum:
+        return float(nugget), None
+    return minimum, (
+        f"Qauss variogramı üçün nugget {nugget:.4g} → {minimum:.4g} qaldırıldı "
+        f"(sillin {ratio * 100:.3g}%-i). Səbəb: qauss modeli başlanğıcda "
+        "parabolikdir, sıfıra yaxın nugget-lə Kriging matrisi demək olar təkil "
+        "olur və çəkilər ossilyasiya edərək qiyməti məlumat diapazonundan "
+        "kənara çıxarır (ölçülüb). `gaussian_min_nugget_ratio=0` ilə söndürülə bilər.")
 
 
 def validate_variogram_parameters(model: str, nugget: float, sill: float, range_: float,

@@ -43,8 +43,10 @@ from ..interfaces.interpolation import IPropertyInterpolator
 from .anisotropy import AnisotropyParams
 from .spatial_search import (SUPPORT_EXTRAPOLATED, BatchNeighborhood,
                              NeighborhoodConfig, NeighborhoodSelector)
-from .variogram import (MODEL_FUNCS, MODEL_SPHERICAL, AnisotropyDetectionResult,
-                        VariogramParameters, detect_anisotropy, fit_variogram_from_data,
+from .transforms import IDENTITY_TRANSFORM, LOG_TRANSFORM, LogTransform, ValueTransform
+from .variogram import (GAUSSIAN_MIN_NUGGET_RATIO, MODEL_FUNCS, MODEL_SPHERICAL,
+                        AnisotropyDetectionResult, VariogramParameters,
+                        detect_anisotropy, fit_variogram_from_data, stabilizing_nugget,
                         validate_variogram_parameters)
 
 # ── solver statusları (A1.5: hər ehtiyat yolu AÇIQ görünür) ────────────
@@ -176,6 +178,10 @@ class KrigingResult:
     support: np.ndarray                 #: `spatial_search.SUPPORT_*`
     neighborhood_status: np.ndarray     #: `spatial_search.STATUS_*`
     solver: np.ndarray                  #: `SOLVER_*`
+    #: Laqranj vuruğu `μ` — yansızlıq şərtinin qiyməti. Loq-normal geri
+    #: çevirmənin ADİ KRİGİNQ üçün düzgün orta düsturu buna ehtiyac duyur
+    #: (`exp(ŷ + σ²/2 − μ)`, bax `transforms.BackTransform.MEAN_OK`).
+    lagrange: np.ndarray
     anisotropy: AnisotropyParams
     model: str
     range_: float
@@ -410,6 +416,10 @@ class OrdinaryKriging(IPropertyInterpolator):
     honor_hard_data: str = "auto"
     #: qeyri-sonlu (NaN/±inf) giriş nöqtələri çıxarılsınmı (A1.3)
     drop_non_finite: bool = True
+    #: QAUSS variogramı üçün minimum nugget (sillə nisbətdə) — Kriging
+    #: sistemini sabitləşdirir, bax `variogram.stabilizing_nugget()`.
+    #: `0.0` bu davranışı söndürür.
+    gaussian_min_nugget_ratio: float = GAUSSIAN_MIN_NUGGET_RATIO
     name: str = "Kriging (adi)"
 
     supports_z = True
@@ -576,10 +586,19 @@ class OrdinaryKriging(IPropertyInterpolator):
         """`points_xy` — YALNIZ X,Y (Z auto-range təxminini korlamasın).
 
         Qaytarır: `(range_h, range_v, range_minor, azimuth_deg, sill,
-        nugget, model)` — hamısı bu çağırış üçün İSTİFADƏ OLUNACAQ faktiki
-        dəyərlər (fit/aşkarlanma nəticələri daxil). Nəticə HƏMİŞƏ
-        `validate_variogram_parameters()`-dən keçir (A3.7) — etibarsız
-        model solver-ə ÇATA BİLMİR.
+        nugget, model, model_nugget)` — hamısı bu çağırış üçün İSTİFADƏ
+        OLUNACAQ faktiki dəyərlər (fit/aşkarlanma nəticələri daxil).
+        Nəticə HƏMİŞƏ `validate_variogram_parameters()`-dən keçir (A3.7)
+        — etibarsız model solver-ə ÇATA BİLMİR.
+
+        `model_nugget` — SABİTLƏŞDİRMƏDƏN ƏVVƏLKİ nugget, yəni MODELİN
+        ÖZÜNÜN nugget effekti. Fərq VACİBDİR: `stabilizing_nugget()`
+        qauss modelinə ƏDƏDİ requlyarlaşdırma kimi kiçik nugget əlavə edir,
+        bu isə "ölçmədə səhv var" DEMƏK DEYİL. `honor_hard_data="auto"`
+        qərarı məhz `model_nugget`-ə baxır — əks halda sırf ədədi düzəliş
+        sərt datanın DƏQİQ honor edilməsini SÜKUTLA söndürərdi (tutulmuş
+        həqiqi səhv, bax `tests/test_property_strategies.py::
+        test_porosity_honours_hard_data_exactly`).
         """
         warnings: list = []
         fit: Optional[VariogramParameters] = None
@@ -623,13 +642,23 @@ class OrdinaryKriging(IPropertyInterpolator):
             except ValueError as exc:
                 warnings.append(f"Anizotropluq aşkarlanması alınmadı: {exc}")
 
+        # Qauss modelinin ədədi sabitliyi (ölçülmüş qüsur — bax
+        # `variogram.stabilizing_nugget` docstring-i). `model_nugget`
+        # SABİTLƏŞDİRMƏDƏN ƏVVƏLKİ dəyəri saxlayır (bax docstring).
+        model_nugget = float(nugget)
+        nugget, nugget_warning = stabilizing_nugget(
+            model, nugget, sill, self.gaussian_min_nugget_ratio)
+        if nugget_warning:
+            warnings.append(nugget_warning)
+
         # A3.7 — etibarsız parametr solver-ə ÇATMIR
         warnings.extend(validate_variogram_parameters(model, nugget, sill, range_h))
 
         self.last_fit_ = fit
         self.last_anisotropy_ = anisotropy
         self.last_warnings_ = warnings
-        return range_h, range_v, range_minor, azimuth_deg, sill, nugget, model
+        return (range_h, range_v, range_minor, azimuth_deg, sill, nugget, model,
+                model_nugget)
 
     def _build_anisotropy(self, range_h, range_v, range_minor, azimuth_deg
                           ) -> Tuple[AnisotropyParams, List[str]]:
@@ -733,8 +762,8 @@ class OrdinaryKriging(IPropertyInterpolator):
             return estimate, variance, self._empty_diagnostics(
                 m, estimate, variance, self.last_warnings_)
 
-        (range_h, range_v, range_minor, azimuth_deg, sill, nugget,
-         model) = self._parameters(points3[:, :2], values)
+        (range_h, range_v, range_minor, azimuth_deg, sill, nugget, model,
+         model_nugget) = self._parameters(points3[:, :2], values)
         warnings = warnings + self.last_warnings_
         anisotropy, aniso_warnings = self._build_anisotropy(
             range_h, range_v, range_minor, azimuth_deg)
@@ -754,55 +783,57 @@ class OrdinaryKriging(IPropertyInterpolator):
         self.last_warnings_ = warnings
 
         if config is None:
-            estimate, variance, solver = self._solve_global_path(
+            estimate, variance, solver, lagrange = self._solve_global_path(
                 scaled_points, values, scaled_targets, target_ok, range_h, sill,
-                nugget, model)
+                nugget, model, model_nugget)
             neighbor_count = np.where(target_ok, n, 0)
             batch: Optional[BatchNeighborhood] = None
             nearest_index, nearest_distance = self._nearest_hard_data(
-                scaled_points, scaled_targets, nugget)
+                scaled_points, scaled_targets, model_nugget)
         else:
             (estimate, variance, solver, neighbor_count, batch,
-             nearest_index, nearest_distance) = self._solve_local_path(
+             nearest_index, nearest_distance, lagrange) = self._solve_local_path(
                 scaled_points, values, scaled_targets, target_ok, range_h, sill,
                 nugget, model, config, points3, targets3)
 
         estimate, variance, solver = self._honor_hard_data(
-            values, nearest_index, nearest_distance, target_ok, nugget,
+            values, nearest_index, nearest_distance, target_ok, model_nugget,
             estimate, variance, solver)
 
         if not want_diagnostics:
             return estimate, variance, None
 
         result = self._build_diagnostics(
-            estimate, variance, solver, neighbor_count, batch,
+            estimate, variance, solver, lagrange, neighbor_count, batch,
             scaled_points, scaled_targets, target_ok, anisotropy, model, range_h,
             sill, nugget, config is not None, warnings)
         return estimate, variance, result
 
     # ── qlobal (kiçik məlumat çoxluğu) yol ────────────────────────────
     def _solve_global_path(self, points, values, targets, target_ok, range_h, sill,
-                           nugget, model):
+                           nugget, model, model_nugget=None):
         """Bütün nöqtələrlə TƏK sistem — kiçik quyu çoxluğu üçün.
 
         Sistem BİR DƏFƏ qurulub `m` sağ tərəflə həll olunur (`O(n³ + n²m)`),
         yəni hər hüceyrə üçün YENİDƏN həll YOXDUR. `auto_local_threshold`-
         dan böyük çoxluqda bu yol ÇAĞIRILMIR (bax `_neighborhood_config`).
         """
-        estimate, variance = self._solve_global(points, values, targets, range_h,
-                                                sill, nugget, model,
-                                                return_variance=True)
+        estimate, variance, lagrange = self._solve_global(
+            points, values, targets, range_h, sill, nugget, model,
+            return_variance=True, return_lagrange=True, model_nugget=model_nugget)
         solver = np.full(targets.shape[0], SOLVER_DIRECT, dtype=object)
         if points.shape[0] == 1:
             solver[:] = SOLVER_SINGLE_VALUE
         if not np.all(target_ok):
             estimate = np.where(target_ok, estimate, np.nan)
             variance = np.where(target_ok, variance, np.nan)
+            lagrange = np.where(target_ok, lagrange, np.nan)
             solver[~target_ok] = SOLVER_NONE
-        return estimate, variance, solver
+        return estimate, variance, solver, lagrange
 
     def _solve_global(self, points, values, targets, range_h, sill, nugget, model,
-                      return_variance: bool = False):
+                      return_variance: bool = False, return_lagrange: bool = False,
+                      model_nugget: Optional[float] = None):
         """Bütün nöqtələrlə TƏK kriging sistemi.
 
         `return_variance=True` — kriging variansı `σ²(x0) = Σ w_i·
@@ -818,8 +849,10 @@ class OrdinaryKriging(IPropertyInterpolator):
         left[n, n] = 0.0
 
         right = np.ones((n + 1, targets.shape[0]))
-        right[:n, :] = self._variogram(_distance_matrix(points, targets), range_h,
-                                       sill, nugget, model, zero_at_origin=nugget <= 0.0)
+        effective_nugget = nugget if model_nugget is None else model_nugget
+        right[:n, :] = self._variogram(
+            _distance_matrix(points, targets), range_h, sill, nugget, model,
+            zero_at_origin=effective_nugget <= 0.0)
 
         try:
             solution = np.linalg.solve(left, right)
@@ -829,9 +862,11 @@ class OrdinaryKriging(IPropertyInterpolator):
         weights = solution[:n, :]
         result = (weights * values[:, None]).sum(axis=0)
 
-        # nugget sıfırdırsa kriging dəqiq interpolyatordur — nöqtələri bərpa edirik
+        # MODELİN nugget-i sıfırdırsa kriging dəqiq interpolyatordur —
+        # nöqtələri bərpa edirik. `model_nugget` verilməyəndə `nugget`-in
+        # özü işlədilir (Phase A davranışı, `_solve_local` üçün).
         exact_rows = None
-        if nugget <= 0.0:
+        if (nugget if model_nugget is None else model_nugget) <= 0.0:
             hits = _distance_matrix(targets, points) < 1e-9
             rows, columns = np.where(hits)
             result[rows] = values[columns]
@@ -840,10 +875,13 @@ class OrdinaryKriging(IPropertyInterpolator):
         if not return_variance:
             return result
 
+        lagrange = solution[n, :].copy()
         variance = np.sum(weights * right[:n, :], axis=0) + solution[n, :]
         variance = np.clip(variance, 0.0, None)
         if exact_rows is not None:
             variance[exact_rows] = 0.0
+        if return_lagrange:
+            return result, variance, lagrange
         return result, variance
 
     # ── yerli yol (istehsal yolu) ─────────────────────────────────────
@@ -867,6 +905,7 @@ class OrdinaryKriging(IPropertyInterpolator):
         m = targets.shape[0]
         estimate = np.full(m, np.nan)
         variance = np.full(m, np.nan)
+        lagrange = np.full(m, np.nan)
         solver = np.full(m, SOLVER_NONE, dtype=object)
 
         # A2.6 — XAM |ΔZ| kəsiyi XAM Z-yə görə ölçülməlidir, ona görə
@@ -897,15 +936,16 @@ class OrdinaryKriging(IPropertyInterpolator):
             for start in range(0, rows_array.size, chunk):
                 block = rows_array[start:start + chunk]
                 idx = index_matrix[start:start + chunk]
-                est, var, status = self._solve_group(
+                est, var, status, mu = self._solve_group(
                     points, values, targets[block], idx, range_h, sill, nugget,
                     model, total_sill)
                 estimate[block] = est
                 variance[block] = var
                 solver[block] = status
+                lagrange[block] = mu
 
         return (estimate, variance, solver, neighbor_count, batch,
-                nearest_index, nearest_distance)
+                nearest_index, nearest_distance, lagrange)
 
     @staticmethod
     def _use_tree(n_targets: int, points: np.ndarray) -> bool:
@@ -943,8 +983,9 @@ class OrdinaryKriging(IPropertyInterpolator):
         solution, status = _solve_batch(left, right, target_distance, total_sill)
         weights = solution[:, :k]
         estimate = np.sum(weights * values[index_matrix], axis=1)
-        variance = np.sum(weights * right[:, :k], axis=1) + solution[:, k]
-        return estimate, np.clip(variance, 0.0, None), status
+        lagrange = solution[:, k]
+        variance = np.sum(weights * right[:, :k], axis=1) + lagrange
+        return estimate, np.clip(variance, 0.0, None), status, lagrange
 
     # ── sərt datanın DƏQİQ honor edilməsi (A1.4) ──────────────────────
     def _nearest_hard_data(self, points, targets, nugget):
@@ -1011,11 +1052,12 @@ class OrdinaryKriging(IPropertyInterpolator):
             support=np.full(m, SUPPORT_EXTRAPOLATED, dtype=object),
             neighborhood_status=np.full(m, "empty", dtype=object),
             solver=np.full(m, SOLVER_NONE, dtype=object),
+            lagrange=np.full(m, np.nan),
             anisotropy=AnisotropyParams(), model=self.model if self.model != "auto"
             else MODEL_SPHERICAL, range_=float("nan"), sill=float("nan"),
             nugget=float(self.nugget), local=False, warnings=list(warnings))
 
-    def _build_diagnostics(self, estimate, variance, solver, neighbor_count,
+    def _build_diagnostics(self, estimate, variance, solver, lagrange, neighbor_count,
                            batch, points, targets, target_ok, anisotropy,
                            model, range_h, sill, nugget, local, warnings) -> KrigingResult:
         """Hər hədəf üçün dəstək təsnifatı + status massivləri.
@@ -1045,6 +1087,7 @@ class OrdinaryKriging(IPropertyInterpolator):
             nearest_distance=nearest,
             extrapolated=(support == SUPPORT_EXTRAPOLATED),
             support=support, neighborhood_status=status, solver=solver,
+            lagrange=np.asarray(lagrange, float),
             anisotropy=anisotropy, model=model, range_=float(range_h),
             sill=float(sill), nugget=float(nugget), local=local,
             fit=self.last_fit_, warnings=list(warnings))
@@ -1057,48 +1100,15 @@ INTERPOLATORS = {
 }
 
 
-# ── xassə-yönlü çevirmələr (A6 genişlənmə nöqtəsi) ─────────────────────
-class ValueTransform:
-    """Dəyər fəzası çevirməsi — interpolyasiya BAŞQA fəzada aparılsın deyə.
-
-    Məkan/Kriging özəyi (A1–A4) dəyərin fiziki mənasını BİLMİR; hər xassə
-    üçün uyğun fəza bu interfeyslə verilir. Part B (log-keçiricilik,
-    hədli doyma/NTG, kateqorik fasiya, SGS) BU sinfin yeni
-    implementasiyalarını əlavə edərək işləyəcək — məkan özəyini YENİDƏN
-    YAZMADAN.
-
-    Müqavilə: `inverse(forward(v)) ≈ v` və hər ikisi element-üzrə.
-    """
-
-    name = "identity"
-
-    def forward(self, values: np.ndarray) -> np.ndarray:
-        return np.asarray(values, float)
-
-    def inverse(self, values: np.ndarray) -> np.ndarray:
-        return np.asarray(values, float)
-
-
-class LogTransform(ValueTransform):
-    """`ln(v)` — log-normal xassələr (keçiricilik) üçün.
-
-    Bütün dəyərlər müsbət OLMALIDIR; əks halda AÇIQ `ValueError`
-    (səssiz kəsmə/əvəzləmə YOX)."""
-
-    name = "log"
-
-    def forward(self, values: np.ndarray) -> np.ndarray:
-        values = np.asarray(values, float)
-        if np.any(values <= 0):
-            raise ValueError("Log interpolyasiya üçün bütün dəyərlər müsbət olmalıdır.")
-        return np.log(values)
-
-    def inverse(self, values: np.ndarray) -> np.ndarray:
-        return np.exp(np.asarray(values, float))
-
-
-IDENTITY_TRANSFORM = ValueTransform()
-LOG_TRANSFORM = LogTransform()
+# ── xassə-yönlü çevirmələr (A6 genişlənmə nöqtəsi → Phase B) ──────────
+# Bu siniflər Phase A-da BURADA yaradılmışdı; Phase B onları
+# `geology/transforms.py`-yə köçürdü və genişləndirdi (logit, normal-score,
+# geri-çevirmə modları, varians köçürməsi). İKİ implementasiya SAXLANMIR
+# — burada YALNIZ geriyə-uyğun ad bağlantısı var, ona görə mövcud
+# `from .interpolation import ValueTransform/LogTransform` idxalları
+# işləməyə davam edir və EYNİ obyektləri qaytarır.
+_LEGACY_TRANSFORM_EXPORTS = (ValueTransform, LogTransform, IDENTITY_TRANSFORM,
+                             LOG_TRANSFORM)
 
 
 def interpolate_property(interpolator: IPropertyInterpolator,
