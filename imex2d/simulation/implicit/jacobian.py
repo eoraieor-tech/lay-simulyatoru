@@ -27,16 +27,37 @@ STANDART SADƏLƏŞDİRMƏLƏR (sənaye simulyatorlarında da belədir):
 Hər ikisi Nyutonun yığılma sürətinə cüzi təsir edir, doğruluğuna yox —
 çünki konvergensiya qalığa görə yoxlanılır, Jakobiana görə yox.
 
-MPFA-O HAZIRLIĞI (audit — Phase: "Numerical Discretization Architecture
-Preparation", BU FAYL DƏYİŞDİRİLMƏYİB, yalnız sənədləşdirilib):
-`_build_pattern()` HƏR üz üçün DƏQİQ 2-hüceyrəli blok fərz edir
-(`cell_a`↔`cell_a/b`, `cell_b`↔`cell_a/b`) — MPFA-O interaction-region
-stensili bunu N-hüceyrəli edəcək. `_flux()` `self.R.transmissibility`-ni
-BİRBAŞA oxuyur və ∂ΔΦ/∂p_a=+1, ∂ΔΦ/∂p_b=−1 tək-cüt fərziyyəsi ilə işləyir
-— MPFA-O gələndə bu, diskretizasiya qatının (bax `../discretization.py`)
-öz Jacobian-töhfəsini qaytaran yeni bir metodla əvəz olunmalıdır. Tam
-izah: `../discretization.py` modul docstring-i, "Jacobian inteqrasiya
-nöqtəsi" bölməsi.
+PHASE 5B-2 — MPFA-O ANALİTİK JACOBIAN (bu fayl artıq DƏYİŞDİRİLİB):
+
+`_flux()`/`_build_pattern()` (TPFA, YUXARIDA, BİR SƏTİR BELƏ DƏYİŞMƏDİ)
+`self.R.transmissibility`-ni BİRBAŞA oxuyur, ∂ΔΦ/∂p_a=+1, ∂ΔΦ/∂p_b=−1
+tək-cüt fərziyyəsi ilə. `ResidualAssembler._multipoint=True` (MPFA-O)
+olanda ƏVƏZİNƏ `_flux_multipoint()`/`_build_pattern_diag_only()` işə
+düşür (bax aşağıda, "PHASE 5B-2" bölməsi) — bu, `docs/mpfa_o_phase5b1.md`
+§11-in "qalan" siyahısını tamamlayır: `∂M_α/∂p`, `∂M_α/∂S_w`, `∂Φ/∂S_w`
+(kapilyar) İNDİ çoxnöqtəli stensillə hesablanır, `T_conn`-un (Phase 5B-1,
+`MPFAGlobalOperator`) HƏNDƏSƏ/K-dan asılı, dövlətdən ASILI OLMAYAN seyrək
+matrisindən İSTİFADƏ edərək — heç bir lokal MPFA sistemi TƏKRAR
+QURULMUR, heç bir sonlu-fərq QISAYOLU yoxdur (tapşırıq §23/§26 — analitik
+düstur aşağıda İKİ-NÖQTƏLİ HƏDDƏ endirilib və TPFA-nın öz `_flux()`-u ilə
+ƏL İLƏ yoxlanıb, bax `tests/test_mpfa_jacobian.py`).
+
+Riyazi düstur (su fazası üçün, neft analojidir, `Pc` üzvü YOXDUR):
+
+    Φ_w,j = p_j − Pc_j(Sw_j) − ρ_w,j(p_j)·g·D_j·PA_TO_BAR    (HÜCEYRƏ, `cell_potentials`)
+    q_pot,f = Σ_j T_conn[f,j]·Φ_w,j                            (T_conn — Phase 5B-1, DÖVLƏTSİZ)
+    u(f) = upstream(q_pot,f)                                   (TƏK hüceyrə, DİFERENSİALLAŞMIR — TPFA-dakı EYNİ sadələşdirmə)
+    q_w,f = q_pot,f · M_w[u(f)],    M_w = λ_w/B_w
+
+    ∂q_w,f/∂p_j  = M_w[u(f)]·T_conn[f,j]  +  q_pot,f·∂M_w/∂p[u(f)]·[j=u(f)]
+    ∂q_w,f/∂Sw_j = M_w[u(f)]·T_conn[f,j]·(−∂Pc_j/∂Sw_j)  +  q_pot,f·∂M_w/∂Sw[u(f)]·[j=u(f)]
+
+Birinci həd (BAZA, `T·M`) — bütün stensil sütunlarına; ikinci həd
+(UPSTREAM mobilitə törəməsi, TPFA-dakı `ΔΦ·∂M/∂p[a]` üzvünün analoqu) —
+YALNIZ `u(f)` sütununa. İkiqat oxşarlıq (`D_R[a,f]=+1,D_R[b,f]=−1`
+işarəsi ilə) İKİ-NÖQTƏLİ HƏDDƏ (`T_conn[f,a]=T,T_conn[f,b]=−T`) qoyulanda
+TPFA-nın mövcud `_flux()` düsturunu BİRƏBİR (4 element: aa/ab/ba/bb)
+bərpa edir — `tests/test_mpfa_jacobian.py::test_two_point_limit_matches_tpfa_jacobian_exactly`.
 """
 
 from __future__ import annotations
@@ -67,33 +88,16 @@ class JacobianAssembler:
             capillary=residual_assembler.capillary,
             fluids=self.model.fluids,
             reference_pressure=residual_assembler.reference_pressure)
-        self._reject_multipoint(residual_assembler)
-        self._build_pattern()
-
-    @staticmethod
-    def _reject_multipoint(residual_assembler: ResidualAssembler) -> None:
-        """ÇOXNÖQTƏLİ (MPFA-O) diskretizasiya ilə AÇIQ imtina — Phase 5B-2.
-
-        `_build_pattern()` hər üz üçün DƏQİQ 2-hüceyrəli blok, `_flux()`
-        isə `∂ΔΦ/∂p_a = +1`, `∂ΔΦ/∂p_b = −1` fərz edir. MPFA-O stensili
-        bir üzdə 18-ə qədər hüceyrəni bağlayır, ona görə bu Jakobian
-        MPFA qalığının HƏQİQİ törəməsi OLMAZDI. Səssizcə davam etmək
-        Nyutonu YANLIŞ (uyğunsuz) Jakobianla işlədərdi — tapşırıq §24
-        bunu QADAĞAN edir.
-
-        HƏQİQİ bağlantı naxışı hazırdır: `grid.global_stencil_pattern()`
-        (bax `imex2d/discretization/mpfa_global.py`), Phase 5B-2 məhz
-        ondan istifadə edəcək.
-        """
-        if not getattr(residual_assembler, "_multipoint", False):
-            return
-        raise NotImplementedError(
-            "MPFA-O ilə analitik Jacobian HƏLƏ İMPLEMENT EDİLMƏYİB (Phase 5B-2). "
-            "`JacobianAssembler` hər üz üçün 2-hüceyrəli blok fərz edir, MPFA-O "
-            "stensili isə çoxnöqtəlidir — bu Jacobian MPFA qalığının törəməsi "
-            "OLMAZDI. Phase 5B-1-də MPFA YALNIZ QALIQ qiymətləndirməsi üçün "
-            "işlədilə bilər (`ResidualAssembler.residual(...)`). Bax "
-            "docs/mpfa_o_phase5b1.md §11.")
+        #: ÇOXNÖQTƏLİ (MPFA-O) yolu — `ResidualAssembler`-in ÖZ (duck-typed)
+        #: bayrağı ilə EYNİ (bax `residual.py`). Phase 5B-2: bu ARTIQ AÇIQ
+        #: rədd EDİLMİR — `_build_pattern_diag_only()` + `_flux_multipoint()`
+        #: işə düşür (aşağıda). TPFA yolu (`_multipoint=False`) BİR SƏTİR
+        #: BELƏ dəyişmədi.
+        self._multipoint = bool(getattr(residual_assembler, "_multipoint", False))
+        if self._multipoint:
+            self._build_pattern_diag_only()
+        else:
+            self._build_pattern()
 
     # ═════════════════════════════════════════════ struktur (bir dəfə)
     def _build_pattern(self):
@@ -150,6 +154,45 @@ class JacobianAssembler:
                                                                   offset + count)
                     offset += count
 
+    # ═════════════════════════════ struktur (bir dəfə) — PHASE 5B-2: MPFA-O
+    def _build_pattern_diag_only(self):
+        """`_build_pattern()`-in DİAQONAL-YALNIZ variantı — akkumulyasiya
+        VƏ quyular (`_accumulation`/`_wells`, BİR SƏTİR BELƏ DƏYİŞMƏDƏN,
+        MPFA-da da hüceyrə-lokaldır) üçün EYNİ `_set`/`_add` mexanizmini
+        işlədir. Axın (`_flux_multipoint`) BU naxışdan KƏNARDA, AYRI seyrək
+        matris kimi qurulur (çoxnöqtəli stensil — sabit 2-hüceyrəli blok
+        fərziyyəsi YOXDUR) və `assemble()`-də bu matrisə ƏLAVƏ OLUNUR."""
+        cells = np.arange(self.ncell)
+        rows, cols = [], []
+        for phase in (WATER, OIL):
+            for variable in (PRESSURE, WATER_SATURATION):
+                rows.append(cells * VARIABLES_PER_CELL + phase)
+                cols.append(cells * VARIABLES_PER_CELL + variable)
+        self._rows = np.concatenate(rows)
+        self._cols = np.concatenate(cols)
+        self._values = np.zeros(self._rows.size)
+
+        entries = np.arange(self._rows.size, dtype=np.int64)
+        pattern = sp.coo_matrix((entries + 1.0, (self._rows, self._cols)),
+                                shape=(self.size, self.size)).tocsr()
+        pattern.sum_duplicates()
+        self._matrix = sp.csr_matrix(
+            (np.zeros(pattern.nnz), pattern.indices.copy(),
+             pattern.indptr.copy()), shape=(self.size, self.size))
+        locator = sp.csr_matrix(
+            (np.arange(pattern.nnz, dtype=np.int64), pattern.indices.copy(),
+             pattern.indptr.copy()), shape=(self.size, self.size))
+        self._data_index = np.asarray(
+            locator[self._rows, self._cols]).ravel().astype(np.int64)
+        self._nnz = pattern.nnz
+
+        self._slices = {}
+        offset = 0
+        for phase in (WATER, OIL):
+            for variable in (PRESSURE, WATER_SATURATION):
+                self._slices[("diag", phase, variable)] = slice(offset, offset + self.ncell)
+                offset += self.ncell
+
     def _set(self, name, phase, variable, values):
         self._values[self._slices[(name, phase, variable)]] = values
 
@@ -159,6 +202,9 @@ class JacobianAssembler:
     # ═══════════════════════════════════════════════════════ yığım
     def assemble(self, state: ReservoirState, fluid: FluidState,
                  dt: float) -> sp.csr_matrix:
+        if self._multipoint:
+            return self._assemble_multipoint(state, fluid, dt)
+
         self._values[:] = 0.0
         self._accumulation(state, fluid, dt)
         self._flux(state, fluid)
@@ -168,6 +214,21 @@ class JacobianAssembler:
                                            weights=self._values,
                                            minlength=self._nnz)
         return self._matrix
+
+    # ═══════════════════════════════════ yığım (PHASE 5B-2: MPFA-O) ─────
+    def _assemble_multipoint(self, state: ReservoirState, fluid: FluidState,
+                             dt: float) -> sp.csr_matrix:
+        """Akkumulyasiya/quyular (diaqonal, `_accumulation`/`_wells`
+        DƏYİŞMƏDƏN) + çoxnöqtəli axın Jacobian-ı (`_flux_multipoint`,
+        AYRI seyrək matris) — ƏLAVƏ olaraq CSR toplanır."""
+        self._values[:] = 0.0
+        self._accumulation(state, fluid, dt)
+        self._wells(state, fluid)
+        self._matrix.data[:] = np.bincount(self._data_index,
+                                           weights=self._values,
+                                           minlength=self._nnz)
+        flux_matrix = self._flux_multipoint(state, fluid)
+        return (self._matrix + flux_matrix).tocsr()
 
     # ─────────────────────────────────────────────── akkumulyasiya
     def _accumulation(self, state: ReservoirState, fluid: FluidState,
@@ -253,6 +314,82 @@ class JacobianAssembler:
             self._set("ba", phase, WATER_SATURATION, -dsa)
             self._set("bb", phase, PRESSURE, -dpb)
             self._set("bb", phase, WATER_SATURATION, -dsb)
+
+    # ─────────────────────────────── axın (PHASE 5B-2: MPFA-O, ÇOXNÖQTƏLİ)
+    def _flux_multipoint(self, state: ReservoirState, fluid: FluidState) -> sp.csr_matrix:
+        """MPFA-O axınının `(2N × 2N)` Jacobian töhfəsi — bax modul
+        docstring-i (düstur + iki-nöqtəli həddə TPFA-ya bərabərliyin
+        izahı). `T_conn` (Phase 5B-1, `MPFAGlobalOperator`) HƏNDƏSƏ/K-dan
+        asılı, DÖVLƏTDƏN asılı DEYİL — burada YALNIZ oxunur, YENİDƏN
+        QURULMUR."""
+        grid = self.R.grid
+        operator = grid.global_operator
+        conn = self.R.connections
+        a, b = conn.cell_a, conn.cell_b
+        nconn = conn.count
+        T_conn = operator.T_conn
+
+        phi_w, phi_o = self.R.cell_potentials(state, fluid)
+        q_pot_w = np.asarray(T_conn @ phi_w).ravel()
+        q_pot_o = np.asarray(T_conn @ phi_o).ravel()
+        u_w = grid.upstream_cells(q_pot_w)
+        u_o = grid.upstream_cells(q_pot_o)
+
+        mobility_w = fluid.lam_w / fluid.bw
+        mobility_o = fluid.lam_o / fluid.bo
+        dmw_dp, dmw_dsw = self.derivatives.water_transport_derivatives(
+            state.pressure, state.water_saturation, fluid)
+        dmo_dp, dmo_dsw = self.derivatives.oil_transport_derivatives(
+            state.pressure, state.water_saturation, fluid)
+        dpc = self.derivatives.dpc_dsw(state.water_saturation)
+
+        # D_R: (ncell × nconn) — `cell_a`: +1, `cell_b`: −1. Bu, `_flux()`-un
+        # ("aa"=+dpa, "ba"=−dpa) mövcud işarə konvensiyası ilə EYNİDİR
+        # (bax modul docstring-i, iki-nöqtəli həddə yoxlanılıb) — `Residual
+        # Assembler.net_influx`-un `np.add.at` işarəsi (`cell_a`: −, `cell_b`:
+        # +) ilə QARIŞDIRILMASIN: `R = acc/dt − influx − q`, ona görə
+        # `∂R/∂flux` = `−∂influx/∂flux`, işarə burada ARTIQ HESABA ALINIB.
+        idx = np.arange(nconn)
+        d_rows = np.concatenate([a, b])
+        d_cols = np.concatenate([idx, idx])
+        d_vals = np.concatenate([np.ones(nconn), -np.ones(nconn)])
+        D_R = sp.coo_matrix((d_vals, (d_rows, d_cols)),
+                            shape=(self.ncell, nconn)).tocsr()
+
+        def base(mobility_at_upstream: np.ndarray,
+                column_scale: Optional[np.ndarray] = None) -> sp.csr_matrix:
+            """`D_R · diag(M[u]) · T_conn[· diag(column_scale)]` — BAZA
+            (`T·M`) həddi, bütün stensil sütunlarına."""
+            matrix = T_conn if column_scale is None else T_conn @ sp.diags(column_scale)
+            scaled = sp.diags(mobility_at_upstream) @ matrix
+            return (D_R @ scaled).tocsr()
+
+        def extra(q_pot: np.ndarray, upstream: np.ndarray,
+                 d_mobility_at_upstream: np.ndarray) -> sp.csr_matrix:
+            """UPSTREAM mobilitə-törəməsi həddi — YALNIZ `u(f)` sütununa
+            (TPFA-dakı `ΔΦ·∂M/∂x[upstream]` üzvünün çoxnöqtəli analoqu)."""
+            weighted = q_pot * d_mobility_at_upstream
+            rows = np.concatenate([a, b])
+            cols = np.concatenate([upstream, upstream])
+            values = np.concatenate([weighted, -weighted])
+            return sp.coo_matrix((values, (rows, cols)),
+                                 shape=(self.ncell, self.ncell)).tocsr()
+
+        j_water_p = base(mobility_w[u_w]) + extra(q_pot_w, u_w, dmw_dp[u_w])
+        j_water_s = (base(mobility_w[u_w], column_scale=-dpc)
+                    + extra(q_pot_w, u_w, dmw_dsw[u_w]))
+        j_oil_p = base(mobility_o[u_o]) + extra(q_pot_o, u_o, dmo_dp[u_o])
+        j_oil_s = extra(q_pot_o, u_o, dmo_dsw[u_o])   # Φ_o Sw-dan asılı deyil → baza yoxdur
+
+        def place(block: sp.csr_matrix, phase: int, variable: int) -> sp.coo_matrix:
+            coo = block.tocoo()
+            rows = coo.row * VARIABLES_PER_CELL + phase
+            cols = coo.col * VARIABLES_PER_CELL + variable
+            return sp.coo_matrix((coo.data, (rows, cols)), shape=(self.size, self.size))
+
+        total = (place(j_water_p, WATER, PRESSURE) + place(j_water_s, WATER, WATER_SATURATION)
+                + place(j_oil_p, OIL, PRESSURE) + place(j_oil_s, OIL, WATER_SATURATION))
+        return total.tocsr()
 
     # ───────────────────────────────────────────────────── quyular
     def _wells(self, state: ReservoirState, fluid: FluidState) -> None:

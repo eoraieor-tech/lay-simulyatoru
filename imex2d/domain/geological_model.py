@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 from .facies_field import FaciesField
 from .geometry import CellGeometry
 from .grid import CartesianGrid
-from .properties import PropertyMap
+from .properties import CategoricalUncertainty, PropertyMap, PropertyUncertainty
 from .structure import FaultReference, HorizonReference, RegionSet
 from .validation import validate_permeability, validate_porosity
 
@@ -69,10 +69,25 @@ class GeologicalModel:
     #: (SATNUM/SCAL region, stoxastik DEYİL) AYRICA saxlanılır, bax
     #: `domain/facies_field.py` modul docstring-i.
     facies_fields: Dict[str, FaciesField] = field(default_factory=dict)
+    #: Xassə adı -> `PropertyUncertainty`/`CategoricalUncertainty` (Phase B
+    #: inteqrasiyası). `property_maps`-dan AYRICA saxlanılır ki, mövcud
+    #: `PropertyMap` (sadə massiv) formatı DƏYİŞMƏSİN — geriyə-uyğun, defolt
+    #: boş lüğət (bax `add_uncertainty`).
+    uncertainty: Dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.regions is None:
             self.regions = RegionSet.single(self.grid.ncell)
+
+    def add_uncertainty(self, name: str, uncertainty) -> None:
+        if not isinstance(uncertainty, (PropertyUncertainty, CategoricalUncertainty)):
+            raise TypeError(
+                f"{name}: uncertainty PropertyUncertainty/CategoricalUncertainty "
+                f"olmalıdır, alındı {type(uncertainty).__name__}")
+        if uncertainty.ncell != self.grid.ncell:
+            raise ValueError(
+                f"{name}: hüceyrə sayı uyğun gəlmir ({uncertainty.ncell} != {self.grid.ncell})")
+        self.uncertainty[name] = uncertainty
 
     def add_facies_field(self, facies: FaciesField) -> None:
         if facies.ncell != self.grid.ncell:

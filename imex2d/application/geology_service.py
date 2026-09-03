@@ -3,19 +3,35 @@
     Karotaj interpretasiyası (xaricdə)
         ↓  CSV
     WellDataset
-        ↓  xassə növü: KƏSİLMƏZ → interpolyasiya (IDW/Kriging)
-        ↓             KATEQORİK → Sequential Indicator Simulation (Phase 4.1)
+        ↓  xassə növü: KƏSİLMƏZ → Phase B xassə-strategiyalı interpolyasiya
+        ↓             KATEQORİK → Sequential Indicator Simulation (Phase 4.1,
+        ↓                        defolt) / Phase B indikator kriginq (opt-in)
     GeologicalModel  →  ReservoirModel  →  Simulyasiya
 
 Bu qat interpolyasiya alqoritmini TANIMIR — yalnız IPropertyInterpolator
-interfeysini bilir. Alqoritm konstruktora inject edilir.
+interfeysini bilir. Alqoritm konstruktora inject edilir; bu, HƏLƏ DƏ
+sərt-data honoring/qonşuluq/variogram ÖZƏYİ üçün doğrudur (`_kriging_
+overrides` vasitəsilə inject edilmiş `OrdinaryKriging`-in AÇIQ dəyişdirdiyi
+sahələr Phase B mühərrikinə ötürülür). Amma XASSƏNİN STATİSTİK TƏBİƏTİ
+(çevirmə/hədlər/interpolyasiya NÖVÜ) artıq `geology/property_config.
+PropertyStrategy` reyestrindən HƏLL OLUNUR (B-INTEGRATION-FIX) — bax
+`_resolve_property_strategy`/`_interpolate_volume`.
 
-KRİTİK ELMİ QAYDA (Phase 4.1): heç bir KATEQORİK xassə (bax
-`geology/property_types.py`) `interpolate_property()`-dən (kəsilməz
-Kriging/IDW) KEÇMİR. Bu, `_interpolate_volume` daxilində AÇIQ yoxlanılır
-(bax `build()`) — kateqorik sütun aşkarlansa, KƏSİLMƏZ yol heç
-ÇAĞIRILMIR, bunun əvəzinə `_simulate_categorical_field()` (SIS,
-`geology/facies.py`) işə düşür.
+KRİTİK ELMİ QAYDA (Phase 4.1, B-INTEGRATION-FIX-də DƏYİŞMƏDƏN qalıb): heç
+bir KATEQORİK xassə (bax `geology/property_types.py`) kəsilməz Kriging/IDW-
+dən KEÇMİR. Bu, `_interpolate_volume` daxilində AÇIQ yoxlanılır (bax
+`build()`) — kateqorik sütun aşkarlansa, KƏSİLMƏZ yol heç ÇAĞIRILMIR,
+bunun əvəzinə `_simulate_categorical_field()` (SIS) və ya (bax
+`FaciesBuildConfig.deterministic`) Phase B `interpolate_categorical_field()`
+işə düşür — hər ikisi indikator-əsaslıdır, HEÇ BİRİ fasiya kodunu ədədi
+kəsilməz dəyər kimi kriging etmir (GATE B4).
+
+KÖHNƏ Phase A `geology.interpolation.interpolate_property()` ARTIQ bu
+modulda ÇAĞIRILMIR (bax B-INTEGRATION-FIX hesabatı) — funksiya özü
+`geology/interpolation.py`-də SİLİNMƏYİB (başqa çağıranlar üçün geriyə-
+uyğun qalır, bax `tests/test_geology_import.py`-in bir hissəsi onu
+BİRBAŞA, bu moduldan keçmədən sınayır), sadəcə bu istehsalat boru
+xəttinin İCRA YOLUNDAN ÇIXARILIB.
 """
 
 from __future__ import annotations
@@ -24,21 +40,29 @@ from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from ..domain.diagnostics import DiagnosticReport
 from ..domain.facies_field import FaciesField
 from ..domain.geological_model import GeologicalModel
 from ..domain.geometry import CellGeometry, depth_to_k, xy_to_ij
 from ..domain.grid import CartesianGrid
-from ..domain.properties import PropertyMap
+from ..domain.properties import CategoricalUncertainty, PropertyMap, PropertyUncertainty
 from ..domain.structure import RegionSet
 from ..domain.well_data import WellDataset
 from ..geology.cross_validation import CrossValidationResult, k_fold, leave_one_out
 from ..geology.distribution_analysis import log_transform_is_justified
 from ..geology.facies import (FaciesVariogramParams, observed_proportions, simulate_sis)
 from ..geology.hard_data import resolve_hard_data
-from ..geology.interpolation import interpolate_property
+from ..geology.interpolation import OrdinaryKriging
+from ..geology.property_config import (PropertyStrategy, VariableType, resolve_strategy)
+from ..geology.property_interpolation import (CategoricalEstimate, PropertyEstimate,
+                                              interpolate_categorical_field,
+                                              interpolate_property_field)
 from ..geology.property_types import PropertyType, classify_property
 from ..geology.sgs import (DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL, FaciesPropertyConfig,
                            PropertyVariogramParams, simulate_sgs, simulate_sgs_facies_conditioned)
+from ..geology.spatial_search import (SUPPORT_BOUNDARY, SUPPORT_EXTRAPOLATED, SUPPORT_WEAK,
+                                      SUPPORT_WELL)
+from ..geology.transforms import IDENTITY_TRANSFORM, BackTransform, LogTransform
 from ..interfaces.interpolation import IPropertyInterpolator
 
 #: `cross_validate_all`-un baxdığı xassələr — PORO və PERM* istiqamətləri.
@@ -53,7 +77,19 @@ class FaciesBuildConfig:
     nisbətlər avtomatik hesablanır — bu, İSTİFADƏÇİNİN AÇIQ seçimi
     DEYİL, ona görə `report.warnings`-ə AÇIQ qeyd düşülür (bax
     `WellBasedGeologicalModelBuilder._simulate_categorical_field`).
-    """
+
+    `deterministic` (B-INTEGRATION-FIX, TAM opt-in, DEFOLT `False`):
+    `True` olanda bu sütun SIS (`simulate_sis`) ƏVƏZİNƏ Phase B-nin
+    deterministik indikator-kriginq mühərriki
+    (`property_interpolation.interpolate_categorical_field`) ilə
+    hesablanır — stoxastik realizasiya YOX, ən-ehtimallı kateqoriya +
+    tam ehtimal vektoru (bax `WellBasedGeologicalModelBuilder.
+    _estimate_categorical_field_phase_b`). `seed`/`realization_id`/
+    `variograms`/`proportions` bu rejimdə İSTİFADƏ OLUNMUR (SIS-ə
+    məxsusdur); əvəzinə `WellBasedGeologicalModelBuilder`-in konstruktor
+    zamanı aldığı Kriging parametrləri (bax `_kriging_overrides`)
+    işlədilir. DEFOLT (`False`) ilə davranış TAM ƏVVƏLKİ kimi qalır
+    (SIS) — mövcud testlər DƏYİŞMİR."""
     proportions: Optional[Dict[int, float]] = None
     category_names: Optional[Dict[int, str]] = None
     variograms: Optional[Dict[int, FaciesVariogramParams]] = None
@@ -63,6 +99,7 @@ class FaciesBuildConfig:
     max_neighbors: Optional[int] = 24
     min_neighbors: int = 1
     on_conflict: str = "raise"
+    deterministic: bool = False
 
 
 @dataclass
@@ -167,6 +204,14 @@ class WellBasedGeologicalModelBuilder:
                  rules: Optional[Dict[str, PropertyRule]] = None):
         self.interpolator = interpolator
         self.rules = dict(DEFAULT_RULES)
+        #: İSTİFADƏÇİNİN konstruktora AÇIQ verdiyi (modul `DEFAULT_RULES`-
+        #: dən FƏRQLİ) qaydalar — `self.rules`-dan AYRICA saxlanılır ki,
+        #: `_resolve_property_strategy` "istifadəçi bilərəkdən bunu
+        #: dəyişdi" ilə "bu, sadəcə modul defoltudur" fərqini bilsin (bax
+        #: orada, B-INTEGRATION-FIX §5: köhnə `PropertyRule` geriyə-uyğun
+        #: qalır, amma Phase B `PropertyStrategy` reyestri ARTIQ hədlərin/
+        #: çevirmənin ƏSAS mənbəyidir).
+        self._explicit_rules: Dict[str, PropertyRule] = dict(rules) if rules else {}
         if rules:
             self.rules.update(rules)
 
@@ -177,9 +222,19 @@ class WellBasedGeologicalModelBuilder:
               allow_cross_layer_fallback: bool = False,
               facies_config: Optional[Dict[str, FaciesBuildConfig]] = None,
               property_type_overrides: Optional[Dict[str, PropertyType]] = None,
-              sgs_config: Optional[Dict[str, ContinuousSGSConfig]] = None):
+              sgs_config: Optional[Dict[str, ContinuousSGSConfig]] = None,
+              calibrated_strategies: Optional[Dict[str, PropertyStrategy]] = None):
         """`allow_cross_layer_fallback` — bir K-təbəqəsində (dataset laylı
         olanda) heç bir quyu nöqtəsi yoxdursa nə edilsin.
+
+        `calibrated_strategies` (PHASE C, TAM opt-in) — `calibrate_
+        property()`-nin (spatial-block CV-əsaslı model seçimi) qaytardığı
+        `ModelSelectionReport.selected.candidate.strategy`-ni birbaşa
+        production interpolyasiyasında İSTİFADƏ ETMƏK üçün: `{source:
+        PropertyStrategy}`. Verilməyən xassələr ƏVVƏLKİ kimi `_resolve_
+        property_strategy()`-dən (reyestr + `rules`) keçir — CV çəkisi
+        HEÇ VAXT production yolunu MƏCBURİ dəyişmir, yalnız çağıran AÇIQ
+        şəkildə "bu xassə üçün kalibrlənmiş modeli işlət" desə.
 
         Defolt (`False`): AÇIQ XƏTA atılır — sükutla başqa laylardan
         (məs. lay 1-3) məlumat "sızdırılmır". `True` verilsə köhnə davranış
@@ -191,8 +246,13 @@ class WellBasedGeologicalModelBuilder:
         `facies_config` — hər KATEQORİK sütun (bax `geology/property_
         types.py`) üçün `FaciesBuildConfig` (Phase 4.1). Kateqorik sütun
         HEÇ VAXT `_interpolate_volume`-dan (kəsilməz Kriging/IDW) KEÇMİR
-        — bunun əvəzinə `_simulate_categorical_field` (SIS) çağırılır və
-        nəticə `model.facies_fields`-ə (PropertyMap-DAN AYRICA) yazılır.
+        — bunun əvəzinə DEFOLT olaraq `_simulate_categorical_field` (SIS)
+        çağırılır, `FaciesBuildConfig.deterministic=True` verilibsə isə
+        Phase B-nin indikator-kriginq mühərriki (`_estimate_categorical_
+        field_phase_b`, B-INTEGRATION-FIX) — hər ikisi ehtimal-əsaslı
+        indikator yoludur, HEÇ BİRİ fasiya kodunu ədədi kəsilməz dəyər
+        kimi kriging etmir. Nəticə `model.facies_fields`-ə (PropertyMap-
+        DAN AYRICA) yazılır.
 
         `sgs_config` — hər KƏSİLMƏZ sütun üçün (istəyə görə)
         `ContinuousSGSConfig` (Phase 5). Konfiqurasiya edilməyən kəsilməz
@@ -211,7 +271,18 @@ class WellBasedGeologicalModelBuilder:
                                 top_depth_map=self._surface(grid, spec))
         model = GeologicalModel(name=name, grid=grid, geometry=geometry,
                                 regions=RegionSet.single(grid.ncell))
-        report = InterpolationReport(method=self.interpolator.describe())
+        report = InterpolationReport(
+            method=f"Phase B (xassə-strategiyası reyestri) — konfiqurasiya edilmiş "
+                   f"interpolyator: {self.interpolator.describe()}")
+        if not isinstance(self.interpolator, OrdinaryKriging):
+            report.warn(
+                f"Seçilmiş üsul ('{self.interpolator.describe()}') qeydiyyatlı (PORO, "
+                "PERMX/Y/Z, SW, NTG, VSH, FACIES, ...) kəsilməz xassələr üçün İSTİFADƏ "
+                "OLUNMUR — bu xassələrin interpolyasiya NÖVÜ (Kriging/log-kriging/"
+                "logit-kriging) `PropertyStrategy` reyestrindən gəlir (B-INTEGRATION-FIX, "
+                "GATE: ad → strategiya → çevirmə → üsul, `if property==...` YOXDUR). "
+                "Yalnız Kriging seçilibsə onun parametrləri (range/sill/nugget/axtarış "
+                "radiusu) Phase B mühərrikinə ötürülür.")
 
         targets = self._cell_centres(grid, spec)
         available = dataset.property_names()
@@ -222,8 +293,12 @@ class WellBasedGeologicalModelBuilder:
 
         for source in categorical_sources:
             config = (facies_config or {}).get(source)
-            facies_field = self._simulate_categorical_field(
-                dataset, source, targets, grid, geometry, config, report)
+            if config is not None and config.deterministic:
+                facies_field = self._estimate_categorical_field_phase_b(
+                    dataset, source, targets, grid, geometry, config, report, model)
+            else:
+                facies_field = self._simulate_categorical_field(
+                    dataset, source, targets, grid, geometry, config, report)
             model.add_facies_field(facies_field)
 
         for source in continuous_sources:
@@ -234,7 +309,9 @@ class WellBasedGeologicalModelBuilder:
                     dataset, source, targets, grid, geometry, sgs, report, model)
             else:
                 values = self._interpolate_volume(dataset, source, rule, targets, grid,
-                                                  allow_cross_layer_fallback, report, geometry)
+                                                  allow_cross_layer_fallback, report, geometry,
+                                                  model,
+                                                  (calibrated_strategies or {}).get(source))
             model.add_property(PropertyMap.from_array(rule.target, values,
                                                       grid.ncell))
             report.add(rule.target, source, rule.log_transform, values)
@@ -262,40 +339,32 @@ class WellBasedGeologicalModelBuilder:
         jj, ii = np.meshgrid(j, i, indexing="ij")
         return spec.top_depth + ii * spec.dip_x + jj * spec.dip_y
 
-    def _simulate_categorical_field(self, dataset: WellDataset, source: str,
-                                    targets: np.ndarray, grid: CartesianGrid,
-                                    geometry: CellGeometry,
-                                    config: Optional[FaciesBuildConfig],
-                                    report: "InterpolationReport") -> FaciesField:
-        """KATEQORİK sütunu Sequential Indicator Simulation ilə (Phase
-        4.1) simulyasiya edir — `_interpolate_volume`-un (kəsilməz
-        Kriging/IDW) ƏVƏZİNƏ, ONUN YERİNƏ DEYİL (bu sütun `build()`-də
-        heç vaxt `_interpolate_volume`-a ötürülmür).
+    @staticmethod
+    def _gather_categorical_hard_data(dataset: WellDataset, source: str, grid: CartesianGrid,
+                                      geometry: CellGeometry, on_conflict: str,
+                                      report: "InterpolationReport"):
+        """Kateqorik sütun üçün sərt datanı 3D (X,Y,Z) nöqtələrə "sancır"
+        (bax aşağıdakı qeyd) — həm SIS (`_simulate_categorical_field`),
+        həm Phase B (`_estimate_categorical_field_phase_b`) EYNİ
+        gathering məntiqini işlədir (TƏKRARLANMIR).
 
-        Bütün laylar BİR simulyasiyada (tam 3D X,Y,Z kondisioner +
-        hədəf) işlənir — hər lay üçün AYRICA (əvvəlki `allow_cross_layer_
-        fallback` kimi) DEYİL, çünki şaquli variogram (`range_v`) artıq
-        laylar arası davamlılığı DOĞRU modelləşdirir (bax FACIES.md).
+        Sərt datanı öz EV HÜCEYRƏSİNİN mərkəzinə "sancırıq" (snap).
+        SƏBƏB: real quyu demək olar HEÇ VAXT dəqiq hüceyrə mərkəzində
+        deyil — indikator-əsaslı mühərriklərin (SIS, Phase B kriginq)
+        sərt-data hörməti dəqiq KOORDİNAT üst-üstə düşməsinə əsaslanır,
+        ona görə kondisioner nöqtəni HƏDƏF massivindəki EYNİ hüceyrənin
+        mərkəzi ilə eyniləşdiririk — əks halda "sərt data honored"
+        QORUNMUR (yalnız TƏSADÜFƏN quyu mərkəzdə olanda işləyərdi).
+        `resolve_hard_data` artıq eyni hüceyrəyə düşən ziddiyyətli
+        nümunələri BLOKLAYIB, ona görə bu sancma YENİ ziddiyyət yaratmır.
         """
-        config = config or FaciesBuildConfig()
         raw_samples = [s for s in dataset.samples if source in s.values]
         resolved_samples = resolve_hard_data(raw_samples, source, grid, geometry,
-                                             on_conflict=config.on_conflict)
+                                             on_conflict=on_conflict)
         if not resolved_samples:
             raise ValueError(f"'{source}' üçün istifadə edilə bilən sərt data tapılmadı.")
 
         depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
-
-        # Sərt datanı öz EV HÜCEYRƏSİNİN mərkəzinə "sancırıq" (snap).
-        # SƏBƏB: real quyu demək olar HEÇ VAXT dəqiq hüceyrə mərkəzində
-        # deyil — `simulate_sis`-in sərt-data hörməti dəqiq KOORDİNAT
-        # üst-üstə düşməsinə əsaslanır (bax `facies._find_hard_data_
-        # matches`), ona görə kondisioner nöqtəni HƏDƏF massivindəki
-        # (`full_targets`) EYNİ hüceyrənin mərkəzi ilə eyniləşdiririk —
-        # əks halda "sərt data honored" QORUNMUR (yalnız TƏSADÜFƏN quyu
-        # mərkəzdə olanda işləyərdi). `resolve_hard_data` artıq eyni
-        # hüceyrəyə düşən ziddiyyətli nümunələri BLOKLAYIB, ona görə bu
-        # sancma YENİ ziddiyyət yaratmır.
         xs, ys, zs, codes = [], [], [], []
         skipped = 0
         for sample in resolved_samples:
@@ -322,6 +391,87 @@ class WellBasedGeologicalModelBuilder:
 
         points = np.column_stack([xs, ys, zs])
         codes_array = np.asarray(codes, int)
+        return resolved_samples, points, codes_array, skipped
+
+    def _estimate_categorical_field_phase_b(self, dataset: WellDataset, source: str,
+                                            targets: np.ndarray, grid: CartesianGrid,
+                                            geometry: CellGeometry,
+                                            config: FaciesBuildConfig,
+                                            report: "InterpolationReport",
+                                            model: GeologicalModel) -> FaciesField:
+        """KATEQORİK sütunu Phase B-nin DETERMİNİSTİK indikator-kriginq
+        mühərriki (`property_interpolation.interpolate_categorical_field`)
+        ilə hesablayır — `FaciesBuildConfig.deterministic=True` olanda,
+        `_simulate_categorical_field` (SIS) ƏVƏZİNƏ (bax `build()`).
+
+        SIS kimi bu da ƏSLA kəsilməz kriginqə keçmir (GATE B4) — hər
+        kateqoriya üçün İNDİKATOR kriginq → [0,1]-ə kəsilib normallaşan
+        ehtimal vektoru → ən-ehtimallı kod (bax `interpolate_categorical_
+        field` docstring-i). Nəticə STOXASTİK REALİZASİYA DEYİL (seed/
+        realization_id mənasız — `0` qoyulur), ona görə `FaciesField`-ə
+        çevriləndə `requested_proportions` BOŞ qalır (heç bir hədəf
+        nisbət YOXDUR, yalnız DATA-dan gələn ən-ehtimallı təsnifat).
+        """
+        resolved_samples, points, codes_array, _skipped = self._gather_categorical_hard_data(
+            dataset, source, grid, geometry, config.on_conflict, report)
+        depths_grid = geometry.cell_depths().reshape(grid.shape)
+        full_targets = np.concatenate(
+            [np.column_stack([targets, depths_grid[k].ravel()]) for k in range(grid.nz)], axis=0)
+
+        estimate = interpolate_categorical_field(
+            points, codes_array, full_targets, property_name=source,
+            kriging_overrides=self._kriging_overrides())
+        for message in estimate.warnings:
+            report.warn(f"'{source}' (Phase B kateqorik): {message}")
+
+        realized_proportions = {
+            int(code): float(np.mean(estimate.most_probable == code))
+            for code in estimate.categories}
+
+        model.add_uncertainty(source, CategoricalUncertainty(
+            name=source, categories=estimate.categories,
+            probabilities=estimate.probabilities, entropy=estimate.entropy,
+            normalized_entropy=estimate.normalized_entropy,
+            max_probability=estimate.max_probability, confidence=estimate.confidence,
+            support=np.asarray(estimate.support, dtype=object),
+            neighbor_count=estimate.neighbor_count, nearest_distance=estimate.nearest_distance,
+            extrapolated=estimate.extrapolated,
+            n_probability_corrections=estimate.n_probability_corrections,
+            warnings=list(estimate.warnings)))
+
+        return FaciesField(
+            name=source, codes=estimate.most_probable,
+            category_names=dict(config.category_names or {}),
+            realization_id=0, seed=0,
+            requested_proportions={}, realized_proportions=realized_proportions,
+            conditioning_data_stats={
+                "n_hard_points": int(codes_array.size),
+                "n_wells": len({s.well for s in resolved_samples}),
+                "method": "phase_b_indicator_kriging",
+                "mean_normalized_entropy": float(np.mean(estimate.normalized_entropy)),
+                "n_probability_corrections": estimate.n_probability_corrections,
+            },
+            warnings=list(estimate.warnings))
+
+    def _simulate_categorical_field(self, dataset: WellDataset, source: str,
+                                    targets: np.ndarray, grid: CartesianGrid,
+                                    geometry: CellGeometry,
+                                    config: Optional[FaciesBuildConfig],
+                                    report: "InterpolationReport") -> FaciesField:
+        """KATEQORİK sütunu Sequential Indicator Simulation ilə (Phase
+        4.1) simulyasiya edir — `_interpolate_volume`-un (kəsilməz
+        Kriging/IDW) ƏVƏZİNƏ, ONUN YERİNƏ DEYİL (bu sütun `build()`-də
+        heç vaxt `_interpolate_volume`-a ötürülmür).
+
+        Bütün laylar BİR simulyasiyada (tam 3D X,Y,Z kondisioner +
+        hədəf) işlənir — hər lay üçün AYRICA (əvvəlki `allow_cross_layer_
+        fallback` kimi) DEYİL, çünki şaquli variogram (`range_v`) artıq
+        laylar arası davamlılığı DOĞRU modelləşdirir (bax FACIES.md).
+        """
+        config = config or FaciesBuildConfig()
+        resolved_samples, points, codes_array, skipped = self._gather_categorical_hard_data(
+            dataset, source, grid, geometry, config.on_conflict, report)
+        depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
 
         proportions = config.proportions
         if proportions is None:
@@ -483,10 +633,116 @@ class WellBasedGeologicalModelBuilder:
         source_layer = sample.layer if sample.layer is not None else current_k
         return float(layer_mean_depth[source_layer])
 
+    # ---------------------------------------------- B-INTEGRATION-FIX: Phase B körpüsü
+    def _resolve_property_strategy(self, source: str) -> PropertyStrategy:
+        """`source` üçün `PropertyStrategy` — reyestr (`property_config.
+        resolve_strategy`) ƏSAS mənbədir (B-INTEGRATION-FIX §4: ad →
+        strategiya → çevirmə → üsul → hədlər → qeyri-müəyyənlik, HEÇ bir
+        `if property_name == ...` YOXDUR).
+
+        `self._explicit_rules[source]` (konstruktora İSTİFADƏÇİNİN AÇIQ
+        verdiyi `PropertyRule`, modul `DEFAULT_RULES`-dən FƏRQLİ olaraq)
+        varsa, YALNIZ o, strategiyanın hədlərini/loq-çevirməsini
+        `derive()` ilə ƏVƏZ edir — geriyə-uyğunluq (§5): köhnə
+        `rules={...}` konstruktor parametri İNDİ DƏ işləyir (bax
+        `tests/test_geology_import.py::test_custom_rule_overrides_
+        default`), amma İNDİ Phase B strategiyasının ÜSTÜNDƏN keçir,
+        onu ƏVƏZ ETMİR (QC/uncertainty/anizotropluq strategiyadan
+        qalır)."""
+        strategy = resolve_strategy(source)
+        rule = self._explicit_rules.get(source)
+        if rule is None:
+            return strategy
+        overrides: Dict[str, object] = {}
+        if rule.minimum is not None or rule.maximum is not None:
+            # DİQQƏT: köhnə `PropertyRule.minimum/maximum` Phase A-da YALNIZ
+            # NƏTİCƏNİ kəsirdi (`interpolate_property(minimum=..., maximum=...)`
+            # — girişə TOXUNMURDU). Ona görə YALNIZ `output_bounds` əvəz
+            # olunur; `physical_bounds` (Phase B-nin QC girişi RƏDD ETMƏ
+            # həddi) strategiyanın ÖZ dəyərində qalır — əks halda dar bir
+            # `maximum` HƏQİQİ, fiziki etibarlı sərt datanı QC-də səssizcə
+            # ATAR (tutulub, bax `tests/test_geology_import.py::
+            # test_custom_rule_overrides_default` — geniş fiziki hədd, dar
+            # NƏTİCƏ həddi gözləyir).
+            overrides["output_bounds"] = (rule.minimum, rule.maximum)
+        if rule.log_transform and strategy.transform.is_identity:
+            overrides["variable_type"] = VariableType.LOGNORMAL
+            overrides["transform"] = LogTransform()
+            overrides["legacy_log_transform"] = True
+        elif (not rule.log_transform and not strategy.transform.is_identity
+              and strategy.legacy_log_transform):
+            overrides["variable_type"] = VariableType.CONTINUOUS
+            overrides["transform"] = IDENTITY_TRANSFORM
+            overrides["back_transform"] = BackTransform.MEDIAN
+            overrides["legacy_log_transform"] = False
+        return strategy.derive(**overrides) if overrides else strategy
+
+    def _kriging_overrides(self) -> Optional[Dict[str, object]]:
+        """`self.interpolator` (istifadəçinin/UI-nin konstruktora ötürdüyü
+        `IPropertyInterpolator`) `OrdinaryKriging` olub AÇIQ (defoltdan
+        FƏRQLİ) dəyişdirdiyi sahələri Phase B-nin `kriging_overrides`
+        mexanizminə körpüləyir (bax `property_interpolation.
+        interpolate_property_field`).
+
+        YALNIZ defoltdan FƏRQLİ sahələr ötürülür — əks halda, məs.
+        istifadəçi HEÇ TOXUNMAYIB deyə `auto_fit=False`/`model=
+        "spherical"` kimi `OrdinaryKriging()`-in xam defoltları
+        strategiyanın öz ("auto" model fit, 24-qonşulu yerli axtarış)
+        AĞILLI defoltlarını SƏSSİZCƏ əzərdi (B-INTEGRATION-FIX §12/§13).
+        Əksinə, `range_`/`range_v`/`nugget`/`search_radius`/... kimi
+        AÇIQ istifadəçi seçimi (məs. UI panelindəki Kriging sahələri)
+        HƏMİŞƏ ötürülür — bu, variogram parametrinin dəyişməsinin
+        nəticəyə TƏSİR ETDİYİNİ sübut edən test üçün vacibdir (§12)."""
+        interp = self.interpolator
+        if not isinstance(interp, OrdinaryKriging):
+            return None
+        defaults = OrdinaryKriging()
+        fields = ("range_", "range_v", "sill", "nugget", "model", "auto_fit",
+                 "auto_fit_nugget", "azimuth_deg", "range_minor", "dip_deg",
+                 "search_radius", "max_neighbors", "min_neighbors", "sectors",
+                 "honor_hard_data",
+                 # PHASE C: istifadəçi (məs. `OrdinaryKriging(auto_detect_
+                 # anisotropy=True)`) data-əsaslı anizotropluq aşkarlanmasına
+                 # AÇIQ opt-in edə bilsin — defolt (`False`) DƏYİŞMİR, izotrop
+                 # qalır (bax C§6 — "mümkün olduqda data-driven", MƏCBURİ deyil).
+                 "auto_detect_anisotropy")
+        overrides = {f: getattr(interp, f) for f in fields
+                    if getattr(interp, f) != getattr(defaults, f)}
+        return overrides or None
+
+    @staticmethod
+    def _attach_continuous_uncertainty(model: GeologicalModel, target: str,
+                                       estimates: "list[PropertyEstimate]") -> None:
+        """Hər laydan gələn `PropertyEstimate`-ləri BİR grid halına yığıb
+        `model.uncertainty[target]`-ə yazır (B-INTEGRATION-FIX §9) —
+        qeyri-müəyyənlik `report.warnings`-ə YAZILAN mətnlə YANAŞI, ƏDƏDİ
+        massiv kimi DƏ istehsalat modelindən əlçatan olur, itmir."""
+        if not estimates:
+            return
+        model.add_uncertainty(target, PropertyUncertainty(
+            name=target,
+            variance=np.concatenate([e.variance for e in estimates]),
+            std=np.concatenate([e.std for e in estimates]),
+            confidence=np.concatenate(
+                [np.asarray(e.confidence, dtype=object) for e in estimates]),
+            support=np.concatenate(
+                [np.asarray(e.support, dtype=object) for e in estimates]),
+            neighbor_count=np.concatenate([e.neighbor_count for e in estimates]),
+            nearest_distance=np.concatenate([e.nearest_distance for e in estimates]),
+            data_density=np.concatenate([e.data_density for e in estimates]),
+            extrapolated=np.concatenate([e.extrapolated for e in estimates]),
+            variance_kind=estimates[0].variance_kind.value,
+            warnings=[w for e in estimates for w in e.warnings]))
+
     def _interpolate_volume(self, dataset, source, rule, targets, grid,
-                            allow_cross_layer_fallback, report, geometry) -> np.ndarray:
-        """Hər təbəqə üçün areal (və Kriging 3D dəstəkləyirsə — X,Y,Z)
-        interpolyasiya, sonra həcmə yığılır.
+                            allow_cross_layer_fallback, report, geometry,
+                            model: GeologicalModel,
+                            calibrated_strategy: Optional[PropertyStrategy] = None
+                            ) -> np.ndarray:
+        """Hər təbəqə üçün Phase B xassə-strategiyalı 3D (X,Y,Z) kriginq,
+        sonra həcmə yığılır (B-INTEGRATION-FIX — KÖHNƏ Phase A
+        `geology.interpolation.interpolate_property()` ARTIQ burada
+        ÇAĞIRILMIR, bax modul docstring-i).
 
         `dataset.samples_for(source, layer=k)` düzgün süzür: laya bağlı
         olmayan (`sample.layer is None`) nümunələr HƏR K üçün daxil
@@ -496,23 +752,27 @@ class WellBasedGeologicalModelBuilder:
         DEYİL (əvvəlki nöqsan, bax M1) — açıq xəta atılır, yalnız
         `allow_cross_layer_fallback=True` ilə bilərəkdən hovuzlanır.
 
-        İnterpolyator 3D dəstəkləyirsə (`supports_z`, yalnız
-        `OrdinaryKriging`) hər nümunənin Z-si (bax `_sample_depth`) və
-        hədəfin öz K-sının həqiqi hüceyrə-mərkəzi dərinliyi ötürülür.
-        Bunun sayəsində `allow_cross_layer_fallback` işə düşəndə fərqli
-        laylardan gələn nöqtələr artıq BƏRABƏR yox, öz dərinlik
-        fərqlərinə görə (range_v vasitəsilə) ÇƏKİLİ qatılır — yaxın lay
-        uzaq laydan çox təsir edir (M2: geoloji cəhətdən əsaslandırılmış
-        borclanma, kor-koranə hovuzlama yox).
+        Hər nümunənin Z-si (bax `_sample_depth`) və hədəfin öz K-sının
+        həqiqi hüceyrə-mərkəzi dərinliyi HƏR ZAMAN ötürülür (Phase B
+        mühərriki HƏMİŞƏ `OrdinaryKriging` — bax `property_config.
+        PropertyStrategy.interpolation` defoltu — ona görə 3D/anizotrop
+        dəstək artıq `self.interpolator`-un növündən ASILI DEYİL, M2
+        davranışı BÜTÜN qeydiyyatlı xassələrə YAYILIB). Bunun sayəsində
+        `allow_cross_layer_fallback` işə düşəndə fərqli laylardan gələn
+        nöqtələr artıq BƏRABƏR yox, öz dərinlik fərqlərinə görə
+        (range_v vasitəsilə) ÇƏKİLİ qatılır — yaxın lay uzaq laydan çox
+        təsir edir (M2: geoloji cəhətdən əsaslandırılmış borclanma).
         """
-        use_z = self.interpolator.supports_z
-        layer_mean_depth = target_depths = None
-        if use_z:
-            depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
-            layer_mean_depth = depths_grid.mean(axis=(1, 2))
-            target_depths = depths_grid
+        strategy = (calibrated_strategy if calibrated_strategy is not None
+                   else self._resolve_property_strategy(source))
+        overrides = self._kriging_overrides()
+
+        depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
+        layer_mean_depth = depths_grid.mean(axis=(1, 2))
+        target_depths = depths_grid
 
         layers = []
+        estimates: "list[PropertyEstimate]" = []
         for k in range(grid.nz):
             layer = k if dataset.is_layered() else None
             samples = dataset.samples_for(source, layer)
@@ -533,21 +793,57 @@ class WellBasedGeologicalModelBuilder:
                 raise ValueError(f"'{source}' üçün nöqtə tapılmadı.")
 
             values = np.asarray([s.values[source] for s in samples], float)
-            if use_z:
-                depths = np.asarray(
-                    [self._sample_depth(s, k, layer_mean_depth) for s in samples], float)
-                points = np.column_stack(
-                    [[s.x for s in samples], [s.y for s in samples], depths])
-                target_points = np.column_stack([targets, target_depths[k].ravel()])
-            else:
-                points = np.asarray([(s.x, s.y) for s in samples], float).reshape(-1, 2)
-                target_points = targets
+            depths = np.asarray(
+                [self._sample_depth(s, k, layer_mean_depth) for s in samples], float)
+            points = np.column_stack(
+                [[s.x for s in samples], [s.y for s in samples], depths])
+            target_points = np.column_stack([targets, target_depths[k].ravel()])
 
-            layers.append(interpolate_property(
-                self.interpolator, points, values, target_points,
-                log_transform=rule.log_transform,
-                minimum=rule.minimum, maximum=rule.maximum))
+            estimate = interpolate_property_field(
+                points, values, target_points, strategy=strategy,
+                kriging_overrides=overrides)
+            layer_label = f" (K={k})" if grid.nz > 1 else ""
+            for message in estimate.warnings:
+                report.warn(f"'{source}'{layer_label}: {message}")
+            layers.append(estimate.estimate)
+            estimates.append(estimate)
+
+        self._attach_continuous_uncertainty(model, rule.target, estimates)
         return np.concatenate(layers)
+
+    # ------------------------------------------------- PHASE C: model calibration
+    def calibrate_property(self, dataset: WellDataset, source: str,
+                           candidates=None, design=None, weights=None, qc=None):
+        """`source` üçün variogram-model seçimini SIZMASIZ, MƏKAN-BLOKLU
+        (spatial-block) çarpaz-doğrulama ilə aparır və `ModelSelectionReport`
+        qaytarır (PHASE C §2/§3) — CV/model-selection infrastrukturu
+        (`geology.cross_validation.select_property_model`) artıq mövcud
+        idi, bura YALNIZ onu production builder-dən ÇAĞIRILA BİLƏN,
+        DEFOLT olaraq spatial-block dizaynlı bir addım kimi körpüləyir.
+
+        NƏTİCƏ AVTOMATİK production interpolyasiyasına TƏTBİQ OLUNMUR —
+        `build(calibrated_strategies={source: report.selected.candidate.
+        strategy})` ilə İSTİFADƏÇİ AÇIQ tətbiq edir (bax `build()`
+        docstring-i). Bu, §19-un tələbini tərcümə edir: "CV/LOOCV production
+        interpolyasiya yoluna DAXİL OLMAMALIDIR" — kalibrasiya BİR DƏFƏLİK,
+        AYRICA addımdır, hər grid hüceyrəsi üçün TƏKRARLANMIR.
+
+        Laylı dataset-də bütün laylardan HOVUZLANMIŞ nöqtələrlə (layer
+        SÜZGƏCSİZ) kalibrasiya aparılır — model SEÇİMİ (hansı variogram
+        AİLƏSİ ən yaxşı fit olur) layların cüzi fərqinə HƏSSAS statistik
+        sual deyil, bu, `_interpolate_volume`-un öz laylı kriginqindən
+        (hər K ÖZ sistemi ilə) FƏRQLİDİR və qəsdən sadələşdirilib."""
+        from ..geology.cross_validation import ValidationDesign, ValidationKind, default_candidates, select_property_model
+
+        samples = [s for s in dataset.samples if source in s.values]
+        if not samples:
+            raise ValueError(f"'{source}' üçün kalibrasiya ediləcək sərt data yoxdur.")
+        points = np.asarray([(s.x, s.y) for s in samples], float)
+        values = np.asarray([s.values[source] for s in samples], float)
+        candidates = candidates if candidates is not None else default_candidates(source)
+        design = design or ValidationDesign(kind=ValidationKind.SPATIAL_BLOCK)
+        return select_property_model(points, values, candidates, property_name=source,
+                                     design=design, weights=weights, qc=qc)
 
     # ------------------------------------------------------- M4: cross-validation
     def cross_validate(self, dataset: WellDataset, source: str,
@@ -650,3 +946,156 @@ def format_cross_validation_report(
             lines.append(f"  ⚠ {message}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+# ═══════════════════════════════════════════════ PHASE C: diagnostic report + gate
+_SUPPORT_LABELS = {
+    SUPPORT_WELL: "GOOD_SUPPORT", SUPPORT_BOUNDARY: "LIMITED_SUPPORT",
+    SUPPORT_WEAK: "POOR_SUPPORT", SUPPORT_EXTRAPOLATED: "EXTRAPOLATION",
+}
+
+
+def _label_distribution(values: np.ndarray,
+                        mapping: Optional[Dict[str, str]] = None) -> Dict[str, int]:
+    if values is None or np.asarray(values).size == 0:
+        return {}
+    labels = [mapping.get(str(v), str(v)) if mapping else str(v) for v in values]
+    unique, counts = np.unique(labels, return_counts=True)
+    return {str(u): int(c) for u, c in zip(unique, counts)}
+
+
+@dataclass
+class PropertyQualityReport:
+    """Bir xassənin PRODUCTION interpolyasiya diaqnostikası (PHASE C §24).
+
+    `build_quality_report()` bunu `GeologicalModel.uncertainty`-dən
+    (B-INTEGRATION-FIX-də doldurulan) qurur — heç bir yeni interpolyasiya
+    aparmır, sadəcə artıq hesablanmış nəticəni İCMALLAŞDIRIR."""
+    property_name: str
+    kind: str                                    #: "continuous" | "categorical"
+    strategy_summary: str
+    sample_count: int
+    neighbor_count_min: Optional[int]
+    neighbor_count_mean: Optional[float]
+    neighbor_count_max: Optional[int]
+    mean_uncertainty: Optional[float]             #: kəsilməz: orta std; kateqorik: orta norm. entropiya
+    max_uncertainty: Optional[float]
+    extrapolated_fraction: float
+    support_distribution: Dict[str, int] = field(default_factory=dict)
+    confidence_distribution: Dict[str, int] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+    def as_text(self) -> str:
+        lines = [f"{self.property_name} ({self.kind}): {self.strategy_summary}",
+                 f"  nümunə: {self.sample_count}"]
+        if self.neighbor_count_mean is not None:
+            lines.append(f"  qonşu sayı: min {self.neighbor_count_min} "
+                         f"orta {self.neighbor_count_mean:.1f} maks {self.neighbor_count_max}")
+        if self.mean_uncertainty is not None:
+            lines.append(f"  qeyri-müəyyənlik: orta {self.mean_uncertainty:.4g} "
+                         f"maks {self.max_uncertainty:.4g}")
+        lines.append(f"  ekstrapolyasiya: {self.extrapolated_fraction * 100:.1f}%")
+        if self.support_distribution:
+            lines.append("  dəstək: " + ", ".join(
+                f"{k}={v}" for k, v in sorted(self.support_distribution.items())))
+        if self.confidence_distribution:
+            lines.append("  etimad: " + ", ".join(
+                f"{k}={v}" for k, v in sorted(self.confidence_distribution.items())))
+        lines.extend(f"  ⚠ {w}" for w in self.warnings)
+        return "\n".join(lines)
+
+
+def build_quality_report(builder: "WellBasedGeologicalModelBuilder", model: GeologicalModel,
+                         dataset: WellDataset) -> Dict[str, PropertyQualityReport]:
+    """`model.uncertainty`-dən avtomatik diaqnostik hesabat (PHASE C §24).
+
+    Yalnız Phase B mühərrikindən HƏQİQƏTƏN keçmiş xassələr (`model.
+    uncertainty`-də olanlar) daxildir. Anizotropluq əmsalı ilə DOLDURULAN
+    PERMY/PERMZ (bax `_fill_missing_permeability`) buraya DAXİL DEYİL —
+    onlar interpolyasiya EDİLMƏYİB, bu ÖZÜ diaqnostik həqiqətdir,
+    gizlədilmir (sadəcə "hesabatda yoxdur" deyil, `describe_missing_
+    properties`-dən görünə bilər, bax aşağıda)."""
+    reports: Dict[str, PropertyQualityReport] = {}
+    for name, unc in model.uncertainty.items():
+        sample_count = len(dataset.samples_for(name, None))
+        neighbor = np.asarray(unc.neighbor_count, dtype=float)
+        neighbor_min = int(neighbor.min()) if neighbor.size else None
+        neighbor_mean = float(neighbor.mean()) if neighbor.size else None
+        neighbor_max = int(neighbor.max()) if neighbor.size else None
+        extrapolated_fraction = (float(np.mean(unc.extrapolated))
+                                 if np.asarray(unc.extrapolated).size else 0.0)
+        support_dist = _label_distribution(unc.support, _SUPPORT_LABELS)
+        confidence_dist = _label_distribution(unc.confidence)
+
+        if isinstance(unc, PropertyUncertainty):
+            strategy = builder._resolve_property_strategy(name)
+            finite_std = unc.std[np.isfinite(unc.std)]
+            mean_unc = float(finite_std.mean()) if finite_std.size else None
+            max_unc = float(finite_std.max()) if finite_std.size else None
+            kind = "continuous"
+        elif isinstance(unc, CategoricalUncertainty):
+            strategy = resolve_strategy(name)
+            entropy = unc.normalized_entropy
+            mean_unc = float(np.mean(entropy)) if np.asarray(entropy).size else None
+            max_unc = float(np.max(entropy)) if np.asarray(entropy).size else None
+            kind = "categorical"
+        else:
+            continue
+
+        reports[name] = PropertyQualityReport(
+            property_name=name, kind=kind, strategy_summary=strategy.describe(),
+            sample_count=sample_count, neighbor_count_min=neighbor_min,
+            neighbor_count_mean=neighbor_mean, neighbor_count_max=neighbor_max,
+            mean_uncertainty=mean_unc, max_uncertainty=max_unc,
+            extrapolated_fraction=extrapolated_fraction,
+            support_distribution=support_dist, confidence_distribution=confidence_dist,
+            warnings=list(unc.warnings))
+    return reports
+
+
+def quality_report_as_text(reports: Dict[str, PropertyQualityReport]) -> str:
+    if not reports:
+        return "Diaqnostik hesabat üçün heç bir Phase B nəticəsi yoxdur."
+    return "\n\n".join(r.as_text() for r in reports.values())
+
+
+def run_validation_gate(model: GeologicalModel, report: InterpolationReport,
+                        quality: Optional[Dict[str, PropertyQualityReport]] = None,
+                        max_extrapolated_fraction: float = 0.5) -> DiagnosticReport:
+    """Production model-in "validated" statusu almazdan ƏVVƏLKİ son qapı
+    (PHASE C §25/26) — mövcud `domain.diagnostics.DiagnosticReport`/
+    `Severity` semantikasını (XƏTA=bloklayır, XƏBƏRDARLIQ=bloklamır)
+    TƏKRAR İCAD ETMİR, birbaşa işlədir.
+
+    XƏTA (bloklayır): NaN/Inf property/fasiya dəyəri. `build()` artıq
+    `model.validate()` ilə əsas fiziki hədd pozmalarını (mənfi PORO/PERM,
+    PORO>1) bloklayıb — bura MÜSTƏQİL, İKİNCİ təsdiq üçündür (gate
+    `model.validate()`-in nəticəsinə kor-koranə etibar etmir).
+    XƏBƏRDARLIQ (bloklamır): interpolyasiya zamanı toplanmış `report.
+    warnings` (seyrək data, QC düzəlişləri, fallback...) VƏ yüksək
+    ekstrapolyasiya nisbəti (`max_extrapolated_fraction`-dan çox).
+
+    Qayıdan `DiagnosticReport.has_errors is False` ⇒ "validated" statusu
+    ALINA BİLƏR; `True` ⇒ ALINA BİLMƏZ."""
+    gate = DiagnosticReport()
+    for name, prop in model.property_maps.items():
+        values = prop.values
+        bad = ~np.isfinite(values)
+        if np.any(bad):
+            gate.error(f"{int(np.sum(bad))}/{values.size} hüceyrədə NaN/Inf dəyər.",
+                      source=name, hint="QC/interpolyasiya konfiqurasiyasını yenidən yoxla.")
+    for name, facies in model.facies_fields.items():
+        if not np.all(np.isfinite(facies.codes)):
+            gate.error("NaN/Inf fasiya kodu.", source=name)
+    for message in report.warnings:
+        gate.warning(message, source="interpolation")
+    for name, q in (quality or {}).items():
+        if q.extrapolated_fraction > max_extrapolated_fraction:
+            gate.warning(
+                f"hüceyrələrin {q.extrapolated_fraction * 100:.1f}%-i ekstrapolyasiyadır "
+                f"(həddi {max_extrapolated_fraction * 100:.0f}%) — sərt data ilə zəif örtülüb.",
+                source=name, hint="əlavə quyu/nöqtə əlavə et və ya `max_extrapolated_fraction` dəyiş.")
+        if q.sample_count < 3:
+            gate.warning(f"cəmi {q.sample_count} sərt data nöqtəsi — statistik cəhətdən zəif.",
+                        source=name)
+    return gate

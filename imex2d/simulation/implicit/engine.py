@@ -36,23 +36,14 @@ from .time_stepping import AdaptiveTimeStepConfig, AdaptiveTimeStepper
 
 LOG = get_logger(__name__)
 
-
-def _reject_multipoint_engine(discretization: IFluxDiscretization, engine: str) -> None:
-    """ÇOXNÖQTƏLİ (MPFA-O) diskretizasiya ilə AÇIQ imtina — Phase 5B-2.
-
-    Hər iki mühərrik (`FullyImplicitEngine`, `ImpesEngine`) tək-üz
-    transmissivliyi VƏ 2-hüceyrəli Jacobian bloku fərz edir. MPFA-O-nu
-    bura "sığışdırmaq" üçün riyaziyyatı əyməkdənsə (tapşırıq §24)
-    AÇIQ imtina edilir. Phase 5B-1-də MPFA QALIQ səviyyəsində
-    işlədilir — bax `docs/mpfa_o_phase5b1.md` §11.
-    """
-    if getattr(discretization, "supports_multipoint_stencil", lambda: False)():
-        raise NotImplementedError(
-            f"{engine} çoxnöqtəli diskretizasiya (MPFA-O) ilə HƏLƏ İŞLƏMİR "
-            "(Phase 5B-2): qeyri-xətti Jacobian və Nyuton inteqrasiyası "
-            "implement edilməyib. Phase 5B-1 MPFA-nı YALNIZ QALIQ "
-            "qiymətləndirməsi səviyyəsində dəstəkləyir — `ResidualAssembler`-i "
-            "birbaşa işlədin. Bax docs/mpfa_o_phase5b1.md §11.")
+#: PHASE D (5B-2): `FullyImplicitEngine` ARTIQ MPFA-O ilə işləyir (bax
+#: `jacobian.py` modul docstring-i, "PHASE 5B-2" bölməsi) — burada əvvəllər
+#: mövcud olan `_reject_multipoint_engine(...)` çağırışı (AÇIQ imtina)
+#: SİLİNİB. `ImpesEngine` HƏLƏ DƏ öz AYRICA `_reject_multipoint_impes`-i
+#: ilə (bax `impes_engine.py`) rədd edir — onun təzyiq addımı tək-üz
+#: transmissivlik skalyarına əsaslanır, MPFA-nın çoxnöqtəli `T_conn`-u ilə
+#: RİYAZİ CƏHƏTDƏN uyğun deyil (saxta "orta transmissivlik" uydurmaq
+#: QADAĞANDIR) — IMPES+MPFA-O HƏLƏ DƏ implement EDİLMƏYİB, gizlədilmir.
 
 
 class FullyImplicitEngine(ISimulationEngine):
@@ -76,12 +67,10 @@ class FullyImplicitEngine(ISimulationEngine):
         self.initialization = initialization
 
         #: DEFOLT = TPFA (bax audit tapşırığı §4). `flux_discretization`
-        #: AÇIQ verilməyibsə mövcud davranış BİRƏBİR eynidir — gələcək
-        #: MPFA-O yalnız bu parametri dəyişdirməklə "taxılacaq", `Residual
-        #: Assembler`/`Jacobian`-a HEÇ BİR TOXUNMADAN (bax
-        #: `../discretization.py` modul docstring-i).
+        #: AÇIQ verilməyibsə mövcud davranış BİRƏBİR eynidir. PHASE D:
+        #: `MPFAODiscretization()` ötürülsə, ResidualAssembler/Jacobian
+        #: AVTOMATİK çoxnöqtəli yola keçir (bax `jacobian.py` "PHASE 5B-2").
         self.flux_discretization = flux_discretization or default_flux_discretization()
-        _reject_multipoint_engine(self.flux_discretization, "FullyImplicitEngine")
         grid = self.flux_discretization.build(model)
         wells = PeacemanWellModel().build_connections(model)
         self.residual_assembler = ResidualAssembler(

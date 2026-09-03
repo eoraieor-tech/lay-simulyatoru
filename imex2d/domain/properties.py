@@ -1,8 +1,8 @@
 """Xassə xəritələri və süxur/flüid xassələri."""
 
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -70,6 +70,58 @@ class PropertyMap:
     def stats(self) -> dict:
         return {"min": float(self.values.min()), "max": float(self.values.max()),
                 "mean": float(self.values.mean())}
+
+
+@dataclass
+class PropertyUncertainty:
+    """Kəsilməz xassənin qeyri-müəyyənlik/keyfiyyət diaqnostikası (grid üzrə).
+
+    `geology.property_interpolation.PropertyEstimate`-in DOMAIN-səviyyəli,
+    yüngül əksidir — `domain` qatı `geology` alqoritm qatından ASILI OLA
+    BİLMƏZ (qat sərhədi), ona görə zəngin obyekt deyil, sadə massivlər
+    daşınır. Çevirən tərəf `application/geology_service.py`-dir.
+    """
+    name: str
+    variance: np.ndarray
+    std: np.ndarray
+    confidence: np.ndarray          #: object massiv — "high"/"medium"/"low"/"extrapolated"
+    support: np.ndarray             #: object massiv — Phase A `SUPPORT_*` həndəsi təsnifat
+    neighbor_count: np.ndarray
+    nearest_distance: np.ndarray
+    data_density: np.ndarray
+    extrapolated: np.ndarray
+    variance_kind: str = ""
+    warnings: List[str] = field(default_factory=list)
+
+    @property
+    def ncell(self) -> int:
+        return int(self.variance.size)
+
+
+@dataclass
+class CategoricalUncertainty:
+    """Kateqorik xassənin qeyri-müəyyənlik diaqnostikası (grid üzrə).
+
+    `geology.property_interpolation.CategoricalEstimate`-in DOMAIN-
+    səviyyəli əksi — bax `PropertyUncertainty` docstring-i (eyni qat
+    sərhədi qaydası)."""
+    name: str
+    categories: np.ndarray
+    probabilities: np.ndarray       #: (ncell, k)
+    entropy: np.ndarray
+    normalized_entropy: np.ndarray
+    max_probability: np.ndarray
+    confidence: np.ndarray
+    support: np.ndarray              #: object massiv — Phase A `SUPPORT_*` həndəsi təsnifat
+    neighbor_count: np.ndarray
+    nearest_distance: np.ndarray
+    extrapolated: np.ndarray
+    n_probability_corrections: int = 0
+    warnings: List[str] = field(default_factory=list)
+
+    @property
+    def ncell(self) -> int:
+        return int(self.max_probability.size)
 
 
 @dataclass

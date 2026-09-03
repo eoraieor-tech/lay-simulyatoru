@@ -134,19 +134,32 @@ def test_a_mpfa_is_selectable_and_reaches_the_residual_assembler():
     assert isinstance(MPFAODiscretization(), IFluxDiscretization)
 
 
-def test_a_jacobian_and_engines_reject_mpfa_explicitly():
-    """Tapşırıq §24 — saxta uyğunluq YOX, AÇIQ imtina (Phase 5B-2)."""
+def test_a_jacobian_and_fully_implicit_engine_now_support_mpfa():
+    """PHASE D (5B-2) — `JacobianAssembler`/`FullyImplicitEngine` ARTIQ
+    MPFA-O ilə İŞLƏYİR (analitik çoxnöqtəli Jacobian implement edilib,
+    bax `jacobian.py` modul docstring-i). `ImpesEngine` HƏLƏ DƏ AÇIQ
+    imtina edir — onun təzyiq addımı tək-üz transmissivlik skalyarı
+    tələb edir, bu, MPFA-nın stensilinə uyğun DEYİL (bilərəkdən
+    implement edilməyib, aşağıda ayrıca yoxlanılır)."""
     model = flat_model()
     mpfa, _ = assemblers(model)
-    with pytest.raises(NotImplementedError, match="Phase 5B-2"):
-        JacobianAssembler(mpfa)
+    jacobian = JacobianAssembler(mpfa)
+    st = state(model.ncell)
+    matrix = jacobian.assemble(st, mpfa.fluid_state(st), dt=1.0)
+    assert matrix.shape == (model.ncell * VARIABLES_PER_CELL,) * 2
+    assert matrix.nnz > 0
 
     from imex2d.application.config import SimulationConfig
     relperm = CoreyRelativePermeabilityAdapter(default_scal())
-    for engine, extra in ((FullyImplicitEngine, {}), (ImpesEngine, {"linear_solver": None})):
-        with pytest.raises(NotImplementedError, match="Phase 5B-2"):
-            engine(model, SimulationConfig(end_time=1.0), relperm,
-                   flux_discretization=MPFAODiscretization(closure=NEUMANN), **extra)
+    engine = FullyImplicitEngine(
+        model, SimulationConfig(end_time=1.0), relperm,
+        flux_discretization=MPFAODiscretization(closure=NEUMANN))
+    assert engine.jacobian_assembler._multipoint is True
+
+    with pytest.raises(NotImplementedError, match="Phase 5B-2"):
+        ImpesEngine(model, SimulationConfig(end_time=1.0), relperm,
+                   flux_discretization=MPFAODiscretization(closure=NEUMANN),
+                   linear_solver=None)
 
 
 # ═══════════════════════════════════ B — TAM təzyiq vektoru girişi ══════
