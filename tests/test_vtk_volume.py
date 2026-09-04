@@ -207,6 +207,21 @@ def test_each_well_gets_a_bore_markers_and_a_label():
     assert len(scene._well_actors) == expected
 
 
+def test_out_of_bounds_perforation_is_skipped_not_crashed():
+    """Diaqnostika bunu bloklayıcı XƏTA sayır, amma 3D önbaxış model
+    hələ düzəldilməmiş ola-ola çağırıla bilər — çökməməli, sadəcə
+    etibarsız perforasiyanı görməzdən gəlməlidir."""
+    from imex2d.domain.wells import Perforation
+
+    model = _model(nz=1)
+    well = model.active_wells()[0]
+    well.perforations.append(Perforation(0, 0, 5))   # k=5, nz=1-də yoxdur
+
+    scene = vtk_volume.VtkReservoirScene(model)
+    scene.update_values(model.rock.permx.values)      # çökməməlidir
+    assert len(scene._well_actors) > 0
+
+
 def test_well_bore_extends_above_the_model_surface():
     """Lülə modelin içində gizlənməməlidir (ilk versiyanın səhvi —
     yalnız adlar görünürdü)."""

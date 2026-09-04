@@ -224,6 +224,22 @@ def test_wells_can_be_hidden():
     assert not axes.lines
 
 
+def test_out_of_bounds_perforation_is_skipped_not_crashed():
+    """Diaqnostika bunu bloklayıcı XƏTA sayır, amma önbaxış model hələ
+    düzəldilməmiş ola-ola çağırıla bilər — çökməməli, sadəcə etibarsız
+    perforasiyanı görməzdən gəlməlidir."""
+    from imex2d.domain.wells import Perforation
+
+    model = _model(nx=6, ny=6, nz=3)
+    well = model.active_wells()[0]
+    well.perforations.append(Perforation(0, 0, 9))   # k=9, nz=3-də yoxdur
+
+    figure, axes, cax = _axes()
+    VolumeRenderer().draw(axes, figure, model, model.rock.permx.values,
+                          show_wells=True, cax=cax)   # çökməməlidir
+    assert axes.lines
+
+
 def test_two_dimensional_model_still_renders():
     """nz = 1 halda 3D görüntü tək təbəqəli lövhə olmalıdır."""
     model = _model(nx=6, ny=6, nz=1)

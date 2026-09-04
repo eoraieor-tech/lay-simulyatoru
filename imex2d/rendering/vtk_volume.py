@@ -534,8 +534,11 @@ class VtkReservoirScene:
         surface = float(depths.min()) - float(geometry.dz[0]) * 0.5
         top = surface - model_thickness * 0.25
 
+        grid = model.grid
         for well in model.active_wells():
-            perforations = well.open_perforations()
+            perforations = [p for p in well.open_perforations()
+                            if 0 <= p.i < grid.nx and 0 <= p.j < grid.ny
+                            and 0 <= p.k < grid.nz]
             if not perforations:
                 continue
             x = (perforations[0].i + 0.5) * geometry.dx
