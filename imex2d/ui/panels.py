@@ -24,8 +24,13 @@ import os
 from ..application.scenarios import WELL_PATTERNS
 from ..geology.interpolation import (INTERPOLATORS, InverseDistance,
                                      NearestNeighbour, OrdinaryKriging)
-from ..domain.geology import GeologicalWell, validate_wells
+from ..application.geology_adapter import well_layer_summary
+from ..application.geology_service import (CompletionMethod, CompletionSpec,
+                                           LayerInterpolationConfig)
+from ..domain.data_availability import format_layers, parse_layers
+from ..domain.geology import GeologicalWell, validate_wells, well_effective_layers
 from ..domain.geometry import depth_to_k, xy_to_ij
+from ..geology.layer_availability import LayerDataPolicy
 from ..domain.structure import FaultReference
 from ..io.fault_io import (FaultFormatError, read_eclipse_faults,
                           read_faults_csv)
@@ -329,8 +334,14 @@ class GeologyPanel(QWidget):
     interpolate_requested = pyqtSignal()
     cross_validate_requested = pyqtSignal()
 
+    # "Lay üstü/altı" (FİZİKİ interval) və "Data layları" (MƏLUMAT
+    # MÖVCUDLUĞU) AYRI sütunlardır və AYRI mənaları var (tapşırıq §1/§14).
+    # "Kəsdiyi laylar" YALNIZ OXUNAN, hesablanan sütundur — istifadəçi
+    # onu redaktə etmir, çünki o, top/bottom + grid həndəsəsinin
+    # NƏTİCƏSİDİR, müstəqil giriş deyil.
     COLUMNS = ["Ad", "Modeldə", "X, m", "Y, m", "(i, j)", "Lay üstü, m",
-              "Lay altı, m", "φ", "k, mD", "Sw", "Qeyd"]
+              "Lay altı, m", "Data layları", "Kəsdiyi laylar",
+              "φ", "k, mD", "Sw", "Qeyd"]
     COL_NAME = 0
     COL_IN_MODEL = 1
     COL_X = 2
@@ -338,10 +349,12 @@ class GeologyPanel(QWidget):
     COL_IJ = 4
     COL_TOP = 5
     COL_BOTTOM = 6
-    COL_PORO = 7
-    COL_PERM = 8
-    COL_SW = 9
-    COL_NOTE = 10
+    COL_DATA_LAYERS = 7
+    COL_EFFECTIVE = 8
+    COL_PORO = 9
+    COL_PERM = 10
+    COL_SW = 11
+    COL_NOTE = 12
     _NUMERIC_COLUMNS = {COL_X: "x", COL_Y: "y", COL_TOP: "top",
                         COL_BOTTOM: "bottom", COL_PORO: "porosity",
                         COL_PERM: "permeability", COL_SW: "water_saturation"}
@@ -421,7 +434,79 @@ class GeologyPanel(QWidget):
             "laylardan çox təsir edir (kor-koranə bərabər hovuzlama yox).")
         self.allow_cross_layer_fallback.toggled.connect(self._on_table_edited)
         form.addRow("", self.allow_cross_layer_fallback)
+
+        # ── LAY-MƏLUMATLI (layer-aware) rejim ─────────────────────────
+        # SÖNDÜRÜLÜ olanda proqram TAM ƏVVƏLKİ kimi işləyir (§25).
+        self.layer_aware = QCheckBox(
+            "Lay-məlumatlı rejim (hansı layda HƏQİQƏTƏN data var)")
+        self.layer_aware.setToolTip(
+            "Yandırılanda quyunun 'Data layları' sütunu oxunur və hər lay "
+            "YALNIZ ÖZ məlumatı ilə interpolyasiya olunur.\n"
+            "Məlumatı olmayan lay sükutla doldurulmur — MISSING qalır və "
+            "simulyasiyadan əvvəl açıq xəta verir (tamamlama üsulu "
+            "seçilməyibsə).\n"
+            "Söndürülü (defolt): əvvəlki davranış — bir quyu dəyəri bütün "
+            "K-lara yayılır.")
+        self.layer_aware.toggled.connect(self._on_layer_mode_changed)
+        self.layer_aware.toggled.connect(self._on_table_edited)
+        form.addRow("", self.layer_aware)
+
+        self.data_policy = QComboBox()
+        self.data_policy.addItem("Ciddi — yalnız bəyan olunmuş laylar", "strict")
+        self.data_policy.addItem("İnterval — top/bottom-un kəsdiyi laylar (FƏRZİYYƏ)",
+                                 "interval")
+        self.data_policy.setToolTip(
+            "Ciddi (tövsiyə olunan): 'Data layları' sütunu boş olan quyu heç "
+            "bir laya məlumat vermir.\n"
+            "İnterval: bəyan olmayan quyunun fiziki intervalı məlumat sayılır — "
+            "bu, AÇIQ FƏRZİYYƏDİR və hesabatda xəbərdarlıq kimi görünür.")
+        self.data_policy.currentIndexChanged.connect(self._on_table_edited)
+        form.addRow("Məlumat mövcudluğu siyasəti", self.data_policy)
+
+        self.target_layers = QLineEdit("")
+        self.target_layers.setPlaceholderText("boş = məlumatı olan bütün laylar (məs. 1-3)")
+        self.target_layers.setToolTip(
+            "İnterpolyasiya HƏDƏFİ — 1-əsaslı lay nömrələri ('1-3' və ya '1,2,5').\n"
+            "Bu, məlumat mövcudluğundan AYRI anlayışdır: seçilmiş, lakin "
+            "məlumatı olmayan lay interpolyasiya OLUNMUR.")
+        self.target_layers.textChanged.connect(self._on_table_edited)
+        form.addRow("İnterpolyasiya layları", self.target_layers)
+
+        self.completion_method = QComboBox()
+        for label, value in (
+                ("Yoxdur — MISSING qalsın (defolt)", CompletionMethod.NONE.value),
+                ("Orijinal sahəni saxla", CompletionMethod.PRESERVE_ORIGINAL.value),
+                ("Şaquli trend (ESTIMATED)", CompletionMethod.VERTICAL_TREND.value),
+                ("3D geostatistik qiymətləndirmə (ESTIMATED)",
+                 CompletionMethod.GEOSTATISTICAL_3D.value),
+                ("SGS realizasiyası (SIMULATED)", CompletionMethod.SGS.value),
+                ("Sabit lay dəyəri (ESTIMATED)", CompletionMethod.CONSTANT.value)):
+            self.completion_method.addItem(label, value)
+        self.completion_method.setToolTip(
+            "Məlumatı OLMAYAN laylar necə tamamlansın. Heç bir variant "
+            "nəticəni 'ölçülmüş' kimi qeyd etmir — mənşə (provenance) "
+            "modeldə saxlanılır.")
+        self.completion_method.currentIndexChanged.connect(self._on_completion_changed)
+        self.completion_method.currentIndexChanged.connect(self._on_table_edited)
+        form.addRow("Məlumatsız layların tamamlanması", self.completion_method)
+
+        self.completion_value = _spin(0.0, -1e9, 1e9, 5, 0.01)
+        self.completion_value.setToolTip(
+            "Yalnız 'Sabit lay dəyəri' üsulu üçün — həmin laylara veriləcək "
+            "dəyər (xassənin fiziki vahidində).")
+        self.completion_value.valueChanged.connect(self._on_table_edited)
+        form.addRow("Sabit tamamlama dəyəri", self.completion_value)
         layout.addLayout(form)
+
+        self.layer_summary = QTextEdit()
+        self.layer_summary.setReadOnly(True)
+        self.layer_summary.setMaximumHeight(90)
+        self.layer_summary.setStyleSheet("font-family:monospace;font-size:11px")
+        self.layer_summary.setToolTip(
+            "Quyu üzrə: kəsdiyi laylar / məlumatı olan laylar — "
+            "interpolyasiya və MISSING laylar isə 'İnterpolyasiya et'-dən "
+            "sonra hesabatda görünür.")
+        layout.addWidget(self.layer_summary)
 
         action_row = QHBoxLayout()
         self.interpolate_button = QPushButton("İnterpolyasiya et")
@@ -451,9 +536,28 @@ class GeologyPanel(QWidget):
         note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         layout.addWidget(note)
         self._on_method_changed()
+        self._on_layer_mode_changed()
+        self._on_completion_changed()
         self._refresh_map_and_validation()
 
     # ------------------------------------------------------------ slots
+    def _on_layer_mode_changed(self):
+        enabled = self.layer_aware.isChecked()
+        for widget in (self.data_policy, self.target_layers,
+                       self.completion_method, self.completion_value):
+            widget.setEnabled(enabled)
+        if enabled:
+            self._on_completion_changed()
+        # Köhnə "boş laya borc ver" seçimi lay-məlumatlı rejimin
+        # tamamlama mexanizmi ilə ƏVƏZLƏNİR — ikisi eyni anda mənasızdır.
+        self.allow_cross_layer_fallback.setEnabled(
+            not enabled and "Kriging" in self.method.currentText())
+
+    def _on_completion_changed(self):
+        self.completion_value.setEnabled(
+            self.layer_aware.isChecked()
+            and self.completion_method.currentData() == CompletionMethod.CONSTANT.value)
+
     def _on_method_changed(self):
         method = self.method.currentText()
         is_kriging = "Kriging" in method
@@ -463,6 +567,8 @@ class GeologyPanel(QWidget):
                       self.min_neighbors, self.max_neighbors,
                       self.allow_cross_layer_fallback):
             widget.setEnabled(is_kriging)
+        if self.layer_aware.isChecked():
+            self.allow_cross_layer_fallback.setEnabled(False)
 
     def _on_item_changed(self, item: QTableWidgetItem):
         if item.column() == self.COL_IN_MODEL:
@@ -541,7 +647,71 @@ class GeologyPanel(QWidget):
         return NearestNeighbour()
 
     def cross_layer_fallback_allowed(self) -> bool:
+        """Lay-məlumatlı rejim AÇIQ olanda HƏMİŞƏ `False` — köhnə "boş laya
+        borc ver" yolu ilə yeni tamamlama mexanizmi eyni anda işləsəydi,
+        məlumatsız lay iki müxtəlif məntiqlə doldurulardı."""
+        if self.layer_aware.isChecked():
+            return False
         return self.allow_cross_layer_fallback.isChecked()
+
+    # ─────────────────────────────────────── lay-məlumatlı rejim (public)
+    def layer_aware_enabled(self) -> bool:
+        return self.layer_aware.isChecked()
+
+    def layer_data_policy(self) -> LayerDataPolicy:
+        if not self.layer_aware.isChecked():
+            return LayerDataPolicy.BROADCAST
+        return (LayerDataPolicy.INTERVAL
+                if self.data_policy.currentData() == "interval"
+                else LayerDataPolicy.STRICT)
+
+    def layer_config(self, nz: int) -> Optional[LayerInterpolationConfig]:
+        """Paneldəki seçimlərdən `LayerInterpolationConfig` qurur.
+
+        Rejim söndürülübsə `None` — `build()` ƏVVƏLKİ yolu ilə gedir.
+        Mətn səhvdirsə `ValueError` (çağıran istifadəçiyə göstərir) —
+        SƏSSİZ DÜZƏLİŞ YOXDUR.
+        """
+        if not self.layer_aware.isChecked():
+            return None
+        targets = parse_layers(self.target_layers.text(), nz)
+        method = CompletionMethod(self.completion_method.currentData())
+        spec = CompletionSpec(
+            method=method,
+            value=(self.completion_value.value()
+                   if method is CompletionMethod.CONSTANT else None))
+        return LayerInterpolationConfig(
+            policy=self.layer_data_policy(),
+            target_layers=targets or None,
+            completion=spec)
+
+    def refresh_layer_summary(self) -> None:
+        """Quyu-üzrə "kəsdiyi / məlumatı olan laylar" xülasəsi (§14).
+
+        HESABLAMA APARMIR — yalnız bəyanları oxuyur (`well_layer_summary`),
+        ona görə hər cədvəl redaktəsində çağırıla bilər.
+        """
+        if self._geometry is None:
+            self.layer_summary.setPlainText("Grid qurulduqdan sonra göstərilir.")
+            return
+        wells = self.wells()
+        if not wells:
+            self.layer_summary.setPlainText("Quyu yoxdur.")
+            return
+        try:
+            summary = well_layer_summary(wells, self._geometry,
+                                         policy=self.layer_data_policy())
+        except ValueError as error:
+            self.layer_summary.setPlainText(f"Lay bəyanı oxunmadı: {error}")
+            return
+        lines = []
+        for name, entry in summary.items():
+            lines.append(
+                f"{name}: kəsir {format_layers(entry.get('effective', []))} | "
+                f"data {format_layers(entry.get('data', []))} | "
+                + " ".join(f"{key} {format_layers(entry[key])}"
+                           for key in ("PORO", "PERMX", "SW") if key in entry))
+        self.layer_summary.setPlainText("\n".join(lines))
 
     def set_report(self, text: str):
         self.report.setPlainText(text)
@@ -594,6 +764,13 @@ class GeologyPanel(QWidget):
             ij_item.setFlags(ij_item.flags() & ~Qt.ItemIsEditable)
             ij_item.setForeground(QBrush(QColor(Qt.gray)))
             self.table.setItem(r, self.COL_IJ, ij_item)
+
+            self.table.setItem(r, self.COL_DATA_LAYERS,
+                               QTableWidgetItem(well.data_layers_text))
+            effective_item = QTableWidgetItem("—")
+            effective_item.setFlags(effective_item.flags() & ~Qt.ItemIsEditable)
+            effective_item.setForeground(QBrush(QColor(Qt.gray)))
+            self.table.setItem(r, self.COL_EFFECTIVE, effective_item)
 
             optional_columns = [(self.COL_TOP, "top"), (self.COL_BOTTOM, "bottom"),
                                (self.COL_PORO, "porosity"), (self.COL_PERM, "permeability"),
@@ -649,6 +826,7 @@ class GeologyPanel(QWidget):
             text = (item.text().strip() if item is not None else "")
             values[attr] = self._to_float(text)
         note_item = self.table.item(row, self.COL_NOTE)
+        layers_item = self.table.item(row, self.COL_DATA_LAYERS)
         return GeologicalWell(
             name=name_item.text().strip(),
             in_model=in_model,
@@ -656,7 +834,9 @@ class GeologyPanel(QWidget):
             top=values["top"], bottom=values["bottom"],
             porosity=values["porosity"], permeability=values["permeability"],
             water_saturation=values["water_saturation"],
-            note=note_item.text() if note_item is not None else "")
+            note=note_item.text() if note_item is not None else "",
+            data_layers_text=(layers_item.text().strip()
+                              if layers_item is not None else ""))
 
     @staticmethod
     def _to_float(text: str) -> Optional[float]:
@@ -669,14 +849,22 @@ class GeologyPanel(QWidget):
             return None
 
     def _recompute_indices(self):
+        """(i, j) VƏ "Kəsdiyi laylar" sütunlarını yeniləyir.
+
+        "Kəsdiyi laylar" YALNIZ `top`/`bottom` + grid həndəsəsindən
+        hesablanır — "Data layları" sütununa TƏSİR ETMİR və ondan
+        ASILI DEYİL (tapşırıq §1: interval ≠ məlumat)."""
         self.table.blockSignals(True)
         try:
             for row in range(self.table.rowCount()):
                 item = self.table.item(row, self.COL_IJ)
+                effective_item = self.table.item(row, self.COL_EFFECTIVE)
                 if item is None:
                     continue
                 if self._geometry is None:
                     item.setText("grid qurulduqdan sonra")
+                    if effective_item is not None:
+                        effective_item.setText("grid qurulduqdan sonra")
                     continue
                 well = self._well_from_row(row)
                 if well is None:
@@ -684,9 +872,17 @@ class GeologyPanel(QWidget):
                 x_max, y_max = self._geometry.areal_extent()
                 if not (0.0 <= well.x <= x_max and 0.0 <= well.y <= y_max):
                     item.setText("kənar")
+                    if effective_item is not None:
+                        effective_item.setText("kənar")
                     continue
                 i, j = xy_to_ij(well.x, well.y, self._geometry)
                 item.setText(f"({i}, {j})")
+                if effective_item is not None:
+                    try:
+                        effective_item.setText(
+                            format_layers(well_effective_layers(well, self._geometry)))
+                    except ValueError:
+                        effective_item.setText("interval səhvdir")
         finally:
             self.table.blockSignals(False)
 
@@ -705,6 +901,7 @@ class GeologyPanel(QWidget):
         self.map_widget.set_data(wells, x_max, y_max, selected)
         issues = validate_wells(wells, self._geometry, self.method_text())
         self.set_validation(issues)
+        self.refresh_layer_summary()
 
 
 class FaciesPanel(QWidget):

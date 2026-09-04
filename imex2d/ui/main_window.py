@@ -41,6 +41,7 @@ from ..application.geology_service import (GeologicalGridSpec,
 from ..application.scenarios import WELL_PATTERNS, SyntheticGeologicalModelBuilder
 from ..application.simulation_service import (ModelValidationError,
                                               SimulationService)
+from ..domain.data_availability import STATUS_LABEL, DataStatus
 from ..domain.diagnostics import DiagnosticReport, Severity
 from ..domain.geology import GeologicalWell, validate_wells
 from ..domain.grid import CartesianGrid
@@ -504,6 +505,26 @@ class MainWindow(QMainWindow):
         self.volume_edges.setChecked(True)
         self.volume_edges.stateChanged.connect(self.update_volume)
 
+        # ── status filtri (lay-məlumatlı rejim, §13) ─────────────────
+        # Siyahı `DataStatus`-dan qurulur — burada heç bir status adı
+        # SABİT KODLANMIR. Model provenance daşımırsa filtr sadəcə
+        # təsirsizdir (heç nə gizlədilmir).
+        self.volume_status_property = QComboBox()
+        self.volume_status_property.addItem("— status filtri yoxdur —", "")
+        self.volume_status_property.setToolTip(
+            "Hansı xassənin MƏNŞƏ statusuna görə süzüləcəyi.")
+        self.volume_status_property.currentIndexChanged.connect(self.update_volume)
+
+        self.volume_status = QComboBox()
+        self.volume_status.addItem("Hamısı", "")
+        for status in DataStatus:
+            self.volume_status.addItem(STATUS_LABEL[status.value], status.value)
+        self.volume_status.setToolTip(
+            "Yalnız seçilmiş mənşəli hüceyrələr göstərilir — ölçülmüş, "
+            "interpolyasiya olunmuş, qiymətləndirilmiş, simulyasiya edilmiş "
+            "və ya məlumatsız (MISSING) hüceyrələr ayrıca görünə bilər.")
+        self.volume_status.currentIndexChanged.connect(self.update_volume)
+
         controls.addWidget(QLabel("Kəsim həddi:"))
         controls.addWidget(self.volume_threshold, 2)
         controls.addWidget(self.volume_threshold_label)
@@ -514,6 +535,9 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.volume_wells)
         controls.addWidget(self.volume_faults)
         controls.addWidget(self.volume_edges)
+        controls.addWidget(QLabel("Status:"))
+        controls.addWidget(self.volume_status_property)
+        controls.addWidget(self.volume_status)
         layout.addLayout(controls)
 
         appearance = QHBoxLayout()
@@ -643,6 +667,9 @@ class MainWindow(QMainWindow):
             value_limits=limits,
             k_range=volume_filter.k_range,
             value_min=volume_filter.value_min,
+            # status filtri HƏR İKİ motorda EYNİ maskadan gəlir — VTK və
+            # matplotlib görüntüsü bir-birindən FƏRQLƏNMƏMƏLİDİR.
+            cell_mask=volume_filter.cell_mask,
             show_edges=self.volume_edges.isChecked(),
             opacity=self.volume_opacity.value() / 100.0,
             vertical_exaggeration=1.0,
@@ -667,7 +694,7 @@ class MainWindow(QMainWindow):
         self.vtk_scene.attach_orientation_marker(
             self.vtk_widget.GetRenderWindow().GetInteractor())
 
-        self.vtk_scene.update_values(values, R.PROPERTY_LABELS.get(key, key))
+        self.vtk_scene.update_values(values, R.property_label(key))
         if rebuild or view is not None:
             # `reset_camera()` istifadəçinin fırlatdığı bucağı SIFIRLAYIR
             # — ona görə yalnız model dəyişəndə və ya hazır baxış
@@ -709,7 +736,8 @@ class MainWindow(QMainWindow):
         volume_filter = VolumeFilter(
             value_min=cut,
             k_range=(self.volume_k_from.value() - 1,
-                     self.volume_k_to.value() - 1))
+                     self.volume_k_to.value() - 1),
+            cell_mask=self._status_cell_mask())
 
         time = snapshot.time if snapshot else 0.0
         self.volume_time_label.setText(f"t = {time:8.0f} gün")
@@ -743,7 +771,7 @@ class MainWindow(QMainWindow):
 
         self.volume_colorbar = self.volume_renderer.draw(
             self.volume_ax, self.volume_fig, model, values,
-            label=R.PROPERTY_LABELS.get(key, key), colormap=colormap,
+            label=R.property_label(key), colormap=colormap,
             value_limits=(low, high) if low is not None and high is not None
             else None,
             volume_filter=volume_filter,
@@ -1338,10 +1366,68 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Model qurula bilmədi: {exc}")
             return
         self.refresh_tree()
+        self._refresh_provenance_choices()
         self.update_scal_plot()
         self.update_pvt_plot()
         self.update_map()
         self.update_volume()
+
+    def _status_cell_mask(self):
+        """Status filtrinin bool maskası (`None` — filtr yoxdur).
+
+        MASKA MODELİN `provenance`-INDAN OXUNUR — UI heç bir geologiya
+        hesablaması aparmır (§13), yalnız hazır statusları müqayisə edir.
+        """
+        if self.reservoir_model is None:
+            return None
+        name = self.volume_status_property.currentData()
+        wanted = self.volume_status.currentData()
+        if not name or not wanted:
+            return None
+        entry = (getattr(self.reservoir_model, "provenance", {}) or {}).get(name)
+        if entry is None:
+            return None
+        return entry.mask(wanted)
+
+    def _refresh_provenance_choices(self):
+        """Modeldə provenance varsa xəritə/3D combo-larına "Mənşə/status"
+        və "Etibarlılıq balı" seçimlərini əlavə edir (§13).
+
+        Siyahı MODELDƏN qurulur — heç bir xassə adı burada SABİT
+        KODLANMIR. Provenance yoxdursa (köhnə rejim) heç nə əlavə
+        olunmur, combo ƏVVƏLKİ kimi qalır.
+        """
+        provenance = getattr(self.reservoir_model, "provenance", {}) or {}
+        wanted = []
+        for name in sorted(provenance):
+            keys_for_name = [R.provenance_key(name), R.confidence_key(name)]
+            # ORİJİNAL və TƏSİR yalnız orijinal sahə MÖVCUD olanda mənalıdır
+            # — əks halda boş (NaN) görüntü təklif etmirik.
+            if provenance[name].original is not None:
+                keys_for_name += [R.original_key(name), R.impact_key(name)]
+            for key in keys_for_name:
+                wanted.append((key, R.property_label(key)))
+        keys = {key for key, _label in wanted}
+
+        # status filtri: hansı xassənin mənşəyinə görə süzüləcəyi
+        selected = self.volume_status_property.currentData()
+        self.volume_status_property.blockSignals(True)
+        self.volume_status_property.clear()
+        self.volume_status_property.addItem("— status filtri yoxdur —", "")
+        for name in sorted(provenance):
+            self.volume_status_property.addItem(name, name)
+        index = self.volume_status_property.findData(selected or "")
+        self.volume_status_property.setCurrentIndex(max(index, 0))
+        self.volume_status_property.blockSignals(False)
+        for combo in (self.property_box, self.volume_property):
+            for index in range(combo.count() - 1, -1, -1):
+                data = str(combo.itemData(index) or "")
+                if data.startswith(R.PROVENANCE_PREFIXES) and data not in keys:
+                    combo.removeItem(index)
+            existing = {combo.itemData(i) for i in range(combo.count())}
+            for key, label in wanted:
+                if key not in existing:
+                    combo.addItem(label, key)
 
     def scal_tables(self):
         """Yüklənmiş SCAL cədvəlləri (yoxdursa None)."""
@@ -1438,14 +1524,28 @@ class MainWindow(QMainWindow):
             dx=grid_values["dx"], dy=grid_values["dy"], dz=grid_values["dz"],
             top_depth=grid_values["top_depth"],
             dip_x=grid_values["dip_x"], dip_y=grid_values["dip_y"])
-        dataset, skipped = wells_to_dataset(wells, method)
+        # LAY-MƏLUMATLI rejim: `geometry`/`policy` verilir ki, quyunun
+        # "Data layları" bəyanı HƏR LAY ÜÇÜN AYRICA nümunəyə çevrilsin.
+        # Rejim söndürülübsə hər ikisi defolt qalır → ƏVVƏLKİ davranış.
+        policy = self.geology_panel.layer_data_policy()
+        try:
+            layer_config = self.geology_panel.layer_config(grid_values["nz"])
+            dataset, skipped = wells_to_dataset(
+                wells, method,
+                geometry=geometry if layer_config is not None else None,
+                policy=policy)
+        except ValueError as exc:
+            QMessageBox.critical(self, "İnterpolyasiya edilmədi",
+                                 f"Lay seçimi oxunmadı:\n{exc}")
+            return
         builder = WellBasedGeologicalModelBuilder(self.geology_panel.interpolator())
         try:
             geology, report = builder.build(
                 dataset, spec, ky_over_kx=rock_values["ky_over_kx"],
                 kv_over_kh=rock_values["kv_over_kh"],
                 allow_cross_layer_fallback=self.geology_panel.cross_layer_fallback_allowed(),
-                name="Quyu cədvəlindən geoloji model")
+                name="Quyu cədvəlindən geoloji model",
+                layer_config=layer_config)
         except ValueError as exc:
             QMessageBox.critical(self, "İnterpolyasiya edilmədi", str(exc))
             return
@@ -1455,6 +1555,14 @@ class MainWindow(QMainWindow):
             text += "\n\nBuraxılan xassələr:\n" + "\n".join(
                 f"  {message}" for message in skipped.values())
         self.geology_panel.set_report(text)
+        if report.has_blocking:
+            # Model QAYTARILIR (3D-də MISSING laylar görünsün deyə), amma
+            # rezervuar modeli qurulmur — istifadəçi bunu AÇIQ görməlidir.
+            QMessageBox.warning(
+                self, "Model natamamdır",
+                "Aşağıdakı laylar üçün məlumat yoxdur və tamamlama üsulu "
+                "seçilməyib — simulyasiya bu modellə işə düşməyəcək:\n\n"
+                + "\n\n".join(report.blocking))
         self._geology_model_from_wells = geology
         self.geology_panel.mark_fresh()
         self.rebuild_model()
@@ -1466,14 +1574,25 @@ class MainWindow(QMainWindow):
         dəqiq" vəd etmir."""
         wells = self.geology_panel.wells()
         method = self.geology_panel.method_text()
-        dataset, _skipped = wells_to_dataset(wells, method)
+        geometry = self._current_geometry()
+        layer_aware = self.geology_panel.layer_aware_enabled()
+        try:
+            dataset, _skipped = wells_to_dataset(
+                wells, method, geometry=geometry if layer_aware else None,
+                policy=self.geology_panel.layer_data_policy())
+        except ValueError as exc:
+            QMessageBox.critical(self, "Cross-validation", f"Lay bəyanı oxunmadı:\n{exc}")
+            return
         if len(dataset) < 3:
             QMessageBox.information(
                 self, "Cross-validation",
                 "Cross-validation üçün ən azı 3 quyu nöqtəsi lazımdır.")
             return
         builder = WellBasedGeologicalModelBuilder(self.geology_panel.interpolator())
-        all_results = builder.cross_validate_all(dataset)
+        # `nz` verilir ki, DOĞRULAMA MƏLUMATI OLMAYAN laylar da hesabatda
+        # AÇIQ görünsün — "RMSE = 0" kimi saxta uğur yaranmasın (§19).
+        all_results = builder.cross_validate_all(
+            dataset, nz=geometry.grid.nz if layer_aware else None)
         text = format_cross_validation_report(all_results)
         QMessageBox.information(self, "Cross-validation nəticəsi", text)
 

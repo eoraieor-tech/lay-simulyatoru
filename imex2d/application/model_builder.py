@@ -47,6 +47,12 @@ class ReservoirModelBuilder:
         `"bar"` — mühərrikin öz vahidi, ona görə `rock_compressibility_unit`
         DƏYİŞMƏYƏNDƏ dəyər ƏVVƏLKİ kimi HEÇ ÇEVRİLMİR (bax
         `to_engine_units`, `unit==target` olanda `convert()` no-op-dur)."""
+        # BU, SİMULYATOR ÖNCƏSİ VALİDASİYA QAPISIDIR (tapşırıq §20):
+        # `GeologicalModel.validate()` indi lay-üzrə MISSING xassələri də
+        # AÇIQ, lay-adlı mesajla bildirir — yəni "L4-L5 üçün PORO yoxdur"
+        # modeli simulyasiyaya BURAXILMIR. Tamamlanmış (estimated/
+        # simulated) sahələr isə keçir, amma mənşəyi (`provenance`)
+        # rezervuar modelinə DAŞINIR, itmir.
         issues = geological_model.validate()
         if issues:
             raise ValueError("Geoloji model natamamdır: " + "; ".join(issues))
@@ -86,4 +92,5 @@ class ReservoirModelBuilder:
             scal_tables=scal_tables,
             units=units,
             source_geological_model=geological_model.name,
+            provenance=dict(geological_model.provenance),
         )

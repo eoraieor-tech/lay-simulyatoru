@@ -12,10 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+import numpy as np
+
+from .data_availability import (DataStatus, ModelDataAvailability, format_layers)
 from .facies_field import FaciesField
 from .geometry import CellGeometry
 from .grid import CartesianGrid
-from .properties import CategoricalUncertainty, PropertyMap, PropertyUncertainty
+from .properties import (CategoricalUncertainty, PropertyMap, PropertyProvenance,
+                         PropertyUncertainty)
 from .structure import FaultReference, HorizonReference, RegionSet
 from .validation import validate_permeability, validate_porosity
 
@@ -74,10 +78,65 @@ class GeologicalModel:
     #: `PropertyMap` (sadə massiv) formatı DƏYİŞMƏSİN — geriyə-uyğun, defolt
     #: boş lüğət (bax `add_uncertainty`).
     uncertainty: Dict[str, object] = field(default_factory=dict)
+    #: Xassə adı -> `PropertyProvenance` (LAY-MƏLUMATLI rejim). `property_
+    #: maps`-dan AYRICA saxlanılır — mövcud oxucular (TPFA/MPFA, Eclipse
+    #: ixracı, `RockProperties`) DƏYİŞMİR; defolt boş lüğət, yəni köhnə
+    #: iş axınında HEÇ NƏ dəyişmir (bax `add_provenance`).
+    provenance: Dict[str, PropertyProvenance] = field(default_factory=dict)
+    #: Lay-üzrə məlumat mövcudluğu (bax `domain/data_availability.py`).
+    #: `None` — lay-məlumatlı rejim işlədilməyib (köhnə davranış).
+    availability: Optional[ModelDataAvailability] = None
 
     def __post_init__(self):
         if self.regions is None:
             self.regions = RegionSet.single(self.grid.ncell)
+
+    def add_provenance(self, provenance: PropertyProvenance) -> None:
+        if provenance.ncell != self.grid.ncell:
+            raise ValueError(
+                f"{provenance.name}: hüceyrə sayı uyğun gəlmir "
+                f"({provenance.ncell} != {self.grid.ncell})")
+        self.provenance[provenance.name] = provenance
+
+    def missing_cells(self, name: str) -> np.ndarray:
+        """`(ncell,)` bool — `name` xassəsinin MƏLUMATSIZ (MISSING) hüceyrələri.
+
+        Provenance yoxdursa (köhnə rejim) hamısı `False` — "bilmirik"
+        halı SƏSSİZCƏ "problem var" kimi göstərilmir.
+        """
+        entry = self.provenance.get(name)
+        if entry is None:
+            return np.zeros(self.grid.ncell, dtype=bool)
+        return entry.mask(DataStatus.MISSING.value)
+
+    def missing_layers(self, name: str) -> List[int]:
+        """`name` üçün TAM/QİSMƏN MISSING olan K-təbəqələri (0-əsaslı)."""
+        mask = self.missing_cells(name).reshape(self.grid.shape)
+        return [k for k in range(self.grid.nz) if bool(mask[k].any())]
+
+    def completeness_issues(self) -> list:
+        """LAY-MƏLUMATLI rejimin BLOKLAYAN yoxlaması (tapşırıq §20):
+        simulyator üçün MƏCBURİ xassələrdə MISSING hüceyrə qalıbsa AÇIQ
+        xəta mətni qaytarır — "0 ilə doldur"/"NaN-ı gizlət" YOXDUR.
+
+        Provenance qurulmayıbsa boş siyahı — köhnə iş axını toxunulmur.
+        """
+        issues = []
+        for name in ("PORO", "PERMX", "PERMY", "PERMZ", "NTG", "SW"):
+            if name not in self.provenance or name not in self.property_maps:
+                continue
+            layers = self.missing_layers(name)
+            if not layers:
+                continue
+            n_missing = int(self.missing_cells(name).sum())
+            issues.append(
+                f"'{name}': L{format_layers(layers)} (K={format_layers(layers, one_based=False)}) "
+                f"üçün məlumat YOXDUR — {n_missing} hüceyrə MISSING statusundadır. "
+                "Bu laylar üçün ya quyu məlumatı əlavə edin, ya da AÇIQ completion "
+                "strategiyası (vertical_trend / geostatistical_3d / sgs / constant / "
+                "preserve_original) seçin. Səssiz doldurma (0, NaN, qonşu layın "
+                "dəyəri) TƏTBİQ EDİLMİR.")
+        return issues
 
     def add_uncertainty(self, name: str, uncertainty) -> None:
         if not isinstance(uncertainty, (PropertyUncertainty, CategoricalUncertainty)):
@@ -122,29 +181,49 @@ class GeologicalModel:
             sealing=f.sealing, axis=f.axis, plane_index=f.plane_index,
             range_a=f.range_a, range_b=f.range_b) for f in self.faults]
 
+    def _defined_values(self, name: str) -> np.ndarray:
+        """`name` xassəsinin AÇIQ şəkildə MISSING olmayan hüceyrələri.
+
+        MISSING hüceyrə `NaN` daşıyır (yer tutucu, bax `PropertyProvenance`)
+        — onu ADİ "etibarsız dəyər" kimi bildirmək mesajı ZƏİFLƏDƏRDİ
+        (`completeness_issues()` artıq DAHA DƏQİQ, hansı laylar/neçə
+        hüceyrə olduğunu deyir). Ona görə fiziki diapazon yoxlaması
+        YALNIZ təyin olunmuş hüceyrələrdə aparılır — beləliklə MISSING-dən
+        BAŞQA səbəbdən yaranan NaN/sonsuz (əsl korlanma) HƏLƏ DƏ tutulur.
+        """
+        values = self.property_maps[name].values
+        missing = self.missing_cells(name)
+        return values[~missing] if missing.any() else values
+
     def validate(self) -> list:
         """Sərt xətalar: məcburi xəritələr, dejenerativ həndəsə, fiziki
         cəhətdən qeyri-mümkün PORO/PERM dəyəri (bax `domain/validation.py`,
         Phase 1). Qeyri-adi-amma-mümkün diapazonlar üçün `validate_
-        warnings()`-ə bax — burada RƏDD EDİLMİR."""
+        warnings()`-ə bax — burada RƏDD EDİLMİR.
+
+        LAY-MƏLUMATLI rejimdə (provenance qurulubsa) MISSING laylar
+        `completeness_issues()` ilə AÇIQ, lay-adlı mesajla bildirilir —
+        bu, XƏTA olaraq QALIR (simulyator belə modeli qəbul etmir), sadəcə
+        səbəbi "NaN var" yox, "L4-L5 üçün məlumat yoxdur"-dur."""
         issues = []
         for req in ("PORO", "PERMX"):
             if req not in self.property_maps:
                 issues.append(f"Geoloji modeldə məcburi '{req}' xəritəsi yoxdur.")
         issues.extend(self.geometry.validate())
+        issues.extend(self.completeness_issues())
         if "PORO" in self.property_maps:
-            issues.extend(validate_porosity(self.property_maps["PORO"].values, "PORO").errors)
+            issues.extend(validate_porosity(self._defined_values("PORO"), "PORO").errors)
         for key in ("PERMX", "PERMY", "PERMZ"):
             if key in self.property_maps:
-                issues.extend(validate_permeability(self.property_maps[key].values, key).errors)
+                issues.extend(validate_permeability(self._defined_values(key), key).errors)
         return issues
 
     def validate_warnings(self) -> list:
         """Rədd edilməyən, qeyri-adi diapazon xəbərdarlıqları."""
         warnings = []
         if "PORO" in self.property_maps:
-            warnings += validate_porosity(self.property_maps["PORO"].values, "PORO").warnings
+            warnings += validate_porosity(self._defined_values("PORO"), "PORO").warnings
         for key in ("PERMX", "PERMY", "PERMZ"):
             if key in self.property_maps:
-                warnings += validate_permeability(self.property_maps[key].values, key).warnings
+                warnings += validate_permeability(self._defined_values(key), key).warnings
         return warnings

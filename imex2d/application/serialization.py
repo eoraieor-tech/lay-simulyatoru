@@ -42,7 +42,7 @@ from .config import (LinearSolverConfig, OutputConfig, SimulationConfig,
 from .geology_service import ContinuousSGSConfig, FaciesBuildConfig
 from .project import Project, SimulationRun
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 FILE_EXTENSION = ".imx"
 
 # v1 → v2: geologiya quyu cədvəli (`Project.geology_wells` və
@@ -50,6 +50,13 @@ FILE_EXTENSION = ".imx"
 # yoxdursa boş/None ilə doldurulur (aşağıda `.get()`), ona görə v1 faylı
 # dəyişikliksiz açılır — versiya yalnız GƏLƏCƏK (bu proqramın anlamadığı)
 # faylları rədd etmək üçün yoxlanılır, dəqiq bərabərliklə yox.
+#
+# v2 → v3: `GeologicalWell.data_layers_text` ("Data layları" sütunu, lay-
+# məlumatlı rejim) əlavə olundu. v1/v2 faylında bu açar YOXDUR və boş
+# mətnlə doldurulur (`GeologicalWell.from_dict`) — yəni köhnə layihə
+# EYNİ (lay-məlumatsız) davranışla açılır. Versiya ona görə qaldırıldı ki,
+# lay bəyanı OLAN faylı bu sahədən xəbərsiz KÖHNƏ build səssizcə açıb
+# saxlayanda bəyanları İTİRMƏSİN — köhnə build v3 faylını AÇIQ rədd edir.
 
 _UNIT_SYSTEMS = {"METRIC": METRIC, "FIELD": FIELD}
 

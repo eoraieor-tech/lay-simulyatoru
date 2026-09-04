@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
-from .geometry import CellGeometry, xy_to_ij
+from .geometry import CellGeometry, interval_layers, xy_to_ij
 
 
 @dataclass
@@ -30,6 +30,25 @@ class GeologicalWell:
     permeability: Optional[float] = None
     water_saturation: Optional[float] = None
     note: str = ""
+    #: "Data layları" sütununun XAM mətni (məs. `"1-3"` və ya
+    #: `"PORO:1-5; PERMX:1-3"`). BOŞ/`None` — bu quyu üçün lay-üzrə
+    #: MƏLUMAT MÖVCUDLUĞU BƏYAN EDİLMƏYİB. Bu, `top`/`bottom`-dan
+    #: TAMAMİLƏ AYRI anlayışdır (tapşırıq §1): `top/bottom` quyunun FİZİKİ
+    #: intervalıdır, bu sahə isə "hansı layda ÖLÇMƏ VAR"-dır. Mətn olaraq
+    #: saxlanılır ki, NZ dəyişəndə (grid yenidən qurulanda) istifadəçinin
+    #: yazdığı SEÇİM İTMƏSİN — 0-əsaslı indeksə çevirmə həmişə cari NZ
+    #: ilə `data_layer_sets()`-də aparılır.
+    data_layers_text: str = ""
+
+    def data_layer_sets(self, nz: int):
+        """`(default_layers, per_property)` — 0-əsaslı K indeksləri.
+
+        `default_layers is None` → bu quyu ümumi lay siyahısı bəyan
+        etməyib. Mətn səhvdirsə `ValueError` atılır (SƏSSİZ düzəliş
+        YOXDUR, bax `data_availability.parse_layers`).
+        """
+        from .data_availability import parse_property_layers
+        return parse_property_layers(self.data_layers_text, nz)
 
     def to_dict(self) -> dict:
         return {
@@ -43,6 +62,7 @@ class GeologicalWell:
             "permeability": self.permeability,
             "water_saturation": self.water_saturation,
             "note": self.note,
+            "data_layers_text": self.data_layers_text,
         }
 
     @classmethod
@@ -58,7 +78,22 @@ class GeologicalWell:
             permeability=data.get("permeability"),
             water_saturation=data.get("water_saturation"),
             note=data.get("note", ""),
+            #: köhnə (v1/v2) layihə faylında bu açar YOXDUR — boş mətn
+            #: "bəyan edilməyib" deməkdir, davranış ƏVVƏLKİ kimi qalır.
+            data_layers_text=data.get("data_layers_text", "") or "",
         )
+
+
+def well_effective_layers(well: GeologicalWell, geometry: CellGeometry) -> List[int]:
+    """Quyunun FİZİKİ intervalının KƏSDİYİ K-təbəqələri (0-əsaslı).
+
+    "Effective layers" — tapşırıq §7. Bu, MƏLUMAT MÖVCUDLUĞU DEYİL:
+    `well.data_layers_text` ayrıca bəyan olunur. `top`/`bottom` boşdursa
+    boş siyahı qaytarır (fərziyyə qurulmur).
+    """
+    if well.top is None or well.bottom is None or well.bottom <= well.top:
+        return []
+    return interval_layers(well.x, well.y, well.top, well.bottom, geometry)
 
 
 def method_minimum(method: str) -> int:
@@ -142,6 +177,43 @@ def validate_wells(wells: List[GeologicalWell],
                 "info", f"'{well.name}': boş xanalar ({', '.join(missing)}) — "
                         "bu xassələr həmin quyunu nəzərə almadan hesablanacaq.",
                 well.name))
+
+    # ── "Data layları" sütunu (lay-məlumatlı rejim) ───────────────────
+    # Bu YOXLAMA `geometry`-dən ASILIDIR (NZ lazımdır), ona görə grid
+    # qurulmayıbsa mətn oxunmur — cədvəldəki mətn İTMİR, sadəcə hələ
+    # yoxlanmır (bax `GeologicalWell.data_layers_text` docstring-i).
+    if geometry is not None:
+        nz = geometry.grid.nz
+        for well in wells:
+            if not (well.data_layers_text or "").strip():
+                continue
+            try:
+                default_layers, per_property = well.data_layer_sets(nz)
+            except ValueError as error:
+                issues.append(ValidationIssue(
+                    "error", f"'{well.name}': data layları oxunmadı — {error}", well.name))
+                continue
+            declared = list(default_layers or [])
+            for layers in per_property.values():
+                declared.extend(layers)
+            if not declared:
+                issues.append(ValidationIssue(
+                    "warning",
+                    f"'{well.name}': data layları sütunu boş nəticə verir — bu quyu "
+                    "lay-məlumatlı rejimdə heç bir laya məlumat vermir.", well.name))
+            if well.top is not None and well.bottom is not None and well.bottom > well.top:
+                from .data_availability import format_layers
+                effective = well_effective_layers(well, geometry)
+                outside = sorted(set(declared) - set(effective))
+                if outside:
+                    issues.append(ValidationIssue(
+                        "warning",
+                        f"'{well.name}': bəyan edilmiş data layları "
+                        f"({format_layers(outside)}) quyunun fiziki intervalından "
+                        f"({well.top:g}–{well.bottom:g} m, kəsdiyi laylar: "
+                        f"{format_layers(effective)}) KƏNARDADIR — interval və "
+                        "məlumat mövcudluğu fərqli anlayışlardır, amma bu fərq "
+                        "bilərəkdən olmalıdır.", well.name))
 
     # ── üsul üçün quyu sayı (xassə-üzrə, BLOKLAMIR — bax ISH_HESABATI.md) ──
     if method:

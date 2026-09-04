@@ -82,6 +82,11 @@ class VolumeFilter:
     i_range: Optional[Tuple[int, int]] = None
     j_range: Optional[Tuple[int, int]] = None
     k_range: Optional[Tuple[int, int]] = None
+    #: Hazır (ncell,) bool maska — HESABLANMIŞ süzgəc, məs. "yalnız
+    #: MEASURED/ESTIMATED statuslu hüceyrələr" (bax `main_window`-un
+    #: status filtri). Bu qat maskanı ÖZÜ HESABLAMIR (§13: görüntü
+    #: geologiya məntiqini daşımır) — yalnız TƏTBİQ EDİR.
+    cell_mask: Optional[np.ndarray] = None
 
     def mask(self, values: np.ndarray, shape: tuple) -> np.ndarray:
         """(nz, ny, nx) formasında bool maska."""
@@ -92,6 +97,8 @@ class VolumeFilter:
             visible &= grid_values >= self.value_min
         if self.value_max is not None:
             visible &= grid_values <= self.value_max
+        if self.cell_mask is not None:
+            visible &= np.asarray(self.cell_mask, bool).reshape(shape)
 
         nz, ny, nx = shape
         for axis, limits, size in ((2, self.i_range, nx),

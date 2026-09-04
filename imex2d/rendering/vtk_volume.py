@@ -60,6 +60,9 @@ class VtkViewSettings:
     k_range: Optional[Tuple[int, int]] = None
     value_min: Optional[float] = None
     """Kəsim həddi — bu dəyərdən aşağı hüceyrələr gizlədilir."""
+    cell_mask: Optional[object] = None
+    """Hazır (ncell,) bool maska — `volume.VolumeFilter.cell_mask` ilə EYNİ
+    məna (məs. status filtri). Bu qat onu HESABLAMIR, yalnız tətbiq edir."""
     show_edges: bool = True
     opacity: float = 1.0
     vertical_exaggeration: float = 1.0
@@ -285,6 +288,9 @@ class VtkReservoirScene:
             k_from, k_to = self.settings.k_range
             layer = np.repeat(np.arange(grid.nz), grid.nx * grid.ny)
             visible &= (layer >= k_from) & (layer <= k_to)
+
+        if self.settings.cell_mask is not None:
+            visible &= np.asarray(self.settings.cell_mask, bool).ravel()
         return visible
 
     def _apply_visibility(self, visible: np.ndarray):

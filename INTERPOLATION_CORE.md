@@ -12,6 +12,12 @@ variogram fitinin tarixçəsidir; bura Phase A-nın nəticəsidir.
 | `geology/variogram.py` | deneysel γ(h), istiqamətli/şaquli variogram, model fit + doğrulama (A3) |
 | `geology/spatial_search.py` | cKDTree indeks, qonşuluq siyasəti, sektor balanslaşdırması, dəstək təsnifatı (A2) |
 | `geology/interpolation.py` | Adi Kriging sistemi, dayanıqlı solver, boru xətti, `KrigingResult` (A1/A5) |
+| `geology/layer_availability.py` | quyu intervalı → K-lay uyğunlaşdırması, XASSƏ-ÜZRƏ lay mövcudluğu (bax `LAYER_AWARE_MODELING.md`) |
+
+**Lay maskası bu özəyə TOXUNMUR:** lay-məlumatlı rejim (bax
+`LAYER_AWARE_MODELING.md`) yalnız HANSI layın HANSI nöqtələrlə
+hesablanacağını müəyyən edir; Kriging riyaziyyatı, variogram, anizotropluq
+və sərt-data honoring DƏYİŞMƏDƏN qalır.
 
 **Tək həndəsə qaydası (Gate 5):** anizotrop məsafə YALNIZ
 `anisotropy.AnisotropyParams.transform()`-dan gəlir. Kriging matrisi,

@@ -53,6 +53,13 @@ class ReservoirModel:
     """
     units: UnitSystem = DEFAULT_UNITS
     source_geological_model: str = ""
+    #: Xassə adı -> `PropertyProvenance` — geoloji modeldən GƏTİRİLİR
+    #: (`ReservoirModelBuilder`), simulyasiya HESABLAMASINA HEÇ CÜR təsir
+    #: ETMİR. Məqsəd: "bu PORO ölçülüb, yoxsa qiymətləndirilib" sualının
+    #: cavabı simulyasiya modelinə çatanda İTMƏSİN (tapşırıq §20 —
+    #: provenance saxlanılmalıdır) və 3D görüntü onu göstərə bilsin.
+    #: Defolt boş lüğət — köhnə modellər üçün HEÇ NƏ dəyişmir.
+    provenance: Dict[str, object] = field(default_factory=dict)
 
     _connections: Optional[Connections] = field(default=None, repr=False, compare=False)
 

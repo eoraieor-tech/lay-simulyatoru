@@ -194,6 +194,73 @@ def xy_to_ij(x: float, y: float, geometry: CellGeometry) -> tuple:
     return i, j
 
 
+def column_top_depth(x: float, y: float, geometry: CellGeometry) -> float:
+    """`(x, y)` sütununun TAVAN dərinliyi (m).
+
+    `depth_to_k`-nın içindən ÇIXARILIB (davranış EYNİ) ki, `layer_edges`
+    və quyu-interval → K-lay uyğunlaşdırması (bax
+    `geology/layer_availability.py`) EYNİ həndəsə mənbəyini işlətsin,
+    öz dərinlik modelini QURMASIN.
+    """
+    i, j = xy_to_ij(x, y, geometry)
+    grid = geometry.grid
+    if geometry.top_depth_map is None:
+        return float(geometry.top_depth)
+    areal = np.asarray(geometry.top_depth_map, float).ravel()
+    if areal.size == grid.nx * grid.ny:
+        return float(areal.reshape(grid.ny, grid.nx)[j, i])
+    if areal.size == grid.ncell:
+        return float(areal.reshape(grid.shape)[0, j, i])
+    return float(geometry.top_depth)
+
+
+def layer_edges(x: float, y: float, geometry: CellGeometry) -> np.ndarray:
+    """`(x, y)` sütununda təbəqə sərhədləri — `(nz + 1,)` MÜTLƏQ dərinlik.
+
+    `edges[k]` k-cı təbəqənin tavanı, `edges[k+1]` dabanıdır.
+    """
+    return column_top_depth(x, y, geometry) + np.concatenate(
+        ([0.0], np.cumsum(np.asarray(geometry.dz, float))))
+
+
+#: `interval_layers` üçün nisbi tolerans — layın qalınlığına görə (sərhəd
+#: ÜSTÜNDƏKİ interval qonşu laya "yapışmasın", tapşırıq §23.6).
+_OVERLAP_TOLERANCE = 1e-9
+
+
+def interval_layers(x: float, y: float, top: float, bottom: float,
+                    geometry: CellGeometry) -> list:
+    """`[top, bottom]` dərinlik intervalının KƏSDİYİ K-təbəqələri (0-əsaslı).
+
+    Kəsişmə HƏQİQİ ÖRTMƏ uzunluğu ilə hesablanır (təkcə uc nöqtələrin
+    `depth_to_k`-sı ilə deyil) ki, kənar hallar DÜZGÜN işlənsin:
+
+      · interval grid-dən TAM kənardadır      → `[]`
+      · yalnız BİR layı kəsir                 → tək element
+      · lay SƏRHƏDİ üzərindədir               → qonşu lay DAXİL EDİLMİR
+        (sıfır qalınlıqlı örtmə "kəsir" sayılmır)
+      · grid-dən yuxarı/aşağı çıxır           → yalnız örtülən hissə
+
+    `bottom <= top` olanda `ValueError` — bu, cədvəl xətasıdır
+    (`geology.validate_wells` onu ayrıca "error" kimi göstərir), SƏSSİZCƏ
+    boş siyahıya çevrilmir.
+
+    QEYD: bu, SAF HƏNDƏSƏDİR — "quyu intervalı = məlumat var" MƏNASI
+    YOXDUR (bax `domain/data_availability.py` modul docstring-i).
+    """
+    if bottom <= top:
+        raise ValueError(
+            f"İnterval etibarsızdır: alt hədd ({bottom:g}) <= üst hədd ({top:g}).")
+    edges = layer_edges(x, y, geometry)
+    thickness = np.asarray(geometry.dz, float)
+    layers = []
+    for k in range(geometry.grid.nz):
+        overlap = min(bottom, edges[k + 1]) - max(top, edges[k])
+        if overlap > _OVERLAP_TOLERANCE * max(float(thickness[k]), 1.0):
+            layers.append(k)
+    return layers
+
+
 def depth_to_k(x: float, y: float, depth: float, geometry: CellGeometry):
     """Dərinliyi (m) verilmiş `(x, y)` sütununda təbəqə indeksinə çevirir.
 
@@ -203,21 +270,9 @@ def depth_to_k(x: float, y: float, depth: float, geometry: CellGeometry):
     diapazonundan kənardadırsa `None` qaytarır — çağıran bunu "grid
     qurulduqdan sonra" mesajı kimi göstərməlidir, xəta atılmır.
     """
-    i, j = xy_to_ij(x, y, geometry)
     grid = geometry.grid
-    if geometry.top_depth_map is None:
-        column_top = geometry.top_depth
-    else:
-        areal = np.asarray(geometry.top_depth_map, float).ravel()
-        if areal.size == grid.nx * grid.ny:
-            column_top = float(areal.reshape(grid.ny, grid.nx)[j, i])
-        elif areal.size == grid.ncell:
-            column_top = float(areal.reshape(grid.shape)[0, j, i])
-        else:
-            column_top = geometry.top_depth
-
-    edges = np.concatenate(([0.0], np.cumsum(geometry.dz)))
-    if depth < column_top + edges[0] or depth > column_top + edges[-1]:
+    edges = layer_edges(x, y, geometry)
+    if depth < edges[0] or depth > edges[-1]:
         return None
-    k = int(np.searchsorted(edges, depth - column_top, side="right")) - 1
+    k = int(np.searchsorted(edges - edges[0], depth - edges[0], side="right")) - 1
     return int(min(max(k, 0), grid.nz - 1))

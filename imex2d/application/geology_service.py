@@ -36,18 +36,24 @@ xəttinin İCRA YOLUNDAN ÇIXARILIB.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Sequence, Tuple, Union
+from enum import Enum
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from ..domain.data_availability import (DataStatus, ModelDataAvailability,
+                                        PropertyAvailability, format_layers)
 from ..domain.diagnostics import DiagnosticReport
 from ..domain.facies_field import FaciesField
 from ..domain.geological_model import GeologicalModel
 from ..domain.geometry import CellGeometry, depth_to_k, xy_to_ij
 from ..domain.grid import CartesianGrid
-from ..domain.properties import CategoricalUncertainty, PropertyMap, PropertyUncertainty
+from ..domain.properties import (CategoricalUncertainty, PropertyMap, PropertyProvenance,
+                                 PropertyUncertainty)
 from ..domain.structure import RegionSet
 from ..domain.well_data import WellDataset
+from ..geology.layer_availability import (LayerDataPolicy, compute_availability,
+                                          hard_data_cells, unassigned_samples)
 from ..geology.cross_validation import CrossValidationResult, k_fold, leave_one_out
 from ..geology.distribution_analysis import log_transform_is_justified
 from ..geology.facies import (FaciesVariogramParams, observed_proportions, simulate_sis)
@@ -67,6 +73,34 @@ from ..interfaces.interpolation import IPropertyInterpolator
 
 #: `cross_validate_all`-un baxdığı xassələr — PORO və PERM* istiqamətləri.
 _CROSS_VALIDATED_PROPERTIES = ("PORO", "PERMX", "PERMY", "PERMZ")
+
+#: `Confidence` (ORDİNAL interpretasiya kateqoriyası, bax `geology/
+#: property_interpolation.Confidence`) → `[0,1]` ədədi bal. Bu, EHTİMAL
+#: DEYİL: mövcud, ƏSASLANDIRILMIŞ kateqoriyanın (qonşu sayı + məsafə +
+#: nisbi kriginq variansı) MONOTON ədədi əksidir, ona görə "saxta rəqəm"
+#: deyil — amma `PropertyProvenance.confidence_kind` ilə AÇIQ şəkildə
+#: "ordinal_support_score" kimi etiketlənir.
+_CONFIDENCE_SCORE = {"high": 0.90, "medium": 0.60, "low": 0.30,
+                     "extrapolated": 0.10}
+
+#: Tamamlama (completion) HEÇ VAXT ölçmə/interpolyasiya səviyyəsində
+#: etibarlı sayılmır — zərfin İÇİNDƏ də tavanı var, KƏNARINDA daha aşağı.
+_TREND_INSIDE_CEILING = 0.50
+_TREND_OUTSIDE_CEILING = 0.30
+
+
+def _confidence_scores(confidence) -> np.ndarray:
+    """`Confidence` massivini `[0,1]` bal massivinə çevirir; tanınmayan
+    dəyər `NaN` (uydurulmur)."""
+    return np.asarray([_CONFIDENCE_SCORE.get(str(value), np.nan)
+                       for value in np.asarray(confidence, dtype=object)], float)
+
+
+def _mean_or_none(scores) -> Optional[float]:
+    """Lay üzrə orta bal — hamısı NaN olanda `None` ("hesablanmadı")."""
+    values = np.asarray(scores, float)
+    finite = np.isfinite(values)
+    return float(values[finite].mean()) if finite.any() else None
 
 
 @dataclass
@@ -134,6 +168,117 @@ class ContinuousSGSConfig:
     min_hard_data_for_own_model: int = DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL
 
 
+class CompletionMethod(str, Enum):
+    """MƏLUMATSIZ layın (data yoxdur) necə tamamlanacağı — tapşırıq §9.
+
+    HEÇ BİRİ nəticəni `MEASURED` kimi qeyd ETMİR; hər biri provenance-də
+    öz adı ilə görünür.
+
+    `NONE` — DEFOLT. Lay TAMAMLANMIR: orijinal sahə varsa `PRESERVED`,
+        yoxdursa `MISSING` qalır və simulyator ÖNCƏSİ validasiya
+        BLOKLAYIR (§8/§10 — "sistem səssiz fərziyyə yaratmamalıdır").
+    `PRESERVE_ORIGINAL` — mövcud geoloji prior (`original_fields`) olduğu
+        kimi saxlanılır → `PRESERVED`.
+    `VERTICAL_TREND` — məlumatlı layların lay-ortaları üzrə dərinliyə
+        görə XƏTTİ trend qurulur, məlumatsız laya YALNIZ LAY ORTASI
+        verilir. LATERAL struktur UYDURULMUR (qonşu layın xəritəsi
+        KOPYALANMIR — §26). → `ESTIMATED` / zərfdən kənarda `EXTRAPOLATED`.
+    `GEOSTATISTICAL_3D` — mövcud Kriging mühərriki BÜTÜN layların sərt
+        datası ilə, HƏQİQİ 3D (X,Y,Z) məsafə və şaquli range ilə həmin
+        laya qiymət verir (yaxın lay uzaq laydan çox təsir edir).
+        → `ESTIMATED` / `EXTRAPOLATED`.
+    `SGS` — Sequential Gaussian Simulation realizasiyası → `SIMULATED`
+        (§17: HEÇ VAXT `MEASURED` deyil).
+    `CONSTANT` — istifadəçinin AÇIQ verdiyi lay dəyəri → `ESTIMATED`.
+    """
+
+    NONE = "none"
+    PRESERVE_ORIGINAL = "preserve_original"
+    VERTICAL_TREND = "vertical_trend"
+    GEOSTATISTICAL_3D = "geostatistical_3d"
+    SGS = "sgs"
+    CONSTANT = "constant"
+
+
+@dataclass(frozen=True)
+class CompletionSpec:
+    """Bir xassə üçün tamamlama qaydası."""
+
+    method: CompletionMethod = CompletionMethod.NONE
+    #: `CONSTANT` üçün MƏCBURİ dəyər (fiziki vahiddə).
+    value: Optional[float] = None
+    #: İstifadəçinin AÇIQ bəyan etdiyi etibarlılıq `[0,1]`. Verilməyəndə
+    #: (`None`) HESABLANA BİLƏNDƏ hesablanır, bilinməyəndə `NaN` qalır —
+    #: SAXTA rəqəm YARADILMIR (§18).
+    confidence: Optional[float] = None
+    #: `SGS` üçün konfiqurasiya (verilməyibsə defolt `ContinuousSGSConfig`).
+    sgs: Optional["ContinuousSGSConfig"] = None
+    #: YALNIZ bu laylar tamamlansın (0-əsaslı). `None` — bütün məlumatsız
+    #: laylar.
+    layers: Optional[Sequence[int]] = None
+
+
+@dataclass
+class LayerInterpolationConfig:
+    """LAY-MƏLUMATLI rejimin BÜTÜN parametrləri — `build(layer_config=...)`.
+
+    Bu obyekt VERİLMƏYƏNDƏ (`None`, defolt) `build()` TAM ƏVVƏLKİ kimi
+    işləyir (§25 geriyə-uyğunluq). Verildikdə isə §2-nin altı anlayışı
+    ayrı-ayrı idarə olunur:
+
+        `policy`                  → məlumat mövcudluğu necə oxunur
+        `target_layers`           → İNTERPOLYASİYA HƏDƏFİ (0-əsaslı K!)
+        `property_target_layers`  → xassə-üzrə hədəf (üstünlüyü var)
+        `completion`              → məlumatsız layların tamamlanması
+        `property_completion`     → xassə-üzrə tamamlama (üstünlüyü var)
+        `original_fields`         → ORİJİNAL sahə (varsa) — `final`-ın bazası
+
+    `target_layers=None` → "məlumatı OLAN bütün laylar" (səssiz genişlənmə
+    YOXDUR: məlumatsız laya heç vaxt interpolyasiya edilmir).
+
+    QEYD (UI 1-əsaslı, mühərrik 0-əsaslı): burada indekslər HƏMİŞƏ
+    0-əsaslıdır. Çevirmə UI-də (`panels.py`) aparılır — `domain/
+    data_availability.parse_layers()` bunu bir yerdə edir, hər çağıranda
+    təkrarlanmır.
+    """
+
+    policy: LayerDataPolicy = LayerDataPolicy.STRICT
+    target_layers: Optional[Sequence[int]] = None
+    property_target_layers: Dict[str, Sequence[int]] = field(default_factory=dict)
+    completion: CompletionSpec = field(default_factory=CompletionSpec)
+    property_completion: Dict[str, CompletionSpec] = field(default_factory=dict)
+    original_fields: Dict[str, np.ndarray] = field(default_factory=dict)
+    #: Tamamlanmayan laylarda orijinal sahə (varsa) SAXLANILSIN mı.
+    #: `False` — orijinal olsa belə `MISSING` qalır (ən sərt rejim).
+    preserve_original_when_missing: bool = True
+
+    def targets_for(self, source: str, nz: int) -> Optional[List[int]]:
+        """`source` üçün istənilən hədəf laylar, yoxlanmış (0-əsaslı).
+
+        `None` → "hədəf açıq verilməyib" (çağıran məlumatlı layları
+        işlədəcək). Diapazondan kənar indeks AÇIQ `ValueError`-dur
+        (§23.2 — səssiz kəsmə YOXDUR).
+        """
+        requested = self.property_target_layers.get(source, self.target_layers)
+        if requested is None:
+            return None
+        layers = sorted({int(k) for k in requested})
+        outside = [k for k in layers if not 0 <= k < nz]
+        if outside:
+            raise ValueError(
+                f"'{source}': interpolyasiya üçün seçilmiş lay indeksi grid-dən "
+                f"kənardadır: K={outside} (icazə verilən: 0..{nz - 1}, NZ={nz}).")
+        if not layers:
+            raise ValueError(
+                f"'{source}': interpolyasiya üçün seçilmiş lay siyahısı BOŞDUR — "
+                "ən azı bir lay seçin, ya da seçimi tamamilə boş buraxın "
+                "(o halda məlumatı olan bütün laylar işlədilir).")
+        return layers
+
+    def completion_for(self, source: str) -> CompletionSpec:
+        return self.property_completion.get(source, self.completion)
+
+
 @dataclass
 class PropertyRule:
     """Bir xassənin necə interpolyasiya olunacağı."""
@@ -174,26 +319,60 @@ class InterpolationReport:
     method: str = ""
     entries: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    #: BLOKLAYAN problemlər (lay-məlumatlı rejim) — model QAYTARILIR ki,
+    #: istifadəçi onu görüb completion strategiyası seçə bilsin, amma
+    #: `ReservoirModelBuilder`/simulyator onu QƏBUL ETMİR (bax
+    #: `GeologicalModel.completeness_issues()`).
+    blocking: list = field(default_factory=list)
+    #: Lay-üzrə mövcudluq/status mənzərəsi (varsa) — hesabat mətnində
+    #: göstərilir və UI-də cədvələ çevrilir.
+    availability: Optional[ModelDataAvailability] = None
 
     def add(self, target: str, source: str, log_transform: bool, values: np.ndarray):
-        self.entries.append({
-            "target": target, "source": source, "log": log_transform,
-            "min": float(values.min()), "max": float(values.max()),
-            "mean": float(values.mean())})
+        """Statistika NaN-ə DÖZÜMLÜDÜR: lay-məlumatlı rejimdə MISSING
+        hüceyrələr `NaN` daşıyır — onları statistikaya qatmaq bütün
+        sətri "nan" edərdi. MISSING sayı AYRICA göstərilir, gizlədilmir."""
+        values = np.asarray(values, float)
+        finite = np.isfinite(values)
+        entry = {"target": target, "source": source, "log": log_transform,
+                 "missing": int(np.sum(~finite)), "n": int(values.size)}
+        if finite.any():
+            entry.update({"min": float(values[finite].min()),
+                          "max": float(values[finite].max()),
+                          "mean": float(values[finite].mean())})
+        else:
+            entry.update({"min": float("nan"), "max": float("nan"),
+                          "mean": float("nan")})
+        self.entries.append(entry)
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
 
+    def block(self, message: str) -> None:
+        self.blocking.append(message)
+
+    @property
+    def has_blocking(self) -> bool:
+        return bool(self.blocking)
+
     def as_text(self) -> str:
         lines = [f"Üsul: {self.method}"]
         for entry in self.entries:
+            missing = (f"  MISSING {entry['missing']}/{entry['n']}"
+                       if entry.get("missing") else "")
             lines.append(
                 f"  {entry['target']:<6} ← {entry['source']:<6} "
                 f"{'(log)' if entry['log'] else '     '}  "
                 f"min {entry['min']:.4g}  orta {entry['mean']:.4g}  "
-                f"maks {entry['max']:.4g}")
+                f"maks {entry['max']:.4g}{missing}")
+        if self.availability is not None:
+            lines.append("")
+            lines.append("Lay-üzrə vəziyyət:")
+            lines.append(self.availability.as_text())
         for message in self.warnings:
             lines.append(f"  ⚠ {message}")
+        for message in self.blocking:
+            lines.append(f"  ⛔ {message}")
         return "\n".join(lines)
 
 
@@ -223,7 +402,8 @@ class WellBasedGeologicalModelBuilder:
               facies_config: Optional[Dict[str, FaciesBuildConfig]] = None,
               property_type_overrides: Optional[Dict[str, PropertyType]] = None,
               sgs_config: Optional[Dict[str, ContinuousSGSConfig]] = None,
-              calibrated_strategies: Optional[Dict[str, PropertyStrategy]] = None):
+              calibrated_strategies: Optional[Dict[str, PropertyStrategy]] = None,
+              layer_config: Optional[LayerInterpolationConfig] = None):
         """`allow_cross_layer_fallback` — bir K-təbəqəsində (dataset laylı
         olanda) heç bir quyu nöqtəsi yoxdursa nə edilsin.
 
@@ -253,6 +433,29 @@ class WellBasedGeologicalModelBuilder:
         indikator yoludur, HEÇ BİRİ fasiya kodunu ədədi kəsilməz dəyər
         kimi kriging etmir. Nəticə `model.facies_fields`-ə (PropertyMap-
         DAN AYRICA) yazılır.
+
+        `layer_config` (LAY-MƏLUMATLI REJİM, TAM opt-in, bax
+        `LAYER_AWARE_MODELING.md`) — verilməyəndə (`None`, DEFOLT) bu
+        metod TAM ƏVVƏLKİ kimi işləyir: nə `model.provenance`, nə
+        `model.availability` doldurulur, `report.blocking` boş qalır.
+        Verildikdə isə:
+
+          · xassə mövcudluğu HƏR LAY ÜÇÜN AYRICA hesablanır
+            (`compute_availability`) — PORO L4-də ola bilər, PERMX olmaya;
+          · YALNIZ seçilmiş VƏ məlumatlı laylar interpolyasiya olunur
+            (`_build_layer_aware_field`) — `allow_cross_layer_fallback`
+            bu rejimdə İSTİFADƏ OLUNMUR (onun yerini AÇIQ `CompletionSpec`
+            tutur, iki fərqli məntiq eyni layı doldurmasın deyə);
+          · məlumatsız lay YALNIZ AÇIQ `CompletionSpec` ilə doldurulur,
+            əks halda `MISSING` qalır və `report.blocking`-ə düşür;
+          · nəticə `PropertyProvenance` (status/üsul/etibarlılıq) ilə
+            birlikdə modeldə saxlanılır.
+
+        DİQQƏT (davranış fərqi): bu rejimdə MISSING lay `build()`-dan
+        XƏTA ATMIR — model QAYTARILIR ki, istifadəçi onu 3D-də görüb
+        completion seçə bilsin. Simulyasiya qapısı `ReservoirModelBuilder`
+        -dədir (`GeologicalModel.completeness_issues()`), yəni natamam
+        model HEÇ VAXT simulyatora keçmir.
 
         `sgs_config` — hər KƏSİLMƏZ sütun üçün (istəyə görə)
         `ContinuousSGSConfig` (Phase 5). Konfiqurasiya edilməyən kəsilməz
@@ -301,10 +504,25 @@ class WellBasedGeologicalModelBuilder:
                     dataset, source, targets, grid, geometry, config, report)
             model.add_facies_field(facies_field)
 
+        availability = None
+        if layer_config is not None:
+            availability = self._prepare_availability(
+                dataset, geometry, continuous_sources, layer_config, report)
+            model.availability = availability
+            report.availability = availability
+            self._record_categorical_availability(
+                dataset, geometry, categorical_sources, layer_config, availability,
+                report)
+
         for source in continuous_sources:
             rule = self.rules.get(source, PropertyRule(source))
             sgs = (sgs_config or {}).get(source)
-            if sgs is not None:
+            if layer_config is not None:
+                values = self._build_layer_aware_field(
+                    dataset, source, rule, targets, grid, geometry, model, report,
+                    availability, layer_config, sgs,
+                    (calibrated_strategies or {}).get(source))
+            elif sgs is not None:
                 values = self._simulate_continuous_sgs_field(
                     dataset, source, targets, grid, geometry, sgs, report, model)
             else:
@@ -318,8 +536,23 @@ class WellBasedGeologicalModelBuilder:
 
         self._fill_missing_permeability(model, grid, ky_over_kx, kv_over_kh, report)
         issues = model.validate()
-        if issues:
-            raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(issues))
+        if layer_config is None:
+            if issues:
+                raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(issues))
+            return model, report
+
+        # LAY-MƏLUMATLI rejim: MISSING lay AÇIQ, GÖZLƏNİLƏN nəticədir
+        # (istifadəçi hələ completion strategiyası seçməyib) — model
+        # QAYTARILIR ki, 3D-də/hesabatda GÖRÜNSÜN, amma `report.blocking`
+        # doludur və `ReservoirModelBuilder` onu QƏBUL ETMİR (§20).
+        # QALAN hər cür problem (fiziki cəhətdən qeyri-mümkün dəyər,
+        # dejenerativ həndəsə) ƏVVƏLKİ kimi DƏRHAL xətadır.
+        completeness = set(model.completeness_issues())
+        other = [issue for issue in issues if issue not in completeness]
+        if other:
+            raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(other))
+        for message in sorted(completeness):
+            report.block(message)
         return model, report
 
     # -------------------------------------------------------- internal
@@ -526,7 +759,8 @@ class WellBasedGeologicalModelBuilder:
                                        targets: np.ndarray, grid: CartesianGrid,
                                        geometry: CellGeometry, config: ContinuousSGSConfig,
                                        report: "InterpolationReport",
-                                       model: GeologicalModel) -> np.ndarray:
+                                       model: GeologicalModel,
+                                       layers: Optional[Sequence[int]] = None) -> np.ndarray:
         """KƏSİLMƏZ sütunu Sequential Gaussian Simulation ilə (Phase 5)
         simulyasiya edir — `_interpolate_volume`-un (deterministik
         Kriging) YERİNƏ, YALNIZ `sgs_config`-də AÇIQ tələb olunanda.
@@ -579,8 +813,13 @@ class WellBasedGeologicalModelBuilder:
         rule = self.rules.get(source, PropertyRule(source))
         bounds = config.bounds if config.bounds is not None else (rule.minimum, rule.maximum)
 
+        # `layers` verilibsə YALNIZ həmin K-ların hüceyrələri simulyasiya
+        # olunur (§24 — lazımsız hesablama yoxdur). ŞƏRTLƏNDİRMƏ (sərt
+        # data) BÜTÜN laylardan gəlməkdə DAVAM EDİR: SGS-in şaquli
+        # kəsilməzliyi məhz buna əsaslanır (§17), yalnız HƏDƏF dəyişir.
+        selected = list(range(grid.nz)) if layers is None else [int(k) for k in layers]
         full_targets = np.concatenate(
-            [np.column_stack([targets, depths_grid[k].ravel()]) for k in range(grid.nz)], axis=0)
+            [np.column_stack([targets, depths_grid[k].ravel()]) for k in selected], axis=0)
         common_kwargs = dict(seed=config.seed, realization_id=config.realization_id,
                              search_radius=config.search_radius,
                              max_neighbors=config.max_neighbors,
@@ -597,8 +836,12 @@ class WellBasedGeologicalModelBuilder:
                 if config.facies_field_name in sample.values
                 else int(facies_field.codes[np.ravel_multi_index(cell, grid.shape)])
                 for sample, cell in zip(used_samples, cell_indices)], int)
+            # hədəf məhdudlaşdırılıbsa fasiya kodları DA eyni hüceyrələrə
+            # kəsilməlidir — əks halda kod/hədəf uyğunluğu sürüşərdi.
+            target_codes = np.concatenate(
+                [facies_field.codes.reshape(grid.shape)[k].ravel() for k in selected])
             realization = simulate_sgs_facies_conditioned(
-                points, values_array, facies_at_points, full_targets, facies_field.codes,
+                points, values_array, facies_at_points, full_targets, target_codes,
                 facies_configs=config.facies_configs, facies_reference=config.facies_field_name,
                 min_hard_data_for_own_model=config.min_hard_data_for_own_model, **common_kwargs)
         else:
@@ -792,16 +1035,8 @@ class WellBasedGeologicalModelBuilder:
             if not samples:
                 raise ValueError(f"'{source}' üçün nöqtə tapılmadı.")
 
-            values = np.asarray([s.values[source] for s in samples], float)
-            depths = np.asarray(
-                [self._sample_depth(s, k, layer_mean_depth) for s in samples], float)
-            points = np.column_stack(
-                [[s.x for s in samples], [s.y for s in samples], depths])
-            target_points = np.column_stack([targets, target_depths[k].ravel()])
-
-            estimate = interpolate_property_field(
-                points, values, target_points, strategy=strategy,
-                kriging_overrides=overrides)
+            estimate = self._estimate_layer(samples, source, k, strategy, overrides,
+                                            targets, target_depths, layer_mean_depth)
             layer_label = f" (K={k})" if grid.nz > 1 else ""
             for message in estimate.warnings:
                 report.warn(f"'{source}'{layer_label}: {message}")
@@ -810,6 +1045,609 @@ class WellBasedGeologicalModelBuilder:
 
         self._attach_continuous_uncertainty(model, rule.target, estimates)
         return np.concatenate(layers)
+
+    def _estimate_layer(self, samples, source: str, k: int,
+                        strategy: PropertyStrategy, overrides, targets: np.ndarray,
+                        depths_grid: np.ndarray,
+                        layer_mean_depth: np.ndarray) -> "PropertyEstimate":
+        """BİR K-təbəqəsi üçün Phase B interpolyasiyası — HƏM köhnə
+        (`_interpolate_volume`), HƏM DƏ lay-məlumatlı yol EYNİ bu metodu
+        çağırır (Kriging riyaziyyatı BİR YERDƏDİR, təkrarlanmır)."""
+        values = np.asarray([s.values[source] for s in samples], float)
+        depths = np.asarray(
+            [self._sample_depth(s, k, layer_mean_depth) for s in samples], float)
+        points = np.column_stack(
+            [[s.x for s in samples], [s.y for s in samples], depths])
+        target_points = np.column_stack([targets, depths_grid[k].ravel()])
+        return interpolate_property_field(points, values, target_points,
+                                          strategy=strategy, kriging_overrides=overrides)
+
+    # ═══════════════════════════════════════ LAY-MƏLUMATLI (layer-aware) YOL
+    def _prepare_availability(self, dataset: WellDataset, geometry: CellGeometry,
+                              sources: Sequence[str],
+                              config: LayerInterpolationConfig,
+                              report: "InterpolationReport") -> ModelDataAvailability:
+        """Giriş mənzərəsi: hansı xassə hansı layda HƏQİQƏTƏN ölçülüb."""
+        availability = compute_availability(dataset, geometry, config.policy, sources)
+        for message in dataset.warnings:
+            report.warn(message)
+        stray = unassigned_samples(dataset, geometry, config.policy)
+        if stray:
+            names = ", ".join(sorted({s.well for s in stray}))
+            report.warn(
+                f"{len(stray)} quyu nöqtəsi ({names}) heç bir K-laya aid edilə bilmədi "
+                "(nə lay indeksi, nə dərinlik, nə də 'Data layları' bəyanı var) — bu "
+                "nöqtələr HEÇ BİR laya məlumat vermir. Səssiz yayılma tətbiq edilmir "
+                "(bax LayerDataPolicy).")
+        return availability
+
+    def _record_categorical_availability(self, dataset: WellDataset,
+                                         geometry: CellGeometry,
+                                         sources: Sequence[str],
+                                         config: LayerInterpolationConfig,
+                                         availability: ModelDataAvailability,
+                                         report: "InterpolationReport") -> None:
+        """KATEQORİK sütunlar üçün lay-üzrə mövcudluğu QEYDƏ ALIR.
+
+        Kateqorik yola (SIS / indikator kriginq) LAY MASKASI TƏTBİQ
+        EDİLMİR — bu, bilərəkdəndir (§15: kəsilməz interpolyasiya
+        qaydalarını fasiyaya KOR-KORANƏ tətbiq etmə; SIS onsuz da 3D
+        şərtlənmiş STOXASTİK üsuldur və şaquli kəsilməzlik onun öz
+        modelindən gəlir).
+
+        Amma "sərt datası olmayan layda SIS nəticəsi var" faktı GİZLİ
+        QALMAMALIDIR: həmin laylar `SIMULATED` kimi qeyd olunur (ölçülmüş
+        KİMİ YOX) və hesabatda AÇIQ xəbərdarlıq verilir.
+        """
+        if not sources:
+            return
+        categorical = compute_availability(dataset, geometry, config.policy, sources)
+        for source in sources:
+            entry = categorical[source]
+            simulated = [k for k in range(geometry.grid.nz) if not entry.layers[k].has_data]
+            for k in simulated:
+                entry.set(k, status=DataStatus.SIMULATED, method="sis",
+                          note="bu layda sərt fasiya datası yoxdur — stoxastik realizasiya")
+            for k in entry.data_layers():
+                entry.set(k, status=DataStatus.SIMULATED, method="sis",
+                          note="sərt data ilə şərtlənmiş realizasiya")
+            availability.properties[source] = entry
+            if simulated:
+                report.warn(
+                    f"'{source}' (kateqorik): L{format_layers(simulated)} laylarında "
+                    "sərt fasiya datası YOXDUR — nəticə SIS realizasiyasıdır "
+                    "(status SIMULATED), ölçmə DEYİL. Kateqorik sütuna lay maskası "
+                    "tətbiq edilmir (bax §15).")
+
+    @staticmethod
+    def _layer_sample_index(dataset: WellDataset, source: str,
+                            geometry: CellGeometry,
+                            policy: LayerDataPolicy) -> Dict[int, list]:
+        """`{K: [həmin laya məlumat VERƏN nümunələr]}` — BİR keçidlə.
+
+        `WellDataset.samples_for()`-dan FƏRQİ: o, `layer is None` olan HƏR
+        nümunəni HƏR laya daxil edir (köhnə "hər yerə aiddir" semantikası).
+        Lay-məlumatlı rejimdə bu, məhz QADAĞAN olunan səssiz yayılmadır —
+        ona görə burada `layer_availability.sample_layers()` işlədilir.
+
+        İndeks BİR DƏFƏ qurulur (O(n·nz)) və bütün laylar/tamamlama
+        addımları onu paylaşır — hər lay üçün dataset-i yenidən gəzmək
+        (O(n·nz²)) böyük NZ-də lazımsız yükdür (§24).
+        """
+        from ..geology.layer_availability import sample_layers
+        index: Dict[int, list] = {k: [] for k in range(geometry.grid.nz)}
+        for sample in dataset.samples:
+            value = sample.values.get(source)
+            if value is None or not np.isfinite(value):
+                continue
+            for k in sample_layers(sample, geometry, policy):
+                index[k].append(sample)
+        return index
+
+    def _build_layer_aware_field(self, dataset: WellDataset, source: str,
+                                 rule: PropertyRule, targets: np.ndarray,
+                                 grid: CartesianGrid, geometry: CellGeometry,
+                                 model: GeologicalModel, report: "InterpolationReport",
+                                 availability: ModelDataAvailability,
+                                 config: LayerInterpolationConfig,
+                                 sgs: Optional[ContinuousSGSConfig],
+                                 calibrated_strategy: Optional[PropertyStrategy]
+                                 ) -> np.ndarray:
+        """`final` sahəni AÇIQ, izlənə bilən addımlarla qurur (§11):
+
+            final ← original (varsa)              → status PRESERVED
+            final[seçilmiş VƏ məlumatlı laylar]   ← interpolyasiya  → INTERPOLATED
+            final[sərt data hüceyrələri]          ← ölçmə            → MEASURED
+            final[məlumatsız laylar]              ← completion       → ESTIMATED/
+                                                    (seçilibsə)        EXTRAPOLATED/
+                                                                       SIMULATED
+            qalan                                 ← toxunulmur       → MISSING
+
+        HEÇ BİR ADDIM digərinin nəticəsini SÜKUTLA əzmir; hər hüceyrənin
+        son statusu `PropertyProvenance`-da saxlanılır.
+        """
+        nz, ncell = grid.nz, grid.ncell
+        areal = grid.nx * grid.ny
+        entry = availability.require(source)
+        data_layers = entry.data_layers()
+
+        requested = config.targets_for(source, nz)
+        if requested is None:
+            requested = list(data_layers)
+        interp_layers = [k for k in requested if k in data_layers]
+        requested_without_data = [k for k in requested if k not in data_layers]
+        if requested_without_data:
+            report.warn(
+                f"'{source}': seçilmiş laylardan L{format_layers(requested_without_data)} "
+                "üçün sərt data YOXDUR — bu laylar İNTERPOLYASİYA EDİLMİR. Onlara yalnız "
+                "AÇIQ tamamlama (completion) strategiyası tətbiq oluna bilər; "
+                "seçilməyibsə MISSING qalırlar.")
+        excluded_with_data = [k for k in data_layers if k not in interp_layers]
+        if excluded_with_data:
+            report.warn(
+                f"'{source}': L{format_layers(excluded_with_data)} laylarında data VAR, "
+                "amma istifadəçi onları interpolyasiya hədəfinə salmayıb — həmin laylar "
+                "DƏYİŞDİRİLMİR (orijinal/MISSING olduğu kimi qalır).")
+
+        original = config.original_fields.get(source)
+        if original is not None:
+            original = np.asarray(original, float).ravel()
+            if original.size != ncell:
+                raise ValueError(
+                    f"'{source}': original_fields ölçüsü grid ilə uyğun gəlmir "
+                    f"({original.size} != {ncell}).")
+
+        final = np.full(ncell, np.nan)
+        status = np.full(ncell, DataStatus.MISSING.value, dtype=object)
+        method = np.full(ncell, "", dtype=object)
+        confidence = np.full(ncell, np.nan)
+        interpolated_field = np.full(ncell, np.nan)
+        estimated_field = np.full(ncell, np.nan)
+        layer_methods: Dict[int, str] = {}
+
+        if original is not None and config.preserve_original_when_missing:
+            final = original.copy()
+            status[:] = DataStatus.PRESERVED.value
+            method[:] = "original"
+
+        # ── 1. seçilmiş VƏ məlumatlı laylar: mövcud Kriging boru xətti ──
+        strategy = (calibrated_strategy if calibrated_strategy is not None
+                    else self._resolve_property_strategy(source))
+        overrides = self._kriging_overrides()
+        depths_grid = geometry.cell_depths().reshape(grid.shape)
+        layer_mean_depth = depths_grid.mean(axis=(1, 2))
+        measured = hard_data_cells(dataset, geometry, source,
+                                   config.policy).reshape(grid.shape)
+        # lay → nümunə indeksi BİR DƏFƏ qurulur və bütün addımlar
+        # (interpolyasiya + tamamlama) onu paylaşır (§24).
+        layer_index = self._layer_sample_index(dataset, source, geometry, config.policy)
+        estimates: Dict[int, PropertyEstimate] = {}
+
+        for k in interp_layers:
+            samples = layer_index[k]
+            if not samples:                      # mövcudluq hesabı ilə ziddiyyət
+                raise ValueError(
+                    f"'{source}': K={k} üçün mövcudluq cədvəli data göstərir, amma "
+                    "nümunə tapılmadı — daxili uyğunsuzluq.")
+            if sgs is not None:
+                continue                          # SGS aşağıda TOPLU işlənir
+            estimate = self._estimate_layer(samples, source, k, strategy, overrides,
+                                            targets, depths_grid, layer_mean_depth)
+            for message in estimate.warnings:
+                report.warn(f"'{source}' (K={k}): {message}")
+            index = np.arange(k * areal, (k + 1) * areal)
+            final[index] = estimate.estimate
+            interpolated_field[index] = estimate.estimate
+            status[index] = DataStatus.INTERPOLATED.value
+            method[index] = "kriging"
+            confidence[index] = _confidence_scores(estimate.confidence)
+            hard = index[measured[k].ravel()]
+            status[hard] = DataStatus.MEASURED.value
+            method[hard] = "measured"
+            confidence[hard] = 1.0
+            estimates[k] = estimate
+            layer_methods[k] = "kriging"
+            entry.set(k, status=DataStatus.INTERPOLATED, method="kriging",
+                      confidence=_mean_or_none(confidence[index]))
+
+        if sgs is not None and interp_layers:
+            values = self._simulate_continuous_sgs_field(
+                dataset, source, targets, grid, geometry, sgs, report, model,
+                layers=interp_layers)
+            for position, k in enumerate(interp_layers):
+                index = np.arange(k * areal, (k + 1) * areal)
+                final[index] = values[position * areal:(position + 1) * areal]
+                interpolated_field[index] = final[index]
+                status[index] = DataStatus.SIMULATED.value
+                method[index] = "sgs"
+                hard = index[measured[k].ravel()]
+                status[hard] = DataStatus.MEASURED.value
+                method[hard] = "measured"
+                confidence[hard] = 1.0
+                layer_methods[k] = "sgs"
+                entry.set(k, status=DataStatus.SIMULATED, method="sgs",
+                          note=f"realization={sgs.realization_id}, seed={sgs.seed}")
+
+        if estimates:
+            self._attach_partial_uncertainty(model, rule.target, estimates, grid)
+
+        # ── 2. məlumatsız laylar: YALNIZ AÇIQ completion ────────────────
+        completion_layers = [k for k in range(nz)
+                             if k not in interp_layers and k not in data_layers]
+        spec = config.completion_for(source)
+        if spec.layers is not None:
+            allowed = {int(k) for k in spec.layers}
+            skipped = [k for k in completion_layers if k not in allowed]
+            completion_layers = [k for k in completion_layers if k in allowed]
+            if skipped:
+                report.warn(
+                    f"'{source}': L{format_layers(skipped)} layları tamamlama "
+                    "siyahısına (CompletionSpec.layers) daxil deyil — MISSING qalır.")
+
+        if completion_layers:
+            self._complete_missing_layers(
+                dataset, source, spec, completion_layers, data_layers, layer_index,
+                grid, geometry, targets, strategy, overrides, depths_grid,
+                layer_mean_depth, config, original, model, report, entry,
+                final, status, method, confidence, estimated_field, layer_methods)
+
+        # ── 3. provenance + mövcudluq cədvəlinin yekunlaşdırılması ──────
+        for k in range(nz):
+            if k in interp_layers or k in completion_layers:
+                continue
+            index = np.arange(k * areal, (k + 1) * areal)
+            # İKİ FƏRQLİ SƏBƏB, İKİ FƏRQLİ MESAJ (səbəb gizlədilmir):
+            #   · layda data VAR, amma istifadəçi onu hədəfə salmayıb;
+            #   · layda data YOXDUR və tamamlama seçilməyib.
+            reason = ("məlumat var, amma interpolyasiya hədəfinə daxil deyil"
+                      if k in data_layers else
+                      "məlumat yoxdur, tamamlama strategiyası seçilməyib")
+            if original is not None and config.preserve_original_when_missing:
+                entry.set(k, status=DataStatus.PRESERVED, method="original",
+                          note=reason)
+            else:
+                status[index] = DataStatus.MISSING.value
+                entry.set(k, status=DataStatus.MISSING, method="", note=reason)
+
+        model.add_provenance(PropertyProvenance(
+            name=rule.target, status=status, method=method, confidence=confidence,
+            final=final, original=original, interpolated=interpolated_field,
+            estimated=estimated_field, layer_methods=layer_methods))
+        return final
+
+    def _complete_missing_layers(self, dataset, source, spec: CompletionSpec,
+                                 completion_layers, data_layers, layer_index,
+                                 grid, geometry, targets, strategy, overrides,
+                                 depths_grid, layer_mean_depth, config, original,
+                                 model, report, entry: PropertyAvailability,
+                                 final, status, method, confidence, estimated_field,
+                                 layer_methods) -> None:
+        """Tapşırıq §9-un tamamlama strategiyaları. HEÇ BİRİ `MEASURED`
+        vermir və heç biri DEFOLT deyil — `CompletionMethod.NONE` ilə
+        laylar toxunulmadan MISSING/PRESERVED qalır."""
+        areal = grid.nx * grid.ny
+        label = format_layers(completion_layers)
+
+        if spec.method is CompletionMethod.NONE:
+            preserved = original is not None and config.preserve_original_when_missing
+            for k in completion_layers:
+                # Hüceyrə-səviyyəli status ARTIQ doğrudur (PRESERVED və ya
+                # MISSING); burada YALNIZ mövcudluq cədvəli eyni həqiqəti
+                # təkrarlayır ki, iki mənbə bir-birinə ZİDD OLMASIN.
+                entry.set(k,
+                          status=DataStatus.PRESERVED if preserved else DataStatus.MISSING,
+                          method="original" if preserved else "",
+                          note=("orijinal sahə saxlanıldı — tamamlama seçilməyib"
+                                if preserved else
+                                "məlumat yoxdur, tamamlama strategiyası seçilməyib"))
+            report.warn(
+                f"'{source}': L{label} üçün sərt data YOXDUR və tamamlama strategiyası "
+                + ("SEÇİLMƏYİB — orijinal sahə OLDUĞU KİMİ saxlanıldı (§10 defolt "
+                   "davranışı: preserve)."
+                   if preserved else
+                   "SEÇİLMƏYİB — bu laylar MISSING olaraq qalır (§10 defolt davranışı). "
+                   "Simulyasiyadan əvvəl ya data əlavə edin, ya da completion seçin."))
+            return
+
+        if spec.method is CompletionMethod.PRESERVE_ORIGINAL:
+            if original is None:
+                raise ValueError(
+                    f"'{source}': completion='preserve_original' seçilib, amma "
+                    "`original_fields` verilməyib — saxlanacaq orijinal sahə yoxdur.")
+            for k in completion_layers:
+                index = np.arange(k * areal, (k + 1) * areal)
+                final[index] = original[index]
+                status[index] = DataStatus.PRESERVED.value
+                method[index] = "preserve_original"
+                confidence[index] = (np.nan if spec.confidence is None
+                                     else float(spec.confidence))
+                layer_methods[k] = "preserve_original"
+                entry.set(k, status=DataStatus.PRESERVED, method="preserve_original",
+                          confidence=spec.confidence,
+                          note="mövcud geoloji prior saxlanıldı")
+            return
+
+        if spec.method is CompletionMethod.CONSTANT:
+            if spec.value is None or not np.isfinite(spec.value):
+                raise ValueError(
+                    f"'{source}': completion='constant' üçün `value` verilməlidir "
+                    "(sonlu ədəd).")
+            value = float(spec.value)
+            for k in completion_layers:
+                index = np.arange(k * areal, (k + 1) * areal)
+                final[index] = value
+                estimated_field[index] = value
+                status[index] = DataStatus.ESTIMATED.value
+                method[index] = f"constant={value:g}"
+                confidence[index] = (np.nan if spec.confidence is None
+                                     else float(spec.confidence))
+                layer_methods[k] = "constant"
+                entry.set(k, status=DataStatus.ESTIMATED, method=f"constant={value:g}",
+                          confidence=spec.confidence,
+                          note="istifadəçinin AÇIQ verdiyi lay dəyəri")
+            report.warn(
+                f"'{source}': L{label} istifadəçinin verdiyi sabit dəyərlə ({value:g}) "
+                "tamamlandı — status ESTIMATED, ölçmə DEYİL.")
+            return
+
+        if spec.method is CompletionMethod.VERTICAL_TREND:
+            self._complete_by_vertical_trend(
+                source, spec, completion_layers, data_layers, layer_index, grid,
+                strategy, layer_mean_depth, report, entry,
+                final, status, method, confidence, estimated_field, layer_methods)
+            return
+
+        if spec.method is CompletionMethod.GEOSTATISTICAL_3D:
+            self._complete_by_3d_kriging(
+                source, spec, completion_layers, data_layers, layer_index, grid,
+                targets, strategy, overrides, depths_grid, layer_mean_depth,
+                report, entry, final, status, method, confidence, estimated_field,
+                layer_methods)
+            return
+
+        if spec.method is CompletionMethod.SGS:
+            self._complete_by_sgs(
+                dataset, source, spec, completion_layers, grid, geometry, targets,
+                model, report, entry, final, status, method, confidence,
+                estimated_field, layer_methods)
+            return
+
+        raise ValueError(f"'{source}': naməlum completion üsulu {spec.method!r}.")
+
+    # ---------------------------------------------------- şaquli trend
+    def _complete_by_vertical_trend(self, source, spec, completion_layers,
+                                    data_layers, layer_index, grid, strategy,
+                                    layer_mean_depth, report, entry,
+                                    final, status, method, confidence,
+                                    estimated_field, layer_methods) -> None:
+        """Məlumatlı layların LAY-ORTALARINDAN dərinliyə görə xətti trend.
+
+        NƏ EDİLİR: `m(z) = a + b·z` (çevrilmiş fəzada — PERMX üçün loq)
+        məlumatlı layların ortaları ilə ən-kiçik-kvadratlarla qurulur,
+        məlumatsız laya YALNIZ ONUN ORTASI verilir.
+
+        NƏ EDİLMİR (§26): qonşu layın LATERAL xəritəsi KOPYALANMIR. Trend
+        şaquli məlumat verir, üfüqi struktur haqqında MƏLUMAT VERMİR —
+        onu uydurmaq elmi cəhətdən müdafiə oluna bilməz. Bu, nəticənin
+        lay daxilində SABİT olması deməkdir və hesabatda AÇIQ deyilir.
+        """
+        points = []
+        for k in data_layers:
+            samples = layer_index[k]
+            values = np.asarray([s.values[source] for s in samples], float)
+            if values.size == 0:
+                continue
+            try:
+                transformed = strategy.transform.forward(values)
+            except Exception as error:                       # TransformError və s.
+                raise ValueError(
+                    f"'{source}': şaquli trend üçün çevirmə uğursuz oldu (K={k}): {error}"
+                ) from error
+            points.append((float(layer_mean_depth[k]), float(np.mean(transformed))))
+
+        if len(points) < 2:
+            raise ValueError(
+                f"'{source}': şaquli trend üçün ən azı İKİ məlumatlı lay lazımdır "
+                f"(tapıldı: {len(points)}). Tək layla trend qurmaq onu SABİTƏ çevirir "
+                "— bu, trend deyil, gizli ekstrapolyasiya olardı.")
+
+        depths = np.asarray([p[0] for p in points], float)
+        means = np.asarray([p[1] for p in points], float)
+        slope, intercept = np.polyfit(depths, means, 1)
+        low, high = float(depths.min()), float(depths.max())
+        lo_bound, hi_bound = strategy.output_bounds
+        range_v = self._vertical_range()
+        areal = grid.nx * grid.ny
+
+        for k in completion_layers:
+            z = float(layer_mean_depth[k])
+            value = float(strategy.transform.inverse(
+                np.asarray([intercept + slope * z], float))[0])
+            if lo_bound is not None:
+                value = max(value, lo_bound)
+            if hi_bound is not None:
+                value = min(value, hi_bound)
+            inside = low - 1e-9 <= z <= high + 1e-9
+            gap = 0.0 if inside else min(abs(z - low), abs(z - high))
+            score = self._extrapolation_confidence(gap, range_v, inside)
+            if spec.confidence is not None:
+                score = float(spec.confidence)
+            index = np.arange(k * areal, (k + 1) * areal)
+            final[index] = value
+            estimated_field[index] = value
+            state = DataStatus.ESTIMATED if inside else DataStatus.EXTRAPOLATED
+            status[index] = state.value
+            method[index] = "vertical_trend"
+            confidence[index] = np.nan if score is None else score
+            layer_methods[k] = "vertical_trend"
+            entry.set(k, status=state, method="vertical_trend", confidence=score,
+                      note=(f"trend: {strategy.transform.describe()} fəzasında "
+                            f"b={slope:.4g}/m; şaquli məsafə {gap:.1f} m"))
+        report.warn(
+            f"'{source}': L{format_layers(completion_layers)} şaquli trendlə tamamlandı "
+            "— lay daxilində SABİT dəyər (lateral struktur UYDURULMUR), status "
+            "ESTIMATED/EXTRAPOLATED, ölçmə DEYİL."
+            + ("" if range_v else " Şaquli korrelyasiya radiusu (range_v) verilmədiyi "
+                                 "üçün etibarlılıq balı HESABLANMADI (NaN) — saxta "
+                                 "rəqəm yaradılmır."))
+
+    # ------------------------------------------------- 3D geostatistika
+    def _complete_by_3d_kriging(self, source, spec, completion_layers,
+                                data_layers, layer_index, grid, targets, strategy,
+                                overrides, depths_grid, layer_mean_depth,
+                                report, entry, final, status, method, confidence,
+                                estimated_field, layer_methods) -> None:
+        """BÜTÜN məlumatlı layların sərt datası ilə, HƏQİQİ 3D (X,Y,Z)
+        məsafə üzərindən həmin laya qiymət verir — mövcud Kriging
+        mühərriki (`interpolate_property_field`) DƏYİŞMƏDƏN işlədilir.
+
+        Bu, köhnə `allow_cross_layer_fallback` davranışının ELMİ CƏHƏTDƏN
+        DÜZGÜN, ETİKETLƏNMİŞ variantıdır: nəticə `INTERPOLATED` deyil,
+        `ESTIMATED`/`EXTRAPOLATED` kimi qeyd olunur və provenance-da
+        görünür."""
+        samples = []
+        for k in data_layers:
+            samples.extend(layer_index[k])
+        if len(samples) < 2:
+            raise ValueError(
+                f"'{source}': 3D geostatistik tamamlama üçün ən azı iki sərt nöqtə "
+                f"lazımdır (tapıldı: {len(samples)}).")
+        depths = [float(layer_mean_depth[k]) for k in data_layers]
+        low, high = min(depths), max(depths)
+        range_v = self._vertical_range()
+        areal = grid.nx * grid.ny
+
+        for k in completion_layers:
+            estimate = self._estimate_layer(samples, source, k, strategy, overrides,
+                                            targets, depths_grid, layer_mean_depth)
+            for message in estimate.warnings:
+                report.warn(f"'{source}' (tamamlama K={k}): {message}")
+            z = float(layer_mean_depth[k])
+            inside = low - 1e-9 <= z <= high + 1e-9
+            state = DataStatus.ESTIMATED if inside else DataStatus.EXTRAPOLATED
+            index = np.arange(k * areal, (k + 1) * areal)
+            final[index] = estimate.estimate
+            estimated_field[index] = estimate.estimate
+            status[index] = state.value
+            method[index] = "geostatistical_3d"
+            scores = _confidence_scores(estimate.confidence)
+            if not inside:
+                gap = min(abs(z - low), abs(z - high))
+                penalty = self._extrapolation_confidence(gap, range_v, False)
+                scores = (np.full(scores.size, np.nan) if penalty is None
+                          else np.minimum(scores, penalty))
+            if spec.confidence is not None:
+                scores = np.full(scores.size, float(spec.confidence))
+            confidence[index] = scores
+            layer_methods[k] = "geostatistical_3d"
+            entry.set(k, status=state, method="geostatistical_3d",
+                      confidence=_mean_or_none(scores),
+                      note="bütün məlumatlı layların 3D sərt datası ilə")
+        report.warn(
+            f"'{source}': L{format_layers(completion_layers)} 3D geostatistik "
+            "qiymətləndirmə ilə tamamlandı — status ESTIMATED/EXTRAPOLATED, "
+            "ÖLÇMƏ DEYİL.")
+
+    # ---------------------------------------------------------- SGS
+    def _complete_by_sgs(self, dataset, source, spec, completion_layers, grid,
+                         geometry, targets, model, report, entry, final, status,
+                         method, confidence, estimated_field, layer_methods) -> None:
+        """Mövcud SGS mühərriki (`geology/sgs.py`) DƏYİŞMƏDƏN çağırılır;
+        yalnız HƏDƏF HÜCEYRƏLƏR məlumatsız laylarla məhdudlaşdırılır
+        (§24: lazımsız hesablama yoxdur). Nəticə HƏMİŞƏ `SIMULATED`."""
+        config = spec.sgs if spec.sgs is not None else ContinuousSGSConfig()
+        values = self._simulate_continuous_sgs_field(
+            dataset, source, targets, grid, geometry, config, report, model,
+            layers=completion_layers)
+        areal = grid.nx * grid.ny
+        for position, k in enumerate(completion_layers):
+            index = np.arange(k * areal, (k + 1) * areal)
+            block = values[position * areal:(position + 1) * areal]
+            final[index] = block
+            estimated_field[index] = block
+            status[index] = DataStatus.SIMULATED.value
+            method[index] = "sgs"
+            confidence[index] = (np.nan if spec.confidence is None
+                                 else float(spec.confidence))
+            layer_methods[k] = "sgs"
+            entry.set(k, status=DataStatus.SIMULATED, method="sgs",
+                      confidence=spec.confidence,
+                      note=(f"realization={config.realization_id}, seed={config.seed}"
+                            " — TƏK realizasiya; qeyri-müəyyənlik üçün ansambl lazımdır"))
+        report.warn(
+            f"'{source}': L{format_layers(completion_layers)} SGS realizasiyası ilə "
+            f"tamamlandı (seed={config.seed}, realization={config.realization_id}) — "
+            "status SIMULATED, ÖLÇMƏ DEYİL. Tək realizasiyadan etibarlılıq balı "
+            "hesablanmır (NaN); ansambl üçün `sgs_ensemble` işlədin.")
+
+    # --------------------------------------------------------- köməkçilər
+    def _vertical_range(self) -> Optional[float]:
+        """Şaquli korrelyasiya radiusu (m) — YALNIZ istifadəçi AÇIQ verəndə.
+
+        `OrdinaryKriging(range_v=...)` verilməyibsə `None` qaytarır və
+        çağıran etibarlılıq balını HESABLAMIR (§18: əsassız rəqəm
+        yaradılmır)."""
+        interpolator = self.interpolator
+        if isinstance(interpolator, OrdinaryKriging) and interpolator.range_v:
+            return float(interpolator.range_v)
+        return None
+
+    @staticmethod
+    def _extrapolation_confidence(gap: float, range_v: Optional[float],
+                                  inside: bool) -> Optional[float]:
+        """Şaquli ekstrapolyasiya məsafəsinə görə ORDİNAL etibarlılıq balı.
+
+        `exp(-gap / range_v)` — variogram dəstəyinə ƏSASLANIR: şaquli
+        korrelyasiya radiusu qədər uzaqlaşanda bal `1/e`-yə düşür. Zərfin
+        İÇİNDƏ (interpolyasiya) `gap=0` → 1.0-a yaxın, amma sabit
+        `_TREND_INSIDE_CEILING` ilə məhdudlaşdırılır ki, HEÇ VAXT ölçmə
+        (1.0) ilə eyni səviyyəyə çıxmasın.
+
+        `range_v` bilinmirsə `None` — SAXTA rəqəm YOXDUR (§18).
+        """
+        if range_v is None or range_v <= 0.0:
+            return None
+        score = float(np.exp(-max(gap, 0.0) / range_v))
+        ceiling = _TREND_INSIDE_CEILING if inside else _TREND_OUTSIDE_CEILING
+        return min(score, ceiling)
+
+    @staticmethod
+    def _attach_partial_uncertainty(model: GeologicalModel, target: str,
+                                    estimates: Dict[int, "PropertyEstimate"],
+                                    grid: CartesianGrid) -> None:
+        """`_attach_continuous_uncertainty`-nin lay-məlumatlı variantı:
+        YALNIZ hesablanmış laylar üçün nəticə var, qalan laylar NaN/boş
+        qalır — uydurma qiymət YAZILMIR."""
+        if not estimates:
+            return
+        ncell = grid.ncell
+        areal = grid.nx * grid.ny
+        sample = next(iter(estimates.values()))
+        variance = np.full(ncell, np.nan)
+        std = np.full(ncell, np.nan)
+        confidence = np.full(ncell, "", dtype=object)
+        support = np.full(ncell, "", dtype=object)
+        neighbor_count = np.zeros(ncell, dtype=float)
+        nearest = np.full(ncell, np.nan)
+        density = np.zeros(ncell, dtype=float)
+        extrapolated = np.zeros(ncell, dtype=bool)
+        warnings: list = []
+        for k, estimate in estimates.items():
+            index = np.arange(k * areal, (k + 1) * areal)
+            variance[index] = estimate.variance
+            std[index] = estimate.std
+            confidence[index] = np.asarray(estimate.confidence, dtype=object)
+            support[index] = np.asarray(estimate.support, dtype=object)
+            neighbor_count[index] = estimate.neighbor_count
+            nearest[index] = estimate.nearest_distance
+            density[index] = estimate.data_density
+            extrapolated[index] = estimate.extrapolated
+            warnings.extend(estimate.warnings)
+        model.add_uncertainty(target, PropertyUncertainty(
+            name=target, variance=variance, std=std, confidence=confidence,
+            support=support, neighbor_count=neighbor_count, nearest_distance=nearest,
+            data_density=density, extrapolated=extrapolated,
+            variance_kind=sample.variance_kind.value, warnings=warnings))
 
     # ------------------------------------------------- PHASE C: model calibration
     def calibrate_property(self, dataset: WellDataset, source: str,
@@ -847,7 +1685,8 @@ class WellBasedGeologicalModelBuilder:
 
     # ------------------------------------------------------- M4: cross-validation
     def cross_validate(self, dataset: WellDataset, source: str,
-                       method: str = "loo", k: int = 5, seed: int = 42
+                       method: str = "loo", k: int = 5, seed: int = 42,
+                       nz: Optional[int] = None
                        ) -> Tuple[Dict[Optional[int], CrossValidationResult], Dict[Optional[int], str]]:
         """`source` üçün REAL dəqiqliyi ölçür — "100% dəqiq" vəd ETMİR.
 
@@ -860,10 +1699,20 @@ class WellBasedGeologicalModelBuilder:
         Qaytarır: `(nəticələr, buraxılanlar)` — `buraxılanlar` 3 nöqtədən
         az olan laylar üçün səbəb mesajıdır (CV üçün bu laylar keçilir,
         səbəbsiz gizlədilmir).
+
+        `nz` (LAY-MƏLUMATLI rejim, tapşırıq §19) — verilibsə BÜTÜN K
+        təbəqələri gəzilir, təkcə dataset-də NÖQTƏSİ OLANLAR yox. Belə
+        olanda məlumatı OLMAYAN lay (məs. L4/L5) hesabatda AÇIQ "doğrulama
+        məlumatı yoxdur" kimi görünür — sükutla siyahıdan DÜŞMÜR və HEÇ
+        VAXT "RMSE = 0" kimi SAXTA uğur nəticəsi yaratmır.
         """
         rule = self.rules.get(source, PropertyRule(source))
-        layers: Sequence[Optional[int]] = (
-            [l for l in dataset.layers if l is not None] if dataset.is_layered() else [None])
+        if dataset.is_layered():
+            layers: Sequence[Optional[int]] = (
+                list(range(nz)) if nz is not None
+                else [l for l in dataset.layers if l is not None])
+        else:
+            layers = [None]
 
         results: Dict[Optional[int], CrossValidationResult] = {}
         skipped: Dict[Optional[int], str] = {}
@@ -871,9 +1720,12 @@ class WellBasedGeologicalModelBuilder:
             samples = dataset.samples_for(source, layer)
             if len(samples) < 3:
                 label = f"K={layer}" if layer is not None else "bütün model"
+                reason = ("bu layda HEÇ BİR doğrulama məlumatı yoxdur"
+                          if not samples else
+                          f"{len(samples)} nöqtə var, cross-validation üçün ən azı 3 lazımdır")
                 skipped[layer] = (
-                    f"{label}: {len(samples)} nöqtə var, cross-validation üçün "
-                    "ən azı 3 lazımdır — bu lay/model üçün doğrulama aparılmadı.")
+                    f"{label}: {reason} — bu lay/model üçün doğrulama APARILMADI "
+                    "(nəticə 'mükəmməl' kimi göstərilmir).")
                 continue
             points = np.asarray([(s.x, s.y) for s in samples], float)
             values = np.asarray([s.values[source] for s in samples], float)
@@ -885,28 +1737,137 @@ class WellBasedGeologicalModelBuilder:
         return results, skipped
 
     def cross_validate_all(self, dataset: WellDataset, method: str = "loo",
-                           k: int = 5, seed: int = 42
+                           k: int = 5, seed: int = 42, nz: Optional[int] = None
                            ) -> Dict[str, Tuple[Dict[Optional[int], CrossValidationResult],
                                                Dict[Optional[int], str]]]:
-        """PORO və mövcud PERMX/PERMY/PERMZ üçün `cross_validate` icra edir."""
+        """PORO və mövcud PERMX/PERMY/PERMZ üçün `cross_validate` icra edir.
+
+        `nz` — bax `cross_validate` (məlumatsız laylar da hesabatda
+        görünsün deyə)."""
         available = set(dataset.property_names())
         return {
-            source: self.cross_validate(dataset, source, method=method, k=k, seed=seed)
+            source: self.cross_validate(dataset, source, method=method, k=k, seed=seed,
+                                        nz=nz)
             for source in _CROSS_VALIDATED_PROPERTIES if source in available
         }
 
     @staticmethod
     def _fill_missing_permeability(model, grid, ky_over_kx, kv_over_kh, report):
-        """PERMY/PERMZ verilməyibsə anizotropluq əmsalları ilə qurulur."""
+        """PERMY/PERMZ verilməyibsə anizotropluq əmsalları ilə qurulur.
+
+        LAY-MƏLUMATLI rejimdə PERMX-in MƏNŞƏYİ (provenance) də TÖRƏMƏ
+        sahələrə KEÇİRİLİR: PERMX-in MISSING olduğu hüceyrədə PERMY/PERMZ
+        də MISSING-dir (NaN × əmsal = NaN) — status bunu AÇIQ göstərir,
+        "əmsalla doldurduq, deməli məlumatlıdır" TƏƏSSÜRATI YARANMIR.
+        """
         if "PERMX" not in model.property_maps:
             return
         permx = model.property_maps["PERMX"].values
+        origin = model.provenance.get("PERMX")
         for key, factor in (("PERMY", ky_over_kx), ("PERMZ", kv_over_kh)):
             if key in model.property_maps:
                 continue
             values = permx * factor
             model.add_property(PropertyMap.from_array(key, values, grid.ncell, "mD"))
             report.add(key, "PERMX", False, values)
+            if origin is None:
+                continue
+            model.add_provenance(PropertyProvenance(
+                name=key,
+                status=np.array(origin.status, dtype=object),
+                method=np.asarray([f"{m}→{key}(×{factor:g})" if m else ""
+                                   for m in origin.method], dtype=object),
+                confidence=np.array(origin.confidence, float),
+                final=values,
+                original=None if origin.original is None else origin.original * factor,
+                interpolated=(None if origin.interpolated is None
+                              else origin.interpolated * factor),
+                estimated=(None if origin.estimated is None
+                           else origin.estimated * factor),
+                layer_methods=dict(origin.layer_methods)))
+            if model.availability is not None and "PERMX" in model.availability:
+                source_entry = model.availability["PERMX"]
+                derived = model.availability.require(key)
+                for k in range(grid.nz):
+                    state = source_entry.layers[k]
+                    derived.set(k, status=state.status, n_data=state.n_data,
+                                confidence=state.confidence,
+                                method=(f"{state.method}→{key}" if state.method else ""),
+                                note=f"PERMX × {factor:g} (anizotropluq əmsalı)")
+
+
+# ═══════════════════════════════════════════════════ TƏSİR (impact) ANALİZİ
+@dataclass
+class ImpactResult:
+    """"Fərz edək ki..." ssenarisinin ƏSAS modelə TƏSİRİ (tapşırıq §12).
+
+    QƏTİ QAYDA: bu obyekt YALNIZ HESABLAMA NƏTİCƏSİDİR — nə `original`,
+    nə də `hypothetical` model DƏYİŞDİRİLİR (massivlər KOPYALANIR).
+    Təsir HEÇ VAXT `final_field`-ə YAZILMIR; UI onu AYRICA təbəqə kimi
+    göstərir.
+
+    `delta = hypothetical − original` (fiziki vahiddə),
+    `relative = delta / |original|` (orijinal sıfır/NaN olan hüceyrədə NaN).
+    """
+
+    name: str
+    original: np.ndarray
+    hypothetical: np.ndarray
+    delta: np.ndarray
+    relative: np.ndarray
+    shape: Tuple[int, int, int]
+
+    @property
+    def changed_cells(self) -> int:
+        return int(np.sum(np.abs(np.nan_to_num(self.delta, nan=0.0)) > 0.0))
+
+    def layer_mean_delta(self) -> np.ndarray:
+        """`(nz,)` — hər layın orta təsiri (NaN-lar nəzərə alınmır)."""
+        grid = self.delta.reshape(self.shape)
+        with np.errstate(invalid="ignore"):
+            return np.asarray([
+                float(np.nanmean(grid[k])) if np.isfinite(grid[k]).any() else np.nan
+                for k in range(self.shape[0])], float)
+
+    def as_text(self) -> str:
+        lines = [f"TƏSİR — {self.name}:",
+                 f"  dəyişən hüceyrə: {self.changed_cells}/{self.delta.size}"]
+        for k, value in enumerate(self.layer_mean_delta()):
+            lines.append(f"  L{k + 1} (K={k}): Δ orta = "
+                         + ("—" if not np.isfinite(value) else f"{value:+.5g}"))
+        return "\n".join(lines)
+
+
+def compute_property_impact(original: GeologicalModel, hypothetical: GeologicalModel,
+                            name: str) -> ImpactResult:
+    """İki modelin EYNİ xassəsi arasındakı fərq.
+
+    HEÇ BİR modeli DƏYİŞMİR (§12) — massivlər `copy()` ilə götürülür,
+    ona görə nəticə üzərində aparılan hər hansı əməliyyat mənbəyə
+    QAYITMIR (bax `tests/test_layer_data_availability.py`, TEST H).
+    """
+    if original.grid.shape != hypothetical.grid.shape:
+        raise ValueError(
+            f"Təsir analizi üçün grid ölçüləri eyni olmalıdır: "
+            f"{original.grid.shape} != {hypothetical.grid.shape}")
+    if name not in original.property_maps or name not in hypothetical.property_maps:
+        raise KeyError(f"'{name}' hər iki modeldə olmalıdır (təsir analizi).")
+    base = np.array(original.property_maps[name].values, float, copy=True)
+    other = np.array(hypothetical.property_maps[name].values, float, copy=True)
+    delta = other - base
+    with np.errstate(divide="ignore", invalid="ignore"):
+        relative = np.where(np.abs(base) > 0.0, delta / np.abs(base), np.nan)
+    return ImpactResult(name=name, original=base, hypothetical=other, delta=delta,
+                        relative=relative, shape=original.grid.shape)
+
+
+def compute_impact(original: GeologicalModel, hypothetical: GeologicalModel,
+                   names: Optional[Sequence[str]] = None) -> Dict[str, ImpactResult]:
+    """Hər ortaq (və ya `names`-də sadalanan) xassə üçün `ImpactResult`."""
+    shared = (list(names) if names is not None
+              else sorted(set(original.property_maps) & set(hypothetical.property_maps)))
+    return {name: compute_property_impact(original, hypothetical, name)
+            for name in shared}
 
 
 _DISPLAY_LABEL = {"PORO": "POROSITY", "PERMX": "PERMEABILITY (PERMX)",

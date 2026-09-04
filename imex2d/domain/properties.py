@@ -99,6 +99,66 @@ class PropertyUncertainty:
 
 
 @dataclass
+class PropertyProvenance:
+    """BİR xassənin hüceyrə-üzrə MƏNŞƏYİ — "bu ədəd haradan gəldi".
+
+    `PropertyMap` (yalnız DƏYƏR) ilə YANAŞI saxlanılır, onu ƏVƏZ ETMİR:
+    mövcud oxucular (`RockProperties`, TPFA/MPFA, Eclipse ixracı) heç nə
+    bilmədən ƏVVƏLKİ kimi işləyir; mənşəyə ehtiyacı olan (validasiya,
+    3D görüntü, hesabat) buradan oxuyur.
+
+    SAHƏLƏR (tapşırıq §11 — ayrı-ayrı saxlanılır, birləşdirilmir):
+
+        original      — dəyişdirilməmiş ilkin sahə (varsa)
+        interpolated  — YALNIZ interpolyasiya olunmuş hüceyrələr, qalanı NaN
+        estimated     — YALNIZ completion ilə doldurulanlar, qalanı NaN
+        final         — modelə/simulyatora GEDƏN sahə
+        status        — hər hüceyrə üçün `DataStatus` dəyəri (mətn)
+        method        — hansı üsulla (məs. "kriging", "vertical_trend", "sgs")
+        confidence    — `[0,1]` ORDİNAL dəstək balı, hesablanmayanda NaN
+
+    `confidence_kind` AÇIQ şəkildə "ordinal_support_score"-dur:
+    KALİBRLƏNMİŞ EHTİMAL DEYİL (bax `geology/property_interpolation.
+    Confidence` docstring-i — eyni qayda).
+    """
+
+    name: str
+    status: np.ndarray               #: object massiv — `DataStatus` dəyərləri (str)
+    method: np.ndarray               #: object massiv — üsul adı (boş ola bilər)
+    confidence: np.ndarray           #: float massiv — hesablanmayan hüceyrə NaN
+    final: np.ndarray
+    original: Optional[np.ndarray] = None
+    interpolated: Optional[np.ndarray] = None
+    estimated: Optional[np.ndarray] = None
+    confidence_kind: str = "ordinal_support_score"
+    layer_methods: Dict[int, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        n = int(np.asarray(self.final).size)
+        for label, array in (("status", self.status), ("method", self.method),
+                             ("confidence", self.confidence)):
+            if np.asarray(array).size != n:
+                raise ValueError(
+                    f"{self.name}: '{label}' ölçüsü final sahə ilə uyğun gəlmir "
+                    f"({np.asarray(array).size} != {n})")
+
+    @property
+    def ncell(self) -> int:
+        return int(np.asarray(self.final).size)
+
+    def mask(self, *statuses: str) -> np.ndarray:
+        """Verilmiş statuslu hüceyrələrin bool maskası."""
+        wanted = {str(s) for s in statuses}
+        return np.asarray([str(s) in wanted for s in self.status], dtype=bool)
+
+    def status_counts(self) -> Dict[str, int]:
+        names, counts = np.unique(np.asarray(self.status, dtype=object).astype(str),
+                                  return_counts=True)
+        return {str(name): int(count) for name, count in zip(names, counts)}
+
+
+@dataclass
 class CategoricalUncertainty:
     """Kateqorik xassənin qeyri-müəyyənlik diaqnostikası (grid üzrə).
 

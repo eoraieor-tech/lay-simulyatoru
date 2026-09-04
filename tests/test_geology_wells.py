@@ -179,6 +179,44 @@ def test_well_perf_metres_default_to_none():
 
 
 def test_unknown_future_version_still_rejected():
-    """FORMAT_VERSION 2-yə qalxdıqdan sonra da gələcək versiya rədd olunur."""
-    from imex2d.application.serialization import FORMAT_VERSION
-    assert FORMAT_VERSION == 2
+    """FORMAT_VERSION 3-ə qalxdıqdan sonra da gələcək versiya rədd olunur.
+
+    v2 → v3: `GeologicalWell.data_layers_text` (lay-məlumatlı rejimin
+    "Data layları" sütunu) əlavə olundu — bax `serialization.py` şərhi və
+    `LAYER_AWARE_MODELING.md`. Versiya ona görə qaldırıldı ki, bu sahədən
+    XƏBƏRSİZ köhnə build v3 faylını AÇIQ rədd etsin, səssizcə açıb lay
+    bəyanlarını İTİRMƏSİN.
+
+    Test ADINDAKI davranışı da FAKTİKİ olaraq yoxlayır (əvvəllər yalnız
+    sabitin dəyərinə baxırdı): gələcək versiya HƏQİQƏTƏN rədd olunur."""
+    import gzip
+    import json
+
+    from imex2d.application.serialization import (FORMAT_VERSION, ProjectFileError,
+                                                  ProjectSerializer)
+    assert FORMAT_VERSION == 3
+
+    handle, path = tempfile.mkstemp(suffix=".imx")
+    os.close(handle)
+    try:
+        with gzip.open(path, "wt", encoding="utf-8") as file:
+            json.dump({"version": FORMAT_VERSION + 1, "project": {}}, file)
+        try:
+            ProjectSerializer().load(path)
+        except ProjectFileError as error:
+            assert str(FORMAT_VERSION + 1) in str(error)
+        else:
+            raise AssertionError("gələcək versiyalı fayl rədd edilmədi")
+    finally:
+        os.unlink(path)
+
+
+def test_project_saved_without_the_layer_column_still_loads():
+    """v1/v2 faylında `data_layers_text` YOXDUR — boş mətnlə yüklənir və
+    davranış ƏVVƏLKİ (lay-məlumatsız) kimi qalır."""
+    legacy = {"name": "W-legacy", "in_model": True, "x": 10.0, "y": 20.0,
+              "top": 2000.0, "bottom": 2050.0, "porosity": 0.2,
+              "permeability": 100.0, "water_saturation": 0.3, "note": ""}
+    well = GeologicalWell.from_dict(legacy)
+    assert well.data_layers_text == ""
+    assert well.data_layer_sets(5) == (None, {})

@@ -31,6 +31,85 @@ PROPERTY_LABELS = {
     DEPTH: "Dərinlik (m)",
 }
 
+# ── LAY-MƏLUMATLI görüntü açarları (tapşırıq §13) ─────────────────────
+# Açar formatı `"PROVENANCE:PORO"` / `"CONFIDENCE:PERMX"` — XASSƏ ADI
+# AÇARIN İÇİNDƏDİR, ona görə burada HEÇ BİR xassə adı SABİT KODLANMIR
+# (§15). UI mövcud `model.provenance` açarlarından siyahını ÖZÜ qurur.
+# Bu qat HESABLAMA APARMIR — yalnız artıq hazır `PropertyProvenance`
+# massivlərini göstərir (§13: "Visualization core geology hesablamalarını
+# özündə daşımamalıdır").
+PROVENANCE_PREFIX = "PROVENANCE:"
+CONFIDENCE_PREFIX = "CONFIDENCE:"
+ORIGINAL_PREFIX = "ORIGINAL:"
+IMPACT_PREFIX = "IMPACT:"
+
+#: Bu qatın tanıdığı BÜTÜN lay-məlumatlı prefikslər.
+PROVENANCE_PREFIXES = (PROVENANCE_PREFIX, CONFIDENCE_PREFIX,
+                       ORIGINAL_PREFIX, IMPACT_PREFIX)
+
+
+def provenance_key(name: str) -> str:
+    return f"{PROVENANCE_PREFIX}{name}"
+
+
+def confidence_key(name: str) -> str:
+    return f"{CONFIDENCE_PREFIX}{name}"
+
+
+def original_key(name: str) -> str:
+    return f"{ORIGINAL_PREFIX}{name}"
+
+
+def impact_key(name: str) -> str:
+    return f"{IMPACT_PREFIX}{name}"
+
+
+def property_label(key: str) -> str:
+    """Combo/başlıq üçün etiket — naməlum açar öz adını qaytarır."""
+    if key.startswith(PROVENANCE_PREFIX):
+        return f"Mənşə/status — {key[len(PROVENANCE_PREFIX):]}"
+    if key.startswith(CONFIDENCE_PREFIX):
+        return f"Etibarlılıq balı — {key[len(CONFIDENCE_PREFIX):]}"
+    if key.startswith(ORIGINAL_PREFIX):
+        return f"Orijinal sahə — {key[len(ORIGINAL_PREFIX):]}"
+    if key.startswith(IMPACT_PREFIX):
+        return f"Təsir (final − orijinal) — {key[len(IMPACT_PREFIX):]}"
+    return PROPERTY_LABELS.get(key, key)
+
+
+def _provenance_arrays(model, key: str):
+    """`(dəyərlər, colormap, vmin, vmax)` — status/etibar/orijinal/təsir.
+
+    Provenance (və ya orijinal sahə) yoxdursa HAMISI `NaN` qaytarılır —
+    uydurma "hər şey ölçülüb"/"təsir sıfırdır" mənzərəsi YARADILMIR.
+
+    QEYD (§12): TƏSİR burada YALNIZ GÖSTƏRİLİR — `final` sahəsi
+    DƏYİŞDİRİLMİR, fərq hər çağırışda yenidən hesablanır.
+    """
+    from ..domain.data_availability import STATUS_CODE, STATUS_ORDER
+    name = key.split(":", 1)[1]
+    entry = getattr(model, "provenance", {}).get(name)
+    ncell = model.grid.ncell
+    if key.startswith(PROVENANCE_PREFIX):
+        if entry is None:
+            return np.full(ncell, np.nan), "tab10", 0.0, float(len(STATUS_ORDER) - 1)
+        codes = np.asarray([STATUS_CODE.get(str(s), np.nan) for s in entry.status], float)
+        return codes, "tab10", 0.0, float(len(STATUS_ORDER) - 1)
+    if key.startswith(ORIGINAL_PREFIX):
+        if entry is None or entry.original is None:
+            return np.full(ncell, np.nan), POROSITY_CMAP, None, None
+        return np.asarray(entry.original, float), POROSITY_CMAP, None, None
+    if key.startswith(IMPACT_PREFIX):
+        if entry is None or entry.original is None:
+            return np.full(ncell, np.nan), "coolwarm", None, None
+        delta = np.asarray(entry.final, float) - np.asarray(entry.original, float)
+        limit = float(np.nanmax(np.abs(delta))) if np.isfinite(delta).any() else 0.0
+        limit = limit or 1.0                      # sıfır təsir → dejenerativ şkala olmasın
+        return delta, "coolwarm", -limit, limit
+    if entry is None:
+        return np.full(ncell, np.nan), "viridis", 0.0, 1.0
+    return np.asarray(entry.confidence, float), "viridis", 0.0, 1.0
+
 
 def _colorbar(figure, image, ax, cax, label):
     """Rəng şkalası.
@@ -72,12 +151,12 @@ class MapRenderer:
                           interpolation="nearest")
 
         bar = _colorbar(figure, image, ax, cax,
-                        PROPERTY_LABELS.get(property_key, property_key))
+                        property_label(property_key))
 
         self._draw_wells(ax, model, layer)
         t = snapshot.time if snapshot else 0.0
         suffix = f"    |    təbəqə K = {layer + 1}" if model.grid.nz > 1 else ""
-        style_axes(ax, f"{PROPERTY_LABELS.get(property_key, property_key)}"
+        style_axes(ax, f"{property_label(property_key)}"
                        f"    |    t = {t:.0f} gün{suffix}", "X, m", "Y, m")
         return bar
 
@@ -85,6 +164,9 @@ class MapRenderer:
         """(nz, ny, nx) massivi — kəsik renderer-i üçün."""
         shape3d = model.grid.shape
         scal = model.scal_parameters
+        if key.startswith(PROVENANCE_PREFIXES):
+            values, cmap, low, high = _provenance_arrays(model, key)
+            return values.reshape(shape3d), cmap, low, high
         if key == SATURATION:
             data = (np.asarray(snapshot.water_saturation).reshape(shape3d) if snapshot
                     else np.full(shape3d, model.initial_conditions.water_saturation))
@@ -110,6 +192,9 @@ class MapRenderer:
                 return np.full(shape2d, default)
             return np.asarray(flat_or_grid).reshape(shape3d)[k]
 
+        if key.startswith(PROVENANCE_PREFIXES):
+            values, cmap, low, high = _provenance_arrays(model, key)
+            return slice_of(values), cmap, low, high
         if key == SATURATION:
             data = (slice_of(snapshot.water_saturation) if snapshot
                     else np.full(shape2d, model.initial_conditions.water_saturation))
@@ -259,11 +344,11 @@ class CrossSectionRenderer:
                           vmin=vmin, vmax=vmax, interpolation="nearest",
                           extent=[0, horizontal, base, top])
         bar = _colorbar(figure, image, ax, cax,
-                        PROPERTY_LABELS.get(property_key, property_key))
+                        property_label(property_key))
 
         self._draw_well_tracks(ax, model, axis, index)
         t = snapshot.time if snapshot else 0.0
-        style_axes(ax, f"Şaquli kəsik — {PROPERTY_LABELS.get(property_key, property_key)}"
+        style_axes(ax, f"Şaquli kəsik — {property_label(property_key)}"
                        f"    |    t = {t:.0f} gün", xlabel, "Dərinlik, m")
         return bar
 

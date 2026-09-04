@@ -21,6 +21,14 @@ class WellSample:
     values: Dict[str, float] = field(default_factory=dict)
     layer: Optional[int] = None      # None -> bütün təbəqələrə aiddir
     depth: Optional[float] = None
+    #: Bu ölçmə TƏBİƏTƏN laydan asılı DEYİLmi (struktur səth — məs. layın
+    #: tavan/daban dərinliyi). `True` olanda `layer is None` "hansı laya
+    #: aid olduğu bilinmir" YOX, "bütün laylar üçün eyni dərəcədə
+    #: keçərlidir" deməkdir — ona görə lay-məlumatlı (STRICT) rejimdə də
+    #: hər K üçün etibarlı sayılır (bax `geology/layer_availability.
+    #: sample_layers`). Petrofiziki ölçmələr (PORO/PERMX/SW/NTG…) ÜÇÜN
+    #: HEÇ VAXT `True` OLMAMALIDIR.
+    areal: bool = False
 
 
 @dataclass
