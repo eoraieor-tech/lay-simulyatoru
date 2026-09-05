@@ -21,42 +21,34 @@ IMEX_SKIP_SLOW=1 python run_tests.py -q
 
 | Fayl | Test | Nəyi qoruyur |
 |---|---|---|
-| `test_domain.py` | 12 | Grid indeksləşməsi, xassələr, SCAL son nöqtələri, model yoxlaması |
-| `test_discretization.py` | 5 | Harmonik orta, Peaceman quyu indeksi, skin təsiri |
+| `test_domain.py` | 17 | Grid indeksləşməsi, xassələr, SCAL son nöqtələri, model yoxlaması |
+| `test_discretization.py` | 11 | Harmonik orta, Peaceman quyu indeksi, skin təsiri |
 | `test_config_and_service.py` | 9 | Konfiqurasiya, DI davranışı, layihə obyekti |
 | `test_physics.py` | 6 | **Material balansı, Bukley-Leverett, fiziki hədlər** |
 | `test_regression.py` | 2 | **Etalon nəticə: RF 16.840 %, 4314 addım** |
 | `test_rendering.py` | 8 | Rendering-in Qt-dən asılı olmaması, ox ölçüsünün sabitliyi |
 | `test_pvt.py` | 17 | **A1: PVT cədvəli, korrelyasiyalar, provider** |
-| `test_gas_pvt.py` | 22 | **A7/1: Z-faktoru, Bg, μg, geriyə uyğunluq** |
-| `test_three_phase.py` | 17 | **A7/2: üç fazalı doyumluluq, qaz papağı equilibration** |
-| `test_stone_relperm.py` | 22 | **A7/3: Stone II, iki fazalı reduksiya, mənfi kro yoxdur** |
-| `test_variable_switching.py` | 20 | **A7/4: dəyişən keçid, kütlə balansı, kəsilməzlik** |
-| `test_three_phase_residual.py` | 43 | **A7/5-6c(4): tam Jakobian yığımı, sistemli sonlu fərqlə doğrulama** |
-| `test_standard_well.py` | 26 | **OPM quyu modeli, mərhələ 2: BHP-dən debitlər, idarəetmə tənlikləri, HAMARLIQ** |
+| `test_standard_well.py` | 34 | **OPM quyu modeli, mərhələ 2: BHP-dən debitlər, idarəetmə tənlikləri, HAMARLIQ** |
 | `test_well_state.py` | 16 | **OPM tipli quyu modeli, mərhələ 1: BHP naməlum dəyişən kimi** |
-| `test_three_phase_newton.py` | 18 | **A7/6d: üç fazalı Nyuton döngəsi + çökməyə qarşı mühafizə (heç vaxt istisna atmır)** |
-| `test_gas_ui_wiring.py` | 8 | **A7/6d(UI): mühərrik seçimi, uyğun xətti həlledici, təhlükəsiz uğursuzluq** |
-| `test_diagnostics.py` | 21 | +1: köhnə "qaz modelləşdirilmir" xəbərdarlığı qaz aktivdirsə göstərilmir |
-| `test_vtk_volume.py` | 47 | **VTK 3D motoru — pytest, `vtk` tələb edir** (həndəsə, filtrlər, rəng xəritəsi, tam offscreen render) |
+| `test_vtk_volume.py` | 48 | **VTK 3D motoru — pytest, `vtk` tələb edir** (həndəsə, filtrlər, rəng xəritəsi, tam offscreen render) |
 | `test_opm_import.py` | 12 | **OPM Flow idxalı — pytest, `resdata` tələb edir** (sintetik round-trip Eclipse halı, öz VolumeRenderer-imizlə çəkilmə) |
 | `test_initialization.py` | 14 | **A3: equilibration, hidrostatik qradiyent, OWC** |
 | `test_capillary_gravity.py` | 16 | **A4: Brooks-Corey Pc, keçid zonası, cazibə potensialı** |
 | `test_three_dimensional.py` | 16 | **A5: 3D grid, şaquli axın, Kv/Kh, kəsik vizuallaşdırma** |
 | `test_perforation.py` | 6 | Perforasiya intervalı, qismən açılmış quyular |
-| `test_serialization.py` | 13 | **B1: layihə faylı (.imx), eyni nəticənin bərpası** |
+| `test_serialization.py` | 18 | **B1: layihə faylı (.imx), eyni nəticənin bərpası** |
 | `test_geology_import.py` | 23 | **B2: quyu CSV, IDW/Kriging, geoloji model qurulması** |
 | `test_diagnostics.py` | 20 | Xəta/xəbərdarlıq ayrımı, quyu rejimi, loglama, matris keşi |
 | `test_ui_static.py` | 9 | UI qatının AST yoxlanışı (import, atribut, qurucu, tab indeksi, tab siyahısı) |
 | `test_ui_wiring.py` | 7 | UI panel–model bağlantısı |
 | `test_implicit_residual.py` | 16 | **A6/1: qalıq vektoru, kütlə balansı, IMPES ilə ardıcıllıq** |
 | `test_implicit_jacobian.py` | 20 | **A6/2: analitik Jakobian vs sonlu fərq (8 konfiqurasiya)** |
-| `test_implicit_newton.py` | 16 | **A6/3: Nyuton döngəsi, konvergensiya, IMPES ilə uyğunluq** |
-| `test_implicit_engine.py` | 17 | **A6/4: adaptiv Δt, FullyImplicitEngine** |
+| `test_implicit_newton.py` | 17 | **A6/3: Nyuton döngəsi, konvergensiya, IMPES ilə uyğunluq** |
+| `test_implicit_engine.py` | 20 | **A6/4: adaptiv Δt, FullyImplicitEngine** |
 | `test_cpr.py` | 16 | **A6/5: CPR dekuplinqi, blok-Jakobi, yaddaş üstünlüyü** |
-| `test_volume_rendering.py` | 32 | **3D görüntü: üz çıxarışı, filtr, kəsim, işıqlandırma, baxış** |
+| `test_volume_rendering.py` | 45 | **3D görüntü: üz çıxarışı, filtr, kəsim, işıqlandırma, baxış** |
 
-Cəmi **722 test**.py`).
+Cəmi **1841 test**.
 
 Performans ölçmələri: `PERFORMANCE.md` və `tools/benchmark.py`.
 Fully implicit sxemin planı və nəticələri: `A6_PLAN.md`.

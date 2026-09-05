@@ -27,32 +27,10 @@ from imex2d.application.simulation_service import ModelAwareSimulationService
 from imex2d.domain.scal import CoreyParameters
 from imex2d.logging_setup import configure as configure_logging
 from imex2d.logging_setup import get_logger
-from imex2d.simulation.implicit.engine import FullyImplicitEngine
 from imex2d.simulation.linear_solver import ScipyCgIluSolver
-from imex2d.simulation.capillary import BrooksCoreyCapillaryProvider
-from imex2d.simulation.initialization.equilibrium import (
-    EquilibriumInitializationProvider)
-from imex2d.simulation.pvt.black_oil import BlackOilPVTProvider
 from imex2d.simulation.scal_adapter import CoreyRelativePermeabilityAdapter
 from imex2d.ui.main_window import MainWindow
 from imex2d.ui.style import stylesheet
-
-
-def build_application_services():
-    """Asılılıqların qurulması (dependency injection).
-
-    PVT, kapilyar təzyiq və initialization provider-ləri None olaraq
-    qalır — interfeysləri var, implementasiyaları yoxdur. Onlar
-    yazılanda yalnız bu funksiya dəyişəcək.
-    """
-    relperm_provider = CoreyRelativePermeabilityAdapter(CoreyParameters())
-    return SimulationService(
-        relperm_provider=relperm_provider,
-        linear_solver=ScipyCgIluSolver(),
-        pvt_provider=None,
-        capillary_provider=None,
-        initialization_provider=None,
-    )
 
 
 def main():

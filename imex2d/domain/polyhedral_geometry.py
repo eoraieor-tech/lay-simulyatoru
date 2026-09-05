@@ -76,8 +76,8 @@ müstəvi üzdə isə ikisi ÜST-ÜSTƏ DÜŞÜR.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import numpy as np
 

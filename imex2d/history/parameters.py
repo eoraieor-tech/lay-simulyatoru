@@ -88,14 +88,6 @@ class ParameterDefinition:
 
 # ══════════════════════════════════════════════ hazır parametrlər
 
-def _scale_property(attribute: str):
-    def apply(model: ReservoirModel, value: float) -> None:
-        prop = getattr(model.rock, attribute)
-        if prop is not None:
-            prop.values[:] = prop.values * value
-    return apply
-
-
 def _scale_horizontal_permeability(model: ReservoirModel, value: float) -> None:
     """PERMX və PERMY birlikdə — anizotropluq nisbəti qorunur."""
     model.rock.permx.values[:] = model.rock.permx.values * value
@@ -137,12 +129,6 @@ def _reconcile_initial_saturation(model: ReservoirModel) -> None:
     initial = model.initial_conditions
     initial.water_saturation = float(
         np.clip(initial.water_saturation, low, high))
-
-
-def _set_capillary(attribute: str):
-    def apply(model: ReservoirModel, value: float) -> None:
-        setattr(model.capillary_parameters, attribute, value)
-    return apply
 
 
 def _set_oil_viscosity(model: ReservoirModel, value: float) -> None:

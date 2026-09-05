@@ -40,7 +40,7 @@ düşür (bax aşağıda, "PHASE 5B-2" bölməsi) — bu, `docs/mpfa_o_phase5b1.
 matrisindən İSTİFADƏ edərək — heç bir lokal MPFA sistemi TƏKRAR
 QURULMUR, heç bir sonlu-fərq QISAYOLU yoxdur (tapşırıq §23/§26 — analitik
 düstur aşağıda İKİ-NÖQTƏLİ HƏDDƏ endirilib və TPFA-nın öz `_flux()`-u ilə
-ƏL İLƏ yoxlanıb, bax `tests/test_mpfa_jacobian.py`).
+ƏL İLƏ yoxlanıb, bax `tests/test_phase_d_mpfa_integration.py`).
 
 Riyazi düstur (su fazası üçün, neft analojidir, `Pc` üzvü YOXDUR):
 

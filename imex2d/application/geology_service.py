@@ -60,7 +60,7 @@ from ..geology.facies import (FaciesVariogramParams, observed_proportions, simul
 from ..geology.hard_data import resolve_hard_data
 from ..geology.interpolation import OrdinaryKriging
 from ..geology.property_config import (PropertyStrategy, VariableType, resolve_strategy)
-from ..geology.property_interpolation import (CategoricalEstimate, PropertyEstimate,
+from ..geology.property_interpolation import (PropertyEstimate,
                                               interpolate_categorical_field,
                                               interpolate_property_field)
 from ..geology.property_types import PropertyType, classify_property
@@ -1895,15 +1895,6 @@ def compute_property_impact(original: GeologicalModel, hypothetical: GeologicalM
                         relative=relative, shape=original.grid.shape)
 
 
-def compute_impact(original: GeologicalModel, hypothetical: GeologicalModel,
-                   names: Optional[Sequence[str]] = None) -> Dict[str, ImpactResult]:
-    """Hər ortaq (və ya `names`-də sadalanan) xassə üçün `ImpactResult`."""
-    shared = (list(names) if names is not None
-              else sorted(set(original.property_maps) & set(hypothetical.property_maps)))
-    return {name: compute_property_impact(original, hypothetical, name)
-            for name in shared}
-
-
 _DISPLAY_LABEL = {"PORO": "POROSITY", "PERMX": "PERMEABILITY (PERMX)",
                   "PERMY": "PERMEABILITY (PERMY)", "PERMZ": "PERMEABILITY (PERMZ)"}
 
@@ -2046,12 +2037,6 @@ def build_quality_report(builder: "WellBasedGeologicalModelBuilder", model: Geol
             support_distribution=support_dist, confidence_distribution=confidence_dist,
             warnings=list(unc.warnings))
     return reports
-
-
-def quality_report_as_text(reports: Dict[str, PropertyQualityReport]) -> str:
-    if not reports:
-        return "Diaqnostik hesabat üçün heç bir Phase B nəticəsi yoxdur."
-    return "\n\n".join(r.as_text() for r in reports.values())
 
 
 def run_validation_gate(model: GeologicalModel, report: InterpolationReport,

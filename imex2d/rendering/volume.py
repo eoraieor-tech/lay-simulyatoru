@@ -28,10 +28,6 @@ from ..domain.wells import WellType
 from .theme import PALETTE
 
 
-def _hex_to_rgb(colour: str):
-    colour = colour.lstrip("#")
-    return tuple(int(colour[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
-
 # hüceyrənin 6 üzü: (ox, istiqamət) və künclərin lokal indeksləri
 # küncler: (i,j,k) ofsetləri ilə 0..7
 _CORNERS = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],

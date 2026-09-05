@@ -35,7 +35,7 @@ işarə çevirməsi LAZIM DEYİL (`_validate_orientation` bunu yoxlayır).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from scipy import sparse

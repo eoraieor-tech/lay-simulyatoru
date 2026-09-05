@@ -32,7 +32,7 @@ Nyuton, Jacobian, sonlu-fərq pertürbasiyası.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
