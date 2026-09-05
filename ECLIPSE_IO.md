@@ -21,7 +21,7 @@ Dəstəklənən açar sözlər:
 | Həndəsə | `DX`, `DY`, `DZ`, `TOPS` · `COORD`, `ZCORN` (approksimasiya) |
 | Xassələr | `PORO`, `PERMX`, `PERMY`, `PERMZ`, `NTG` |
 | Regionlar | `SATNUM`, `PVTNUM`, `EQLNUM`, `FIPNUM` |
-| Digər | `ACTNUM` (xəbərdarlıqla), `MULTX/Y/Z` |
+| Digər | `ACTNUM` (**tətbiq olunur** — bax aşağı), `MULTX/Y/Z` |
 
 ### Təkrar sintaksisi
 
@@ -51,7 +51,7 @@ Bunlar gizlədilmir — hər biri istifadəçiyə xəbərdarlıq kimi göstəril
 |---|---|
 | **Corner-point həndəsə** | Oxunur, bərabər bloka **approksimasiya** olunur. Orta `DX/DY/DZ` hesablanır, istifadəçi xəbərdarlıq alır |
 | **Dəyişkən hüceyrə ölçüsü** | Orta qiymət götürülür + xəbərdarlıq |
-| **`ACTNUM`** | Qeyri-aktiv hüceyrələr **aktiv sayılır**; həcm hesabı böyük çıxır — xəbərdarlıq verilir |
+| **`ACTNUM`** | **Tam dəstəklənir.** Qeyri-aktiv hüceyrə simulyasiyadan çıxarılır: `PV = 0`, qonşuluq bağlantısı qurulmur, xətti sistem `n_active` naməlumla həll olunur, həmin hüceyrədəki perforasiya söndürülür (`WI = 0`). Bax `imex2d/domain/grid.py::ActiveMap` və `tests/test_actnum.py` |
 | **`INCLUDE`** | Dəstəklənmir; həmin fayl oxunmur — xəbərdarlıq verilir |
 
 Səbəb: `CellGeometry` hazırda yalnız bərabər ölçülü bloklar saxlayır
@@ -91,3 +91,39 @@ geri oxuyur, hər ikisini işə salır və nəticələri müqayisə edir:
 | Recovery Factor | 0.01 % daxilində |
 
 Fərq yalnız fayla yazılan onluq dəqiqlikdən gəlir.
+
+## ACTNUM — qeyri-aktiv hüceyrələr
+
+`ACTNUM` deck-də varsa, o, **grid topologiyasının bir hissəsi** olur
+(`CartesianGrid.actnum` → `ActiveMap`) və idxal ANINDA simulyasiya
+modelini reduksiya edir — dörd qatda eyni vaxtda:
+
+| Qat | Davranış |
+|---|---|
+| Topologiya (`grid.build_connections`) | Aktiv↔qeyri-aktiv üz **ümumiyyətlə qurulmur**. `T = 0` yazmaq kifayət DEYİL — sıfır element seyrək matrisin strukturunda qalır və hüceyrəni sistemə naməlum kimi gətirir |
+| Həcm (`ReservoirModel.pore_volume`) | Qeyri-aktiv hüceyrədə `PV = 0` → OOIP, akkumulyasiya, material balansı və CFL addımı avtomatik düzgün çıxır |
+| Xətti sistem (IMPES + Nyuton) | Matris `n_active` (Nyutonda `2·n_active`) ölçüsündədir; qeyri-aktiv hüceyrənin NAMƏLUMU YOXDUR |
+| Quyular (`PeacemanWellModel`) | Qeyri-aktiv hüceyrədəki perforasiya bağlantı siyahısına salınmır (`WI = 0`) + diaqnostika xəbərdarlığı. Quyunun BÜTÜN perforasiyaları qeyri-aktivdirsə — XƏTA |
+
+Massivlərin **saxlama** formatı qlobal (`ncell`) qalır: 3D görüntü,
+hesabat, serializasiya və fayl formatlarının hamısı qlobal indeksləmə
+üzərində qurulub. Reduksiya YALNIZ xətti sistem sərhədində baş verir.
+
+```python
+grid.n_active                  # simulyasiyadakı naməlum sayı
+grid.active.global_to_active   # (ncell,)    qeyri-aktiv üçün -1
+grid.active.active_to_global   # (n_active,)
+```
+
+Kənar hallar:
+
+* bütün hüceyrələr qeyri-aktivdirsə idxal `GrdeclError` ilə dayanır;
+* `ACTNUM`-un ölçüsü grid ilə uyğun gəlmirsə xəbərdarlıq verilir və
+  massiv NƏZƏRƏ ALINMIR (səssiz sürüşmə yoxdur);
+* `NaN` (deck-in `n*` defoltu) **aktiv** sayılır — oxunmamış hüceyrəni
+  səssizcə yox etmək təhlükəlidir;
+* MPFA-O bu modelləri HƏLƏ həll edə bilmir və bunu AÇIQ bildirir
+  (`unsupported_features`); TPFA tam dəstəkləyir.
+
+Testlər: `tests/test_actnum.py` (o cümlədən qeyri-aktiv "doldurucu"
+hüceyrələrin nəticəni DƏYİŞMƏDİYİNİ sübut edən bərabərlik testi).

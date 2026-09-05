@@ -214,17 +214,43 @@ class ImpesEngine(ISimulationEngine):
         hesablanır və COO girişlərinin CSR `data` massivindəki mövqeyi
         (`_data_index`) yadda saxlanılır. Sonrakı addımlarda yalnız
         `bincount` ilə toplama qalır.
+
+        ACTNUM (tapşırıq §1): matris QLOBAL `ncell` ilə YOX, **`n_active`**
+        ilə qurulur — sətir/sütun indeksləri `global_to_active` ilə
+        çevrilir. Bu, sadəcə optimallaşdırma DEYİL, DÜZGÜNLÜK şərtidir:
+        qeyri-aktiv hüceyrənin nə bağlantısı (üzlər atılıb), nə məsamə
+        həcmi (PV = 0), nə də quyusu (perforasiya söndürülüb) var — yəni
+        onun qlobal matrisdəki sətri TAMAMİLƏ SIFIR olardı və sistem
+        SİNQULYAR çıxardı. Aktiv fəzada belə sətir ÜMUMİYYƏTLƏ yoxdur.
+
+        Bütün hüceyrələr aktiv olanda (`ActiveMap.all_active`)
+        `global_to_active` eyniyyət çevirməsidir — indeksləmə əvvəlki ilə
+        BİRƏBİR eynidir, davranış DƏYİŞMİR.
         """
-        n = self.model.ncell
+        active = self.model.grid.active
+        n = active.n_active
         conn = self._connections
+        to_active = active.global_to_active
+
+        self._active = active
+        self._n_active = n
+        #: üzlərin iki tərəfi — AKTİV indekslə (bütün üzlər aktiv↔aktivdir,
+        #: bax `CartesianGrid.build_connections()`)
+        self._face_a = to_active[conn.cell_a]
+        self._face_b = to_active[conn.cell_b]
+        #: hər quyu bağlantısının hüceyrəsi — AKTİV indekslə (qeyri-aktiv
+        #: hüceyrədəki perforasiya `PeacemanWellModel`-də ARTIQ atılıb)
+        self._well_cells = np.array([to_active[c.cell] for c in self._well_conn],
+                                    dtype=np.int64)
+
         diag = np.arange(n)
-        bhp_cells = np.array([c.cell for c in self._well_conn
+        bhp_cells = np.array([to_active[c.cell] for c in self._well_conn
                               if c.mode is ControlMode.BHP], dtype=int)
         self._nface = conn.count
-        self._rows = np.concatenate([conn.cell_a, conn.cell_b, conn.cell_a,
-                                     conn.cell_b, diag, bhp_cells])
-        self._cols = np.concatenate([conn.cell_a, conn.cell_b, conn.cell_b,
-                                     conn.cell_a, diag, bhp_cells])
+        self._rows = np.concatenate([self._face_a, self._face_b, self._face_a,
+                                     self._face_b, diag, bhp_cells])
+        self._cols = np.concatenate([self._face_a, self._face_b, self._face_b,
+                                     self._face_a, diag, bhp_cells])
         self._vals = np.zeros(self._rows.size)
 
         # COO -> CSR uyğunluğu: hər COO girişi hansı CSR mövqeyinə düşür
@@ -251,9 +277,7 @@ class ImpesEngine(ISimulationEngine):
 
     # -------------------------------------------------------- pressure
     def _solve_pressure(self, dt: float):
-        model = self.model
         conn = self._connections
-        n = model.ncell
         mu_w, mu_o, bw, bo, ct = self._fluid_state(self.pressure, self.sw)
         lam_w, lam_o = self._mobilities(self.sw, mu_w, mu_o)
         lam_t = lam_w + lam_o
@@ -272,33 +296,49 @@ class ImpesEngine(ISimulationEngine):
         gravity_capillary_flux = (t_o * (d_phi_o - dp_face)
                                   + t_w * (d_phi_w - dp_face))
 
-        acc = self._pv * ct / dt
+        # akkumulyasiya və sağ tərəf AKTİV fəzada (uzunluq `n_active`) —
+        # bax `_prealloc`. Qlobal massivlərdən (`_pv`, `ct`, `pressure`)
+        # yalnız aktiv hüceyrələr götürülür.
+        active = self._active
+        n_active = self._n_active
+        acc = active.to_active(self._pv * ct) / dt
         nf = self._nface
         v = self._vals
         v[0:nf] = tt
         v[nf:2 * nf] = tt
         v[2 * nf:3 * nf] = -tt
         v[3 * nf:4 * nf] = -tt
-        v[4 * nf:4 * nf + n] = acc
-        rhs = acc * self.pressure
+        v[4 * nf:4 * nf + n_active] = acc
+        rhs = acc * active.to_active(self.pressure)
         if self._has_gravity or self.capillary is not None:
-            np.add.at(rhs, conn.cell_a, -gravity_capillary_flux)
-            np.add.at(rhs, conn.cell_b, +gravity_capillary_flux)
+            np.add.at(rhs, self._face_a, -gravity_capillary_flux)
+            np.add.at(rhs, self._face_b, +gravity_capillary_flux)
 
-        k = 4 * nf + n
-        for c in self._well_conn:
+        k = 4 * nf + n_active
+        for c, cell_active in zip(self._well_conn, self._well_cells):
             lam = inj_mobility[c.cell] if c.is_injector else lam_t[c.cell]
             if c.mode is ControlMode.BHP:
                 a = c.well_index * lam
                 v[k] = a
                 k += 1
-                rhs[c.cell] += a * c.target
+                rhs[cell_active] += a * c.target
             else:
-                rhs[c.cell] += abs(c.target) if c.is_injector else -abs(c.target)
+                rhs[cell_active] += (abs(c.target) if c.is_injector
+                                     else -abs(c.target))
 
         self._matrix.data[:] = np.bincount(self._data_index, weights=v,
                                            minlength=self._nnz)
-        pressure = self.linear_solver.solve(self._matrix, rhs, x0=self.pressure)
+        solution = self.linear_solver.solve(
+            self._matrix, rhs, x0=active.to_active(self.pressure))
+
+        # aktiv həll → QLOBAL təzyiq massivi. Qeyri-aktiv hüceyrələr ÖZ
+        # əvvəlki (ilkin) dəyərində qalır: onların naməlumu yoxdur, amma
+        # 3D görüntü/hesabat qlobal massiv gözləyir (bax `domain/grid.py`
+        # "KONVENSİYA"). Bu dəyər HEÇ BİR hesablamaya girmir.
+        if active.all_cells_active:
+            return solution, lam_w, lam_o, lam_t, bw, bo, inj_mobility
+        pressure = self.pressure.copy()
+        pressure[active.active_to_global] = solution
         return pressure, lam_w, lam_o, lam_t, bw, bo, inj_mobility
 
     # ------------------------------------------------------ saturation
@@ -358,8 +398,13 @@ class ImpesEngine(ISimulationEngine):
         sw_new = self.sw + dt * net_water / np.maximum(self._pv, 1e-12)
         sw_new = np.clip(sw_new, self._sw_min, self._sw_max)
 
+        # CFL: YALNIZ aktiv hüceyrələr. Qeyri-aktiv hüceyrədə PV = 0 və
+        # throughput = 0 olduğuna görə nisbət 0 çıxardı və zaman addımını
+        # SIFIRA çəkərdi (simulyasiya dayanardı) — bu, ACTNUM-un
+        # tətbiqindən doğan yeganə "gizli" yan təsir idi.
         with np.errstate(divide="ignore", invalid="ignore"):
-            dt_cfl = np.nanmin(self._pv / np.maximum(throughput * self._dfw_max, 1e-12))
+            ratio = self._pv / np.maximum(throughput * self._dfw_max, 1e-12)
+            dt_cfl = np.nanmin(self._active.to_active(ratio))
 
         return (sw_new, dt_cfl, qo_total, qw_total,
                 qwi_total, well_oil, well_water)
@@ -423,7 +468,10 @@ class ImpesEngine(ISimulationEngine):
             s.cumulative_oil.append(cum_o)
             s.cumulative_water.append(cum_w)
             s.water_cut.append(qw / max(qo + qw, 1e-12) * 100.0)
-            s.average_pressure.append(float(np.mean(self.pressure)))
+            # orta təzyiq YALNIZ aktiv hüceyrələr üzrə — qeyri-aktiv
+            # hüceyrənin "təzyiqi" fiziki kəmiyyət deyil (naməlumu yoxdur)
+            s.average_pressure.append(
+                float(np.mean(self._active.to_active(self.pressure))))
             s.recovery_factor.append(cum_o / max(result.ooip, 1e-12) * 100.0)
             if out.record_well_rates:
                 for name in self._producer_names:

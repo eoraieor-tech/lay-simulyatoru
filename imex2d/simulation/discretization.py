@@ -89,6 +89,7 @@ class TwoPointFluxDiscretization(IFluxDiscretization):
 
     def build(self, model: ReservoirModel) -> DiscretizedGrid:
         conn = model.connections()
+        self._assert_active_connections(model, conn)
         geom = model.geometry
         area = geom.face_areas(conn)
         half_a, half_b = geom.face_half_distances(conn)
@@ -100,14 +101,62 @@ class TwoPointFluxDiscretization(IFluxDiscretization):
         trans = self._apply_fault_multipliers(model, conn, trans)
 
         warnings = self._tensor_warnings(model)
+        warnings += self._inactive_cell_warnings(model)
 
         return DiscretizedGrid(
             connections=conn,
             transmissibility=trans,
             pore_volume=model.pore_volume(),
-            cell_volume=geom.volumes(),
+            cell_volume=model.bulk_volume(),
             warnings=warnings,
         )
+
+    @staticmethod
+    def _assert_active_connections(model: ReservoirModel,
+                                   conn: Connections) -> None:
+        """MÜQAVİLƏ: bura çatan hər üzün HƏR İKİ tərəfi aktivdir
+        (tapşırıq §3).
+
+        Filtr `CartesianGrid.build_connections()`-dədir — üz orada
+        ÜMUMİYYƏTLƏ yaradılmır, ona görə burada `T = 0` yazmağa ehtiyaq
+        qalmır (sıfır transmissivlik seyrək matrisin TOPOLOGİYASINDA
+        yenə qalardı və qeyri-aktiv hüceyrəni sistemə naməlum kimi
+        gətirərdi — məhz bundan qaçılır).
+
+        Bu isə HƏMİN müqavilənin POZULMADIĞINI yoxlayan ucuz (O(nconn),
+        yalnız qeyri-aktiv hüceyrə olanda işləyən) qoruyucudur: kimsə
+        `Connections`-ı əl ilə qurub ötürsə, səssiz yanlış nəticə əvəzinə
+        AÇIQ xəta alsın.
+        """
+        if not model.grid.has_inactive_cells or conn.count == 0:
+            return
+        active = model.grid.active
+        bad = ~active.active_face_mask(conn.cell_a, conn.cell_b)
+        if np.any(bad):
+            count = int(np.count_nonzero(bad))
+            first = int(np.flatnonzero(bad)[0])
+            raise ValueError(
+                f"Diskretizasiyaya qeyri-aktiv hüceyrəyə toxunan {count} üz "
+                f"gəldi (məs. hüceyrə {int(conn.cell_a[first])}↔"
+                f"{int(conn.cell_b[first])}). Aktiv↔qeyri-aktiv bağlantı "
+                f"QURULA BİLMƏZ — bax `CartesianGrid.build_connections()`.")
+
+    @staticmethod
+    def _inactive_cell_warnings(model: ReservoirModel) -> List[str]:
+        """Qeyri-aktiv hüceyrələr NƏZƏRƏ ALINDIĞINI açıq bildirir.
+
+        Əvvəllər buradakı xəbərdarlıq "ACTNUM oxundu, AMMA nəzərə
+        alınmadı" idi (bax `grdecl_import._check_inactive_cells`-in köhnə
+        mətni) — indi əksi doğrudur, istifadəçi bunu görməlidir."""
+        grid = model.grid
+        if not grid.has_inactive_cells:
+            return []
+        active = grid.active
+        return [
+            f"ACTNUM: {active.n_inactive} hüceyrə qeyri-aktivdir "
+            f"({active.n_active}/{active.n_global} aktiv). Bu hüceyrələr "
+            f"simulyasiyadan TAM ÇIXARILIB: PV = 0, bağlantı qurulmur, "
+            f"xətti sistemdə naməlumları yoxdur."]
 
     @staticmethod
     def _tensor_warnings(model: ReservoirModel) -> List[str]:

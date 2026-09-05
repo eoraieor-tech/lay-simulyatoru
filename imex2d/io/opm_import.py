@@ -65,6 +65,13 @@ class OpmGridGeometry:
     OPM/Eclipse corner-point (küncnöqtə) torlarını da dəstəkləyə
     bilər, lakin BU MODUL yalnız DÜZBUCAQLI (dx/dy/dz sabit) halları
     dəstəkləyir — bax `from_grid()`-in sənədləşməsi.
+
+    `active_count` VƏ `actnum` — EGRID-dən oxunan aktivlik məlumatı.
+    Əvvəllər YALNIZ `active_count` var idi və o, YALNIZ xəbərdarlıq
+    mətnində işlədilirdi (bax issue #19) — yəni idxal edilən model
+    qeyri-aktiv hüceyrələri saxlayırdı. İndi `actnum` (qlobal, `ncell`
+    uzunluqda 0/1 massivi) da oxunur və `build_display_model()` ondan
+    REDUKSİYA OLUNMUŞ grid qurur.
     """
     nx: int
     ny: int
@@ -74,6 +81,15 @@ class OpmGridGeometry:
     dz: float
     top_depth: float
     active_count: int
+    actnum: Optional[np.ndarray] = None
+
+    @property
+    def ncell(self) -> int:
+        return self.nx * self.ny * self.nz
+
+    @property
+    def inactive_count(self) -> int:
+        return self.ncell - int(self.active_count)
 
 
 @dataclass
@@ -122,7 +138,36 @@ def _read_grid_geometry(egrid_path: str) -> OpmGridGeometry:
 
     return OpmGridGeometry(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                            top_depth=max(top_depth, 0.0),
-                           active_count=grid.get_num_active())
+                           active_count=grid.get_num_active(),
+                           actnum=_read_actnum(grid, nx * ny * nz))
+
+
+def _read_actnum(grid, ncell: int) -> Optional[np.ndarray]:
+    """EGRID-dən (ncell,) 0/1 ACTNUM massivi — issue #19.
+
+    `resdata`-nın `Grid`-i aktivliyi bir neçə yolla verə bilir; ən
+    təhlükəsizi hüceyrə-hüceyrə `get_active_index()`-dir (mənfi dəyər =
+    qeyri-aktiv), lakin o, böyük tor üçün yavaşdır. Ona görə əvvəlcə
+    vektor `export_ACTNUM()` sınanılır, o yoxdursa hüceyrə döngəsinə
+    keçilir. HEÇ BİRİ alınmasa `None` qaytarılır — o zaman model əvvəlki
+    kimi (bütün hüceyrələr aktiv) qurulur, AMMA `load_opm_case()` bunu
+    AÇIQ xəbərdarlıqla bildirir (səssiz yanlış nəticə YOXDUR).
+    """
+    try:
+        exported = grid.export_ACTNUM()
+        values = np.asarray(exported, dtype=np.int8).ravel()
+        if values.size == ncell:
+            return values
+    except Exception:                     # noqa: BLE001 — resdata versiyası
+        pass
+    try:
+        actnum = np.zeros(ncell, dtype=np.int8)
+        for cell in range(ncell):
+            if grid.get_active_index(global_index=cell) >= 0:
+                actnum[cell] = 1
+        return actnum
+    except Exception:                     # noqa: BLE001 — resdata versiyası
+        return None
 
 
 def _read_snapshots(unrst_path: str, ncell: int) -> List[OpmSnapshot]:
@@ -177,6 +222,45 @@ def _report_step_time(restart, step: int) -> float:
     return float(step)          # ehtiyat: addım nömrəsi vaxt kimi
 
 
+def _to_global_indexing(snapshot: OpmSnapshot,
+                        geometry: OpmGridGeometry) -> OpmSnapshot:
+    """UNRST massivləri AKTİV hüceyrə sırasındadır — QLOBAL sıraya yayır.
+
+    Eclipse/OPM restart faylında hüceyrə massivləri (PRESSURE, SWAT, …)
+    `num_active` uzunluğundadır, `nx·ny·nz` DEYİL (issue #19-un ikinci
+    üzü: `active_count` bilinirdi, amma nə model, nə də bu massivlər ona
+    görə uyğunlaşdırılırdı — qeyri-aktiv hüceyrəsi olan bir haldan sonra
+    3D görüntü SÜRÜŞMÜŞ dəyərlər göstərərdi).
+
+    Qeyri-aktiv hüceyrələr `NaN` ilə doldurulur — sıfır DEYİL: sıfır
+    "təzyiq 0 bar" kimi rənglənərdi, `NaN` isə "dəyər yoxdur" deməkdir və
+    render qatı onu ARTIQ boş kimi göstərir.
+
+    Uzunluq nə qlobal, nə də aktiv sayla uyğun gəlmirsə massiv OLDUĞU
+    KİMİ saxlanılır — bu funksiya səssizcə "düzəltməyə" çalışmır.
+    """
+    if geometry.actnum is None or geometry.inactive_count <= 0:
+        return snapshot
+
+    from ..domain.grid import ActiveMap
+    active = ActiveMap.from_actnum(geometry.actnum, geometry.ncell)
+
+    def expand(values):
+        if values is None:
+            return None
+        values = np.asarray(values, dtype=float).ravel()
+        if values.size != active.n_active:
+            return values
+        return active.to_global(values, fill=np.nan)
+
+    return OpmSnapshot(
+        time=snapshot.time,
+        pressure=expand(snapshot.pressure),
+        water_saturation=expand(snapshot.water_saturation),
+        gas_saturation=expand(snapshot.gas_saturation),
+        oil_saturation=expand(snapshot.oil_saturation))
+
+
 def load_opm_case(case_root: str, name: Optional[str] = None) -> OpmFlowCase:
     """`case_root` — uzantısız yol (məs. `/path/CASE`, `.EGRID`/`.UNRST`
     avtomatik əlavə olunur).
@@ -192,13 +276,26 @@ def load_opm_case(case_root: str, name: Optional[str] = None) -> OpmFlowCase:
     geometry = _read_grid_geometry(egrid_path)
     snapshots = _read_snapshots(unrst_path, geometry.nx * geometry.ny
                                 * geometry.nz)
+    snapshots = [_to_global_indexing(snapshot, geometry)
+                 for snapshot in snapshots]
 
     warnings: List[str] = []
-    if geometry.active_count < geometry.nx * geometry.ny * geometry.nz:
-        warnings.append(
-            f"{geometry.nx * geometry.ny * geometry.nz - geometry.active_count} "
-            "qeyri-aktiv hüceyrə var — hazırda bunlar nəzərə alınmır "
-            "(bütün hüceyrələr aktiv sayılır).")
+    if geometry.inactive_count > 0:
+        if geometry.actnum is None:
+            # `active_count` bilinir, AMMA HANSI hüceyrənin qeyri-aktiv
+            # olduğu bilinmir — reduksiya QURULA BİLMİR. Bu, issue #19-un
+            # qalıq halıdır və SƏSSİZ keçilmir.
+            warnings.append(
+                f"{geometry.inactive_count} qeyri-aktiv hüceyrə var, LAKİN "
+                "EGRID-dən ACTNUM massivi oxuna bilmədi — model bütün "
+                "hüceyrələri aktiv sayır. Həcm/ehtiyat hesabları BÖYÜK "
+                "çıxacaq.")
+        else:
+            warnings.append(
+                f"{geometry.inactive_count} qeyri-aktiv hüceyrə (ACTNUM = 0) "
+                f"aşkarlandı — model {geometry.active_count}/{geometry.ncell} "
+                f"aktiv hüceyrə üzərində qurulur: PV = 0, bağlantı yoxdur, "
+                f"xətti sistemdə naməlumu yoxdur.")
     for snapshot in snapshots:
         if snapshot.gas_saturation is None:
             warnings.append(
@@ -229,7 +326,11 @@ def build_display_model(case: OpmFlowCase):
     from ..domain.reservoir_model import ReservoirModel
 
     geometry = case.geometry
-    grid = CartesianGrid(nx=geometry.nx, ny=geometry.ny, nz=geometry.nz)
+    # issue #19: `active_count` ARTIQ yalnız jurnal üçün deyil — ACTNUM
+    # birbaşa grid-ə verilir, yəni qurulan model REDUKSİYA OLUNMUŞDUR
+    # (qeyri-aktiv hüceyrələrin PV-si 0, bağlantısı və naməlumu yoxdur).
+    grid = CartesianGrid(nx=geometry.nx, ny=geometry.ny, nz=geometry.nz,
+                         actnum=geometry.actnum)
     cell_geometry = CellGeometry(grid=grid, dx=geometry.dx, dy=geometry.dy,
                                  dz=geometry.dz, top_depth=geometry.top_depth)
     # `rock` VolumeRenderer tərəfindən istifadə OLUNMUR (yalnız təzyiq/

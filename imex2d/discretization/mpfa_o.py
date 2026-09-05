@@ -424,6 +424,29 @@ class MPFAODiscretization(IFluxDiscretization):
 
         warnings: List[str] = []
         unsupported: List[str] = []
+        if model.grid.has_inactive_cells:
+            # ACTNUM (tapşırıq §3): TPFA-da qeyri-aktiv hüceyrəni
+            # çıxarmaq üçün ÜZÜ atmaq kifayətdir (tək-nöqtəli stensil
+            # yalnız iki hüceyrəni bağlayır). MPFA-O-da isə əmsallar
+            # KÜNC (interaction region) ətrafındakı 4/8 hüceyrənin
+            # LOKAL SİSTEMİNDƏN çıxır — həmin lokal sistemdən bir
+            # hüceyrəni çıxarmaq üçün sərhəd bağlanışının (closure)
+            # yenidən qurulması lazımdır, bu isə Phase 5D işidir.
+            # Səssizcə davam etmək qeyri-aktiv hüceyrəni stensilə
+            # QAYTARARDI (yəni #13 problemi MPFA yolunda gizli qalardı),
+            # ona görə AÇIQ rədd edilir — `ResidualAssembler` bunu
+            # `unsupported_features` vasitəsilə NotImplementedError-a
+            # çevirir, TPFA isə bu modeli tam düzgün həll edir.
+            unsupported.append(
+                f"ACTNUM (qeyri-aktiv hüceyrələr: "
+                f"{model.grid.active.n_inactive}) — MPFA-O interaction-region "
+                f"stensilindən hüceyrə çıxarmaq HƏLƏ implement edilməyib "
+                f"(Phase 5D). TPFA (`TwoPointFluxDiscretization`) bunu "
+                f"dəstəkləyir")
+            warnings.append(
+                "Modeldə qeyri-aktiv hüceyrə (ACTNUM = 0) var, AMMA MPFA-O "
+                "onları interaction-region stensilindən ÇIXARA BİLMİR — bu "
+                "model üçün TPFA işlədilməlidir.")
         if any(f.has_geometry for f in model.fault_references):
             unsupported.append(
                 "fay (fault) transmissivlik çarpanları — MPFA-da HƏLƏ "
@@ -457,7 +480,7 @@ class MPFAODiscretization(IFluxDiscretization):
 
         return MPFADiscretizedGrid(
             connections=conn, pore_volume=model.pore_volume(),
-            cell_volume=model.geometry.volumes(), geometry=geometry,
+            cell_volume=model.bulk_volume(), geometry=geometry,
             coefficients=coefficients, connection_faces=connection_faces,
             warnings=warnings, unsupported_features=unsupported,
             global_operator=operator)

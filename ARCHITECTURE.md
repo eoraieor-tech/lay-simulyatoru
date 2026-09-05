@@ -540,9 +540,7 @@ tərəfindən ÇAĞIRILMIR, `test_five_spot_reference_case_reproduces_
 legacy_results` (dəqiq addım sayı/OOIP/RF) dəyişmədən keçir.
 
 **Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun bu qatdan istifadəsi, native
-corner-point idxal (COORD/ZCORN → bu qat), ACTNUM/qeyri-aktiv hüceyrə
-FAKTİKİ inteqrasiyası (arxitektura BUNU ƏNGƏLLƏMİR — `connections=None`
-artıq dəstəklənir — amma FAKTİKİ ACTNUM oxunması YOXDUR), fay
+corner-point idxal (COORD/ZCORN → bu qat), fay
 transmissivlik çarpanlarının bu qata daxil edilməsi (bu, DİSKRETİZASİYA
 işidir, HƏNDƏSƏ yox) — hamısı gələcək faza.
 
@@ -680,7 +678,8 @@ BİRƏBİR eynidir; fərq `O(Δρ·ΔD)`-dir və testlə ÖLÇÜLÜR.
 | Qeyri-xətti analitik Jacobian | **YOXDUR** (5B-2) — MPFA ilə `JacobianAssembler` AÇIQ imtina edir |
 | Nyuton/`FullyImplicitEngine`/`ImpesEngine` MPFA ilə | **YOXDUR** (5B-2) — AÇIQ imtina |
 | MPFA-da fay (fault) | **YOXDUR** (5D) — model faylıdırsa qalıq RƏDD EDİLİR |
-| corner-point / ACTNUM | **YOXDUR** |
+| corner-point | **YOXDUR** |
+| ACTNUM (MPFA yolunda) | **YOXDUR** (5D) — model qeyri-aktiv hüceyrə daşıyırsa qalıq AÇIQ RƏDD EDİLİR; TPFA yolu ACTNUM-u tam dəstəkləyir |
 
 **Simulyator HƏLƏ MPFA ilə qeyri-xətti hasilat proqnozu VERƏ BİLMİR** —
 Phase 5B-1 YALNIZ qalıq qiymətləndirməsidir.

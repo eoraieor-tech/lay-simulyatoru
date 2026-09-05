@@ -35,6 +35,7 @@ from typing import List, Optional
 import numpy as np
 
 from ...logging_setup import get_logger
+from .active_reduction import ActiveDofReduction
 from .jacobian import JacobianAssembler
 from .newton import NewtonConfig, NewtonStatus
 from .residual import FluidState, OIL, ResidualAssembler, WATER
@@ -210,6 +211,14 @@ class CoupledNewtonSolver:
             shape=(size, size)).tocsr()
         return (expanded + extra).tocsr()
 
+    def _reduction(self, state) -> ActiveDofReduction:
+        """Bu vəziyyət üçün DOF daraltması (quyu sayı addımdan-addıma
+        dəyişə bildiyi üçün — söndürülən quyu — hər dəfə yenidən
+        qurulur; bütün hüceyrələr aktiv olanda bu, sadəcə bir neçə
+        tam ədəd hesablamasıdır, matris KOPYALANMIR)."""
+        return ActiveDofReduction(self.reservoir.model.grid.active,
+                                  extra_dofs=int(state.wells.count))
+
     # ── yığılma meyarları ──────────────────────────────────────────
     def convergence_measures(self, residual: np.ndarray, state: CoupledState,
                              fluid: FluidState, dt: float):
@@ -299,7 +308,14 @@ class CoupledNewtonSolver:
 
             try:
                 matrix = self.assemble_jacobian(state, fluid, dt)
-                delta = self.linear_solver.solve(matrix, -residual)
+                # ACTNUM (tapşırıq §1): rezervuar naməlumları AKTİV
+                # hüceyrələrə daraldılır, quyu naməlumları (BHP) olduğu
+                # kimi qalır — bax `active_reduction.py`.
+                reduction = self._reduction(state)
+                reduced_matrix, reduced_rhs = reduction.restrict(
+                    matrix, -residual)
+                delta = reduction.expand(
+                    self.linear_solver.solve(reduced_matrix, reduced_rhs))
             except Exception as error:
                 LOG.debug("Xətti həll uğursuz (%s)", type(error).__name__)
                 return CoupledNewtonResult(NewtonStatus.LINEAR_SOLVER_FAILED,

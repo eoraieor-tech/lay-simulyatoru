@@ -188,7 +188,11 @@ class FullyImplicitEngine(ISimulationEngine):
             series.cumulative_water.append(cumulative_water)
             series.water_cut.append(water_rate / max(oil_rate + water_rate, 1e-12)
                                     * 100.0)
-            series.average_pressure.append(float(np.mean(self.pressure)))
+            # orta təzyiq YALNIZ aktiv hüceyrələr üzrə — qeyri-aktiv
+            # hüceyrənin təzyiqi naməlum deyil, sadəcə saxlanılan
+            # ilkin dəyərdir (bax `domain/grid.py` KONVENSİYA)
+            series.average_pressure.append(float(np.mean(
+                self.model.active_values(self.pressure))))
             series.recovery_factor.append(cumulative_oil
                                           / max(result.ooip, 1e-12) * 100.0)
             if output.record_well_rates:

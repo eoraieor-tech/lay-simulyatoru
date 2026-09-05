@@ -44,7 +44,7 @@ class GrdeclImporter:
         length_unit = LENGTH_UNIT_BY_DECK_SYSTEM[unit_system]
         self._check_declared_units(unit_system, report)
         nx, ny, nz = deck.dimensions
-        grid = CartesianGrid(nx, ny, nz)
+        grid = self._grid_with_actnum(deck, nx, ny, nz, report)
 
         geometry = self._geometry(deck, grid, report, length_unit)
         model = GeologicalModel(name=name, grid=grid, geometry=geometry,
@@ -52,7 +52,6 @@ class GrdeclImporter:
                                 coordinate_system="ECLIPSE")
 
         self._add_properties(deck, model, grid, report)
-        self._check_inactive_cells(deck, report)
 
         issues = model.validate()
         if issues:
@@ -267,15 +266,46 @@ class GrdeclImporter:
             names)
 
     @staticmethod
-    def _check_inactive_cells(deck: GrdeclDeck,
-                              report: DiagnosticReport) -> None:
-        """ACTNUM hələ dəstəklənmir — susmaq təhlükəlidir."""
+    def _grid_with_actnum(deck: GrdeclDeck, nx: int, ny: int, nz: int,
+                          report: DiagnosticReport) -> CartesianGrid:
+        """ACTNUM oxunub GRID-in ÖZÜNƏ yazılır (tapşırıq §1/§4).
+
+        Əvvəllər bu massiv YALNIZ sayılıb xəbərdarlıq mətninə düşürdü
+        ("hazırkı model bütün hüceyrələri aktiv sayır") — yəni idxal
+        edilən model REDUKSİYA OLUNMURDU. İndi `CartesianGrid` ACTNUM-u
+        daşıyır və o, `GeologicalModel` → `ReservoirModelBuilder` →
+        `ReservoirModel` zənciri boyunca AVTOMATİK ötürülür (hər üçü
+        eyni `grid` obyektini paylaşır), ona görə simulyasiya modeli
+        elə İDXAL ANINDA aktiv hüceyrə sayı üzərində qurulur.
+
+        BÜTÜN hüceyrələr qeyri-aktivdirsə — `GrdeclError`: belə deckdən
+        heç bir simulyasiya modeli qurula bilməz, bunu idxalın SONUNDA
+        anlaşılmaz bir ölçü xətası kimi görməkdənsə BURADA demək
+        düzgündür.
+        """
+        ncell = nx * ny * nz
         actnum = deck.get("ACTNUM")
         if actnum is None:
-            return
-        inactive = int(np.sum(np.nan_to_num(actnum, nan=1.0) < 0.5))
-        if inactive:
+            return CartesianGrid(nx, ny, nz)
+        if actnum.size != ncell:
             report.warning(
-                f"Faylda {inactive} qeyri-aktiv hüceyrə var (ACTNUM = 0). "
-                f"Hazırkı model bütün hüceyrələri aktiv sayır.", "GRDECL",
-                "Həcm və ehtiyat hesabları böyük çıxacaq")
+                f"ACTNUM ölçüsü grid ilə uyğun gəlmir ({actnum.size} != "
+                f"{ncell}) — NƏZƏRƏ ALINMADI, bütün hüceyrələr aktiv "
+                f"sayılır.", "GRDECL",
+                "Deck-dəki SPECGRID/DIMENS ilə ACTNUM-u tutuşdur")
+            return CartesianGrid(nx, ny, nz)
+
+        grid = CartesianGrid(nx, ny, nz, actnum)
+        inactive = grid.active.n_inactive
+        if not inactive:
+            return grid
+        if grid.n_active == 0:
+            raise GrdeclError(
+                "ACTNUM: bütün hüceyrələr qeyri-aktivdir (ACTNUM = 0) — "
+                "simulyasiya modeli qurula bilməz.")
+        report.info(
+            f"ACTNUM oxundu: {grid.n_active}/{ncell} hüceyrə aktiv "
+            f"({inactive} qeyri-aktiv). Model AKTİV hüceyrələr üzərində "
+            f"qurulur — qeyri-aktiv hüceyrələrin məsamə həcmi 0-dır, "
+            f"bağlantısı və xətti sistemdə naməlumu yoxdur.", "GRDECL")
+        return grid

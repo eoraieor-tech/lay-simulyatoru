@@ -69,10 +69,29 @@ class ReservoirModel:
 
     @property
     def ncell(self) -> int:
+        """QLOBAL hüceyrə sayı (ACTNUM-dan ASILI DEYİL).
+
+        Bütün per-hüceyrə massivlərinin (PropertyMap, təzyiq, doyumluluq)
+        SAXLAMA uzunluğu budur — bax `domain/grid.py` modul sənədləşməsi,
+        "KONVENSİYA" bölməsi. Simulyasiyada NEÇƏ NAMƏLUM olduğu üçün
+        `n_active`-ə bax."""
         return self.grid.ncell
 
+    @property
+    def n_active(self) -> int:
+        """Simulyasiyada iştirak edən hüceyrə sayı (ACTNUM > 0)."""
+        return self.grid.n_active
+
+    @property
+    def active(self):
+        """`ActiveMap` — qlobal↔aktiv indeks çevirməsi (bax `domain/grid.py`)."""
+        return self.grid.active
+
     def connections(self) -> Connections:
-        """Qonşuluq qrafı bir dəfə qurulur və saxlanılır."""
+        """Qonşuluq qrafı bir dəfə qurulur və saxlanılır.
+
+        ACTNUM verilibsə, qeyri-aktiv hüceyrəyə toxunan üzlər BURADA
+        ARTIQ YOXDUR — `CartesianGrid.build_connections()` onları atır."""
         if self._connections is None:
             self._connections = self.grid.build_connections()
         return self._connections
@@ -81,10 +100,48 @@ class ReservoirModel:
         return [w for w in self.wells if w.active and w.open_perforations()]
 
     def pore_volume(self) -> np.ndarray:
+        """Məsamə həcmi, m³ (QLOBAL uzunluqda, `ncell`).
+
+        QEYRİ-AKTİV HÜCEYRƏDƏ SIFIRDIR (tapşırıq §2). Bu, bir sətirlik
+        düzəliş kimi görünsə də, modelin BÜTÜN həcm/balans hesablarını
+        birdən düzəldir, çünki hamısı buradan qidalanır:
+
+            OOIP        = Σ PV·(1−Sw)/Bo   (`ImpesEngine.original_oil_in_place`)
+            akkumulyasiya = PV·(…)/Δt      (`residual.accumulation`)
+            material balansı = |Σ R|·Δt / Σ(faza həcmi)
+            CFL addımı  = PV / throughput
+
+        PV = 0 olduğuna görə qeyri-aktiv hüceyrə bu cəmlərin HEÇ BİRİNƏ
+        pay VERMİR — "aktivdirmi" yoxlaması hər düsturda TƏKRARLANMIR
+        (bir mənbədə sıfırlamaq daha etibarlıdır: yeni həcm düsturu yazan
+        adam yoxlamağı UNUDA BİLMİR).
+        """
         pv = self.rock.porosity.values * self.geometry.volumes()
         if self.rock.net_to_gross is not None:
             pv = pv * self.rock.net_to_gross.values
+        if self.grid.has_inactive_cells:
+            pv = np.where(self.grid.active.mask, pv, 0.0)
         return pv
+
+    def bulk_volume(self) -> np.ndarray:
+        """Ümumi (bulk) həcm, m³ — qeyri-aktiv hüceyrədə SIFIR.
+
+        `geometry.volumes()` XALİS HƏNDƏSƏDİR (ACTNUM-dan xəbərsizdir və
+        elə də qalmalıdır — hüceyrənin ölçüsü aktivlikdən asılı deyil);
+        HƏCM BALANSINDA isə qeyri-aktiv hüceyrə iştirak etməməlidir, ona
+        görə balans üçün bu metod işlədilir."""
+        volumes = self.geometry.volumes()
+        if self.grid.has_inactive_cells:
+            volumes = np.where(self.grid.active.mask, volumes, 0.0)
+        return volumes
+
+    def active_values(self, values: np.ndarray) -> np.ndarray:
+        """Qlobal massivin YALNIZ aktiv hüceyrələrə düşən hissəsi.
+
+        Orta təzyiq / orta məsaməlilik kimi AĞIRLIQSIZ statistikalar
+        üçün: orada "PV = 0" hiyləsi işləmir (sıfırlar ortanı aşağı
+        çəkərdi), ona görə açıq şəkildə aktiv altmassiv götürülür."""
+        return self.grid.active.to_active(values)
 
     # təxmini çatlama qradiyenti (bar/m) — vurucu BHP-nin üst həddi üçün
     FRACTURE_GRADIENT = 0.160
@@ -165,6 +222,7 @@ class ReservoirModel:
         fracture = self._fracture_pressure()
 
         for well in wells:
+            inactive_perforations = 0
             for perforation in well.open_perforations():
                 if not (0 <= perforation.i < self.grid.nx
                         and 0 <= perforation.j < self.grid.ny
@@ -174,7 +232,49 @@ class ReservoirModel:
                         f"(i={perforation.i}, j={perforation.j}, "
                         f"k={perforation.k + 1}).", well.name,
                         f"Grid: {self.grid.nx}×{self.grid.ny}×{self.grid.nz}")
+                elif not self._is_active_cell(perforation):
+                    inactive_perforations += 1
+            self._report_inactive_perforations(well, inactive_perforations,
+                                               report)
             self._check_well_control(well, reference, fracture, report)
+
+    def _is_active_cell(self, perforation) -> bool:
+        """Perforasiyanın düşdüyü hüceyrə ACTNUM > 0-dırmı."""
+        if not self.grid.has_inactive_cells:
+            return True
+        cell = self.grid.index(perforation.i, perforation.j, perforation.k)
+        return bool(self.grid.active.actnum[cell] > 0)
+
+    def _report_inactive_perforations(self, well, count: int,
+                                      report: DiagnosticReport) -> None:
+        """Qeyri-aktiv hüceyrəyə düşən perforasiya AÇIQ bildirilir
+        (tapşırıq §4).
+
+        Bir hissəsi qeyri-aktivdirsə — XƏBƏRDARLIQ: real modeldə quyu
+        bir neçə təbəqəni kəsir və onlardan bəziləri qeyri-aktiv ola
+        bilər, bu normaldır. Həmin perforasiyaların WI-si SIFIRDIR və
+        `PeacemanWellModel` onları bağlantı siyahısına ÜMUMİYYƏTLƏ
+        SALMIR (bax `simulation/well_model.py`).
+
+        HAMISI qeyri-aktivdirsə — XƏTA: quyu heç bir hüceyrə ilə
+        əlaqəli deyil, onun idarəetmə hədəfi (BHP/debit) mənasızdır və
+        səssizcə davam etmək istifadəçini yanıldardı.
+        """
+        if not count:
+            return
+        total = len(well.open_perforations())
+        if count >= total:
+            report.error(
+                f"{well.name}: BÜTÜN perforasiyalar ({count}) qeyri-aktiv "
+                f"hüceyrədədir (ACTNUM = 0) — quyu heç bir hüceyrə ilə "
+                f"əlaqəli deyil.", well.name,
+                "Perforasiyanı aktiv hüceyrəyə köçür və ya quyunu söndür")
+        else:
+            report.warning(
+                f"{well.name}: {count}/{total} perforasiya qeyri-aktiv "
+                f"hüceyrədədir (ACTNUM = 0) — həmin perforasiya(lar) "
+                f"söndürüldü (WI = 0).", well.name,
+                "Qalan perforasiyalar normal işləyir")
 
     def _check_well_control(self, well, reference, fracture,
                             report: DiagnosticReport) -> None:
@@ -255,7 +355,11 @@ class ReservoirModel:
         return float(self.initial_conditions.datum_pressure)
 
     def _fracture_pressure(self) -> Optional[float]:
-        depths = self.geometry.cell_depths()
+        # YALNIZ aktiv hüceyrələr: qeyri-aktiv zonanın dərinliyi lay
+        # təzyiqi haqqında heç nə demir (tapşırıq §2)
+        depths = self.active_values(self.geometry.cell_depths())
+        if depths.size == 0:
+            return None
         mean_depth = float(np.mean(depths))
         if mean_depth < self.MINIMUM_DEPTH_FOR_FRACTURE_CHECK:
             return None
@@ -265,6 +369,7 @@ class ReservoirModel:
         return {
             "name": self.name,
             "cells": self.ncell,
+            "active cells": self.n_active,
             "wells": len(self.active_wells()),
             "regions": int(self.regions.ids.size),
             "faults": len(self.fault_references),

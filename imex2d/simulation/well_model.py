@@ -13,6 +13,9 @@ import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.wells import ControlMode, WellType
+from ..logging_setup import get_logger
+
+LOG = get_logger(__name__)
 
 
 @dataclass
@@ -30,16 +33,37 @@ class PeacemanWellModel:
     """WI = 2π·C·√(Kx·Ky)·h / (ln(re/rw) + S)"""
 
     def build_connections(self, model: ReservoirModel) -> List[WellConnection]:
+        """Açıq perforasiyalardan bağlantı siyahısı.
+
+        ACTNUM (tapşırıq §4): QEYRİ-AKTİV hüceyrəyə (ACTNUM = 0) düşən
+        perforasiya bu siyahıya SALINMIR — yəni onun WI-si effektiv
+        SIFIRDIR. Səbəb sırf fizikidir: həmin hüceyrənin məsamə həcmi 0,
+        qonşuluq bağlantısı yoxdur və xətti sistemdə naməlumu yoxdur —
+        ora quyu mənbəyi yazmaq maddəni MODELDƏN KƏNARA vurmaq
+        (hasilatda isə YOXDAN maye çıxarmaq) demək olardı.
+
+        Bağlantı SƏSSİZCƏ atılmır: `journal`-a yazılır və
+        `ReservoirModel._check_wells` eyni vəziyyəti diaqnostika
+        hesabatında (xəbərdarlıq / bütün perforasiyalar qeyri-aktivdirsə
+        XƏTA) göstərir.
+        """
         out: List[WellConnection] = []
         kx_all = model.rock.permx.values
         ky_all = model.rock.permy.values
         dx, dy = model.geometry.dx, model.geometry.dy
         dz_all = model.geometry.dz_per_cell()
         c_darcy = model.units.darcy_constant
+        actnum = model.grid.active.actnum if model.grid.has_inactive_cells else None
 
         for well in model.active_wells():
             for perf in well.open_perforations():
                 cell = model.grid.index(perf.i, perf.j, perf.k)
+                if actnum is not None and actnum[cell] <= 0:
+                    LOG.warning(
+                        "%s: perforasiya (i=%d, j=%d, k=%d) qeyri-aktiv "
+                        "hüceyrədədir (ACTNUM = 0) — söndürüldü (WI = 0).",
+                        well.name, perf.i, perf.j, perf.k + 1)
+                    continue
                 kx, ky = kx_all[cell], ky_all[cell]
                 dz = dz_all[cell]
                 wi = self._well_index(kx, ky, dx, dy, dz, well.radius,

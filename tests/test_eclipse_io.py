@@ -317,9 +317,7 @@ def test_metric_or_unlabelled_deck_produces_no_unit_warning():
         os.unlink(path)
 
 
-def test_inactive_cells_produce_a_warning():
-    """ACTNUM dəstəklənmir — susmaq həcm səhvinə aparır."""
-    path = _write("""SPECGRID
+_ACTNUM_DECK = """SPECGRID
   2 2 1 1 F /
 DX
   4*50 /
@@ -333,11 +331,47 @@ PERMX
   4*100 /
 ACTNUM
   1 1 0 1 /
-""")
+"""
+
+
+def test_inactive_cells_are_excluded_from_the_imported_grid():
+    """ACTNUM idxal ANINDA tətbiq olunur — model aktiv hüceyrələr üzərində
+    qurulur (əvvəllər yalnız xəbərdarlıq verilirdi, bax issue #11/#19)."""
+    path = _write(_ACTNUM_DECK)
     try:
         report = DiagnosticReport()
-        GrdeclImporter().build(read_grdecl(path, report), report)
-        assert any("ACTNUM" in w.message for w in report.warnings)
+        model = GrdeclImporter().build(read_grdecl(path, report), report)
+
+        assert model.grid.ncell == 4          # saxlama qlobal qalır
+        assert model.grid.n_active == 3       # simulyasiya isə reduksiya olunub
+        assert model.grid.has_inactive_cells
+        assert list(model.grid.active.global_to_active) == [0, 1, -1, 2]
+        assert list(model.grid.active.active_to_global) == [0, 1, 3]
+    finally:
+        os.unlink(path)
+
+
+def test_inactive_cells_produce_no_connections():
+    """Aktiv↔qeyri-aktiv üz QURULMUR (issue #13)."""
+    path = _write(_ACTNUM_DECK)
+    try:
+        model = GrdeclImporter().build(read_grdecl(path))
+        conn = model.grid.build_connections()
+        inactive = 2
+        assert not np.any(conn.cell_a == inactive)
+        assert not np.any(conn.cell_b == inactive)
+        # 2x2 grid-də 4 üz var; qeyri-aktiv hüceyrə 2 üz aparır
+        assert conn.count == 2
+    finally:
+        os.unlink(path)
+
+
+def test_deck_with_every_cell_inactive_is_rejected():
+    """Bütün hüceyrələr qeyri-aktivdirsə model qurula bilməz."""
+    path = _write(_ACTNUM_DECK.replace("  1 1 0 1 /", "  4*0 /"))
+    try:
+        with pytest.raises(GrdeclError):
+            GrdeclImporter().build(read_grdecl(path))
     finally:
         os.unlink(path)
 

@@ -214,15 +214,21 @@ class ReportGenerator:
         lines = [
             "GRID",
             f"  Ölçü            {grid.nx} x {grid.ny} x {grid.nz}  "
-            f"({model.ncell} hüceyrə)",
+            f"({model.ncell} hüceyrə"
+            + (f", {model.n_active} aktiv" if grid.has_inactive_cells else "")
+            + ")",
             f"  Hüceyrə ölçüsü  {geometry.dx:g} x {geometry.dy:g} x "
             f"{dz_text} m",
             f"  Dərinlik        {float(np.min(geometry.cell_depths())):.0f} – "
             f"{float(np.max(geometry.cell_depths())):.0f} m",
             "",
             "SÜXUR",
-            f"  Orta məsaməlilik  {float(np.mean(rock.porosity.values)):.3f}",
-            f"  Orta Kx           {float(np.mean(rock.permx.values)):.1f} mD",
+            # ortalar YALNIZ aktiv hüceyrələr üzrə — qeyri-aktiv
+            # hüceyrənin PORO/PERM dəyəri modelin bir hissəsi deyil
+            f"  Orta məsaməlilik  "
+            f"{float(np.mean(model.active_values(rock.porosity.values))):.3f}",
+            f"  Orta Kx           "
+            f"{float(np.mean(model.active_values(rock.permx.values))):.1f} mD",
             f"  Süxur sıxılması   {rock.compressibility:.2e}  1/bar",
             "",
             "FLÜİD",

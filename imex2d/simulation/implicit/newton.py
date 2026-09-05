@@ -30,6 +30,7 @@ from typing import List, Optional
 import numpy as np
 
 from ...logging_setup import get_logger
+from .active_reduction import ActiveDofReduction
 from .jacobian import JacobianAssembler
 from .linear import NewtonLinearSolver
 from .residual import OIL, WATER, ResidualAssembler
@@ -134,6 +135,10 @@ class NewtonSolver:
         self.J = jacobian or JacobianAssembler(residual)
         self.linear_solver = linear_solver or NewtonLinearSolver()
         self.config = config or NewtonConfig()
+        #: ACTNUM (tapşırıq §1): xətti sistem `2·n_active` naməlumla həll
+        #: olunur — bax `active_reduction.py`. Bütün hüceyrələr aktivdirsə
+        #: bu obyekt matrisə TOXUNMUR.
+        self.reduction = ActiveDofReduction(residual.model.grid.active)
         sw_min, sw_max = residual.relperm.saturation_limits()
         relaxation = self.config.saturation_bound_relaxation
         self.sw_min = sw_min - relaxation
@@ -213,7 +218,10 @@ class NewtonSolver:
 
             try:
                 matrix = self.J.assemble(state, fluid, dt)
-                delta = self.linear_solver.solve(matrix, -residual_vector)
+                reduced_matrix, reduced_rhs = self.reduction.restrict(
+                    matrix, -residual_vector)
+                delta = self.reduction.expand(
+                    self.linear_solver.solve(reduced_matrix, reduced_rhs))
                 linear_iterations += self.linear_solver.last_iterations
             except (FloatingPointError, ValueError) as error:
                 LOG.debug("Xətti həlledici uğursuz: %s", error)
