@@ -14,6 +14,77 @@ from .grid import CartesianGrid, Connections
 from .validation import validate_cell_volumes, validate_grid_dimensions, validate_thickness
 
 
+#: Perforasiya istiqaməti (Eclipse `COMPDAT`-ın "DIR" sütunu ilə eyni
+#: hərflər) -> hüceyrənin YERLİ oxu: 0 = I, 1 = J, 2 = K. Quyu "Z"
+#: istiqamətində dedikdə o, hüceyrəni K oxu boyunca DELİR — Kartezian
+#: modeldə bu, şaquli deməkdir, corner-point modeldə isə pillar
+#: istiqamətidir (bax `CornerPointGeometry.wellblock_geometry`).
+COMPLETION_AXES = {"X": 0, "I": 0, "Y": 1, "J": 1, "Z": 2, "K": 2}
+
+
+def completion_axis(direction) -> int:
+    """Perforasiya istiqamətini (`"Z"`, `"X"`, `"I"` … və ya 0/1/2)
+    hüceyrənin yerli ox indeksinə çevirir."""
+    if isinstance(direction, (int, np.integer)) and not isinstance(direction, bool):
+        axis = int(direction)
+    else:
+        axis = COMPLETION_AXES.get(str(direction).strip().upper()[:1], -1)
+    if axis not in (0, 1, 2):
+        raise ValueError(f"perforasiya istiqaməti tanınmadı: {direction!r} "
+                         f"(gözlənilən: X/I, Y/J, Z/K və ya 0/1/2)")
+    return axis
+
+
+@dataclass(frozen=True)
+class WellblockGeometry:
+    """Bir perforasiyanın Peaceman düsturuna verdiyi EFFEKTİV həndəsə.
+
+    NİYƏ AYRICA TİP: Peaceman düsturunun `dx`/`dy`/`h` girişləri qlobal
+    ox-boyu ölçülər DEYİL — onlar quyu oxuna PERPENDİKULYAR müstəvidə
+    hüceyrənin effektiv ölçüləridir. Kartezian blokda ikisi üst-üstə
+    düşür, ona görə fərq uzun müddət görünmürdü; fırlanmış/əyri/maili
+    corner-point hüceyrəsində isə ox-boyu sərhəd qutusu (`cell_extents`)
+    HƏQİQİ ölçüdən böyük çıxır (bir küncdən o birinə diaqonal uzanma),
+    yəni `r_e` şişir və WI süni azalır.
+
+    Sahələr
+    -------
+    `length` — perforasiyanın hüceyrə içindəki uzunluğu (Peaceman `h`),
+        yəni quyu oxu boyunca hüceyrənin uzanması, m.
+    `d1`/`d2` — quyu oxuna PERPENDİKULYAR müstəvidə effektiv wellblock
+        ölçüləri, m. `d1·d2` HƏMİŞƏ hüceyrənin HƏQİQİ en kəsik sahəsinə
+        (`V / length`) bərabərdir, nisbətləri isə hüceyrənin yerli
+        kənar vektorlarından gəlir.
+    `axis1`/`axis2` — həmin ölçülərin VAHİD istiqamət vektorları (n,3);
+        anizotrop keçiriciliyi bu istiqamətlərə proyeksiya etmək üçün.
+    `well_axis` — quyu (perforasiya) oxunun vahid vektoru (n,3).
+    """
+    length: np.ndarray
+    d1: np.ndarray
+    d2: np.ndarray
+    axis1: np.ndarray
+    axis2: np.ndarray
+    well_axis: np.ndarray
+
+    def cross_section(self) -> np.ndarray:
+        """(n,) — quyu oxuna perpendikulyar effektiv sahə, m² (`d1·d2`)."""
+        return self.d1 * self.d2
+
+    def directional_permeability(self, k_diagonal) -> tuple:
+        """`(k1, k2)` — `axis1`/`axis2` boyunca YÖNLÜ keçiricilik.
+
+        `k_diagonal` — (n, 3), hüceyrə başına `[Kx, Ky, Kz]` (bu kod
+        bazasında keçiricilik tensoru diaqonaldır, bax
+        `properties.RockProperties`). Yönlü keçiricilik `uᵀ·K·u`-dur;
+        diaqonal `K` üçün bu, `Σ u_i²·k_i`-yə sadələşir. Kartezian
+        halda `axis1 = x̂` → `k1 = Kx`, yəni mövcud izotrop/anizotrop
+        nəticə HƏRFİ OLARAQ dəyişmir."""
+        k = np.atleast_2d(np.asarray(k_diagonal, float))
+        k1 = np.einsum("ij,ij->i", self.axis1 ** 2, k)
+        k2 = np.einsum("ij,ij->i", self.axis2 ** 2, k)
+        return k1, k2
+
+
 @dataclass(frozen=True)
 class CellGeometry:
     """Kartezian bloklar üçün həndəsə.
@@ -85,6 +156,30 @@ class CellGeometry:
         "ən böyük kənar" kimi təriflər xələnmiş hüceyrədə sistematik
         şişir. Ox-boyu ölçü lazımdırsa `cell_extents()` işlədilməlidir."""
         return np.cbrt(np.abs(self.volumes()))
+
+    def wellblock_geometry(self, cells, direction="Z") -> WellblockGeometry:
+        """`cells` perforasiya hüceyrələri üçün EFFEKTİV Peaceman
+        həndəsəsi (bax `WellblockGeometry`).
+
+        Kartezian bloklarda cavab TRİVİALDIR və köhnə davranışla
+        HƏRFİ OLARAQ eynidir: quyu oxu qlobal oxdur, ona perpendikulyar
+        iki ölçü `dx`/`dy` (istiqamətə görə `dz`), perforasiya uzunluğu
+        isə hüceyrənin həmin ox boyunca ölçüsüdür. Əyri həndəsə
+        `CornerPointGeometry.wellblock_geometry`-də HESABLANIR.
+        """
+        axis = completion_axis(direction)
+        cells = np.atleast_1d(np.asarray(cells, dtype=int))
+        extents = self.cell_extents()[cells]                    # (n, 3)
+        first, second = [a for a in (0, 1, 2) if a != axis]
+        unit = np.eye(3)
+        count = int(cells.size)
+        return WellblockGeometry(
+            length=extents[:, axis].astype(float).copy(),
+            d1=extents[:, first].astype(float).copy(),
+            d2=extents[:, second].astype(float).copy(),
+            axis1=np.tile(unit[first], (count, 1)),
+            axis2=np.tile(unit[second], (count, 1)),
+            well_axis=np.tile(unit[axis], (count, 1)))
 
     # ── quyu/dərinlik axtarışının HƏNDƏSƏ-ASILI hissəsi ───────────
     # Modul səviyyəli `xy_to_ij`/`layer_edges`/`depth_to_k` funksiyaları

@@ -76,7 +76,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .geometry import CellGeometry
+from .geometry import CellGeometry, WellblockGeometry, completion_axis
 from .grid import CartesianGrid, Connections
 from .polyhedral_geometry import HEX_FACE_VERTEX_INDICES
 from .validation import validate_cell_volumes, validate_grid_dimensions
@@ -472,14 +472,108 @@ class CornerPointGeometry(CellGeometry):
 
         Bu, `dx`/`dy` NOMİNAL skalyarlarını ƏVƏZ EDİR: maili pillar,
         fay atımı və dəyişkən lay qalınlığı hər hüceyrəyə ÖZ ölçüsünü
-        verir. Sərhəd qutusu QƏSDƏN seçilib — Peaceman quyu indeksi
-        (bax `simulation/well_model.py`) hüceyrənin areal ÖLÇÜSÜNÜ
-        tələb edir, bu isə əyri hüceyrə üçün ən yaxın mənalı ölçüdür."""
+        verir.
+
+        DİQQƏT — bu, ox-boyu SƏRHƏD QUTUSUDUR (`max−min`), yəni
+        fırlanmış/əyri hüceyrədə HƏQİQİ ölçüdən BÖYÜKDÜR (diaqonal
+        uzanma). Ona görə Peaceman quyu indeksi ARTIQ bunu İŞLƏTMİR —
+        o, `wellblock_geometry()`-dən keçir (bax həmin metod və
+        `simulation/well_model.py`). Sərhəd qutusu qalır, çünki o,
+        hüceyrənin qablaşdırma/axtarış (bounding) ölçüsü kimi hələ də
+        doğru cavabdır."""
         return self.nodes.max(axis=1) - self.nodes.min(axis=1)
 
     def characteristic_length(self) -> np.ndarray:
         """`(ncell,)` — `V^(1/3)`, HƏQİQİ çoxüzlü həcmdən."""
         return np.cbrt(np.abs(self._volumes))
+
+    def local_edge_vectors(self, cells=None) -> np.ndarray:
+        """`(n, 3, 3)` — hər hüceyrənin YERLİ I/J/K ox vektorları, m.
+
+        Hər ox, hüceyrənin həmin istiqamətdəki DÖRD kənarının
+        ortalamasıdır; bu, eyni zamanda QARŞI ÜZLƏRİN MƏRKƏZLƏRİ
+        arasındakı vektordur (üz mərkəzi 4 təpənin ortalamasıdır), yəni
+        hüceyrənin həmin ox boyunca HƏQİQİ uzanması və istiqamətidir.
+        Ox-boyu sərhəd qutusundan (`cell_extents`) fərqi budur: fırlanma
+        və ya kəsilmə (shear) bu vektorun UZUNLUĞUNU şişirtmir, yalnız
+        onu döndərir.
+        """
+        nodes = self.nodes if cells is None else self.nodes[
+            np.atleast_1d(np.asarray(cells, dtype=int))]
+        i_axis = (nodes[:, 1] - nodes[:, 0] + nodes[:, 2] - nodes[:, 3]
+                  + nodes[:, 5] - nodes[:, 4] + nodes[:, 6] - nodes[:, 7]) / 4.0
+        j_axis = (nodes[:, 3] - nodes[:, 0] + nodes[:, 2] - nodes[:, 1]
+                  + nodes[:, 7] - nodes[:, 4] + nodes[:, 6] - nodes[:, 5]) / 4.0
+        k_axis = (nodes[:, 4] - nodes[:, 0] + nodes[:, 5] - nodes[:, 1]
+                  + nodes[:, 6] - nodes[:, 2] + nodes[:, 7] - nodes[:, 3]) / 4.0
+        return np.stack([i_axis, j_axis, k_axis], axis=1)
+
+    def wellblock_geometry(self, cells, direction="Z") -> WellblockGeometry:
+        """HƏQİQİ corner-point wellblock həndəsəsi — Peaceman girişi.
+
+        NİYƏ SƏRHƏD QUTUSU DEYİL
+        ------------------------
+        Əvvəl Peaceman `cell_extents()` (yəni `max(x)−min(x)`,
+        `max(y)−min(y)`) oxuyurdu. Fırlanmış hüceyrədə bu ölçü hüceyrənin
+        ÖZ eninə deyil, onun DİAQONALINA yaxınlaşır: 45° fırlanmış
+        100×100 m blok üçün sərhəd qutusu 141×141 m verir, yəni `r_e`
+        40 % şişir və WI süni olaraq ~8 % azalır — həndəsə isə heç
+        dəyişməyib, sadəcə döndərilib. Kəsilmiş (skewed) hüceyrədə səhv
+        daha böyükdür, çünki qutu HƏM şişir, HƏM də həqiqi sahəni itirir.
+
+        HESABLAMA
+        ---------
+        1. Quyu oxu — hüceyrənin YERLİ oxu (`direction`): "Z" pillar
+           istiqamətidir, "X"/"Y" isə I/J istiqaməti (üfüqi quyu).
+           `length = ‖yerli ox‖` — perforasiyanın hüceyrə içindəki
+           HƏQİQİ uzunluğu (dəyişkən qalınlıqda lay-lay fərqlidir).
+        2. En kəsik sahəsi — `A = V / length`, burada `V` HƏQİQİ
+           çoxüzlü həcmdir. Prizma üçün bu eynilikdir; maili/kəsilmiş
+           hüceyrədə o, ayaq izinin quyu oxuna PROYEKSİYASINI verir —
+           məhz Peaceman-ın tələb etdiyi kəmiyyət.
+        3. Effektiv ölçülər — qalan iki yerli ox quyu oxuna
+           perpendikulyar müstəviyə proyeksiya edilir; `d1/d2` onların
+           uzunluqlarının NİSBƏTİNİ, `d1·d2` isə HƏQİQİ sahəni (`A`)
+           saxlayır:
+               d1 = √(A·‖e1⊥‖/‖e2⊥‖),   d2 = √(A·‖e2⊥‖/‖e1⊥‖)
+           Beləliklə fırlanma WI-ni DƏYİŞMİR (ölçülər fırlanır, uzunluq
+           qalır), kəsilmə isə həqiqi sahə qədər AZALDIR.
+        4. `axis1`/`axis2` — həmin ölçülərin vahid istiqamətləri;
+           anizotrop Peaceman onlara `Kx/Ky/Kz`-ni proyeksiya edir
+           (bax `WellblockGeometry.directional_permeability`).
+
+        Kartezian blokda addımların HAMISI eyniliklə keçir
+        (`A = dx·dy`, `e1 = x̂·dx`, `e2 = ŷ·dy`) — nəticə maşın
+        dəqiqliyində köhnə `dx`/`dy`/`dz_k` ilə üst-üstə düşür.
+        """
+        axis = completion_axis(direction)
+        cells = np.atleast_1d(np.asarray(cells, dtype=int))
+        edges = self.local_edge_vectors(cells)                  # (n, 3, 3)
+
+        well = edges[:, axis, :]
+        length = np.linalg.norm(well, axis=1)
+        well_axis = well / np.maximum(length, _EPS)[:, None]
+
+        # HƏQİQİ en kəsik sahəsi — nominal ayaq izi yox.
+        area = np.abs(self._volumes[cells]) / np.maximum(length, _EPS)
+
+        first, second = [a for a in (0, 1, 2) if a != axis]
+        perpendicular = []
+        for local in (first, second):
+            edge = edges[:, local, :]
+            along = np.einsum("ij,ij->i", edge, well_axis)
+            perpendicular.append(edge - along[:, None] * well_axis)
+        e1, e2 = perpendicular
+        l1 = np.maximum(np.linalg.norm(e1, axis=1), _EPS)
+        l2 = np.maximum(np.linalg.norm(e2, axis=1), _EPS)
+
+        return WellblockGeometry(
+            length=length,
+            d1=np.sqrt(area * l1 / l2),
+            d2=np.sqrt(area * l2 / l1),
+            axis1=e1 / l1[:, None],
+            axis2=e2 / l2[:, None],
+            well_axis=well_axis)
 
     # ── quyu/dərinlik axtarışı — HƏQİQİ ayaq izi ─────────────────────
     def _column_footprints(self) -> np.ndarray:

@@ -558,7 +558,8 @@ class ProjectSerializer:
                         "target": well.control.target,
                         "injected_phase": well.control.injected_phase.value},
             "perforations": [{"i": p.i, "j": p.j, "k": p.k,
-                              "open": p.open, "skin": p.skin}
+                              "open": p.open, "skin": p.skin,
+                              "direction": p.direction}
                              for p in well.perforations],
             "radius": well.radius,
             "active": well.active,

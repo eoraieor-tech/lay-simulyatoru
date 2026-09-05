@@ -164,7 +164,12 @@ class VtkReservoirScene:
 
     # ── həndəsə ────────────────────────────────────────────────────
     def _cell_corner_points(self):
-        """Grid düyün (nöqtə) koordinatları — (nx+1)·(ny+1)·(nz+1).
+        """KARTEZİAN grid düyün koordinatları — (nx+1)·(ny+1)·(nz+1).
+
+        YALNIZ Kartezian yol. Model corner-point həndəsəsi daşıyırsa bu
+        metod ÇAĞIRILMIR — orada `x = i·dx`, `y = j·dy` uydurma olardı;
+        `_corner_point_cell_nodes()` deck-in ÖZ təpələrini işlədir
+        (bax `_build_grid`).
 
         `vtkStructuredGrid` DÜYÜNLƏRLƏ işləyir, hüceyrə mərkəzləri ilə
         yox. Hüceyrə mərkəz dərinliklərindən (`cell_depths()`) düyün
@@ -208,7 +213,100 @@ class VtkReservoirScene:
         points[:, 2] = -levels.ravel() * exaggeration
         return points
 
+    # ── HƏQİQİ corner-point həndəsəsi ──────────────────────────────
+    def uses_corner_point_geometry(self) -> bool:
+        """Model HƏQİQİ corner-point həndəsəsi daşıyırmı.
+
+        Yoxlama TİPƏ görə deyil, MÜQAVİLƏYƏ görədir (`nodes` (ncell,8,3)):
+        bu qat `domain`-dən yalnız həndəsə oxuyur, ona görə hansı sinifin
+        həmin təpələri verdiyi onun işi deyil.
+        """
+        nodes = getattr(self.model.geometry, "nodes", None)
+        if nodes is None:
+            return False
+        nodes = np.asarray(nodes)
+        return nodes.ndim == 3 and nodes.shape == (self.model.grid.ncell, 8, 3)
+
+    def _corner_point_cell_nodes(self) -> np.ndarray:
+        """`(ncell, 8, 3)` — hər hüceyrənin HƏQİQİ 8 təpəsi, VTK
+        koordinat sistemində.
+
+            COORD + ZCORN  →  8 təpə / hüceyrə  →  VTK həndəsəsi
+
+        Domendə Z DƏRİNLİKDİR (aşağı müsbət), VTK-da isə Z YUXARI
+        müsbətdir — ona görə işarə çevrilir və şaquli şişirtmə həmin
+        addımda tətbiq olunur (X/Y TOXUNULMUR, bax
+        `test_vertical_exaggeration_scales_depth_only`).
+
+        Təpə SIRASI da çevrilir: domen konvensiyası (bax
+        `polyhedral_geometry.HEX_FACE_VERTEX_INDICES`) `0..3`-ü DAHA AZ
+        DƏRİNLİKDƏ (yəni VTK-da DAHA YUXARIDA) saxlayır, `VTK_HEXAHEDRON`
+        isə ƏVVƏLCƏ aşağı üzü gözləyir. Sıra tərs verilsəydi hüceyrənin
+        yakobianı mənfi çıxar, üz normalları içəri baxar və işıqlandırma
+        tərsinə düşərdi.
+        """
+        nodes = np.asarray(self.model.geometry.nodes, float)
+        exaggeration = max(self.settings.vertical_exaggeration, 1e-6)
+        vtk_nodes = np.empty_like(nodes)
+        vtk_nodes[:, 0:4] = nodes[:, 4:8]        # daban (dərin) → VTK-da aşağı
+        vtk_nodes[:, 4:8] = nodes[:, 0:4]        # tavan (dayaz) → VTK-da yuxarı
+        vtk_nodes[..., 2] = -vtk_nodes[..., 2] * exaggeration
+        return vtk_nodes
+
     def _build_grid(self):
+        if self.uses_corner_point_geometry():
+            self._grid = self._build_corner_point_grid()
+        else:
+            self._grid = self._build_structured_grid()
+
+    def _build_corner_point_grid(self):
+        """`vtkUnstructuredGrid` — hər hüceyrə ÖZ 8 təpəsi ilə.
+
+        NİYƏ STRUKTUR ŞƏBƏKƏ DEYİL: `vtkStructuredGrid` düyünləri
+        QONŞULAR ARASINDA PAYLAŞIR, yəni bir düyünə yalnız BİR koordinat
+        düşür. Corner-point grid isə məhz bunu POZUR — fay atımında,
+        pinch-out-da və qeyri-konformal mesh-də eyni pillar düyünü qonşu
+        hüceyrələrdə FƏRQLİ dərinlikdədir. Paylaşılan düyünlə belə
+        həndəsəni göstərmək üçün onu ortalamaq lazım gəlir və məhz bu
+        ortalama əvvəlki versiyada həqiqi həndəsəni itirirdi.
+
+        Təpələr QƏSDƏN paylaşılmır (hüceyrə başına 8 nöqtə): yaddaş
+        artımı kiçikdir, əvəzində hər hüceyrə deck-dəki KOORDİNATI
+        HƏRFİ OLARAQ saxlayır.
+
+        Hüceyrə SIRASI dəyişmir (`i` ən sürətli, sonra `j`, sonra `k`) —
+        `update_values()` hüceyrə skalyarlarını elə həmin sıra ilə
+        bağlayır.
+        """
+        import vtk
+        from vtkmodules.util import numpy_support
+
+        ncell = self.model.grid.ncell
+        coordinates = self._corner_point_cell_nodes().reshape(ncell * 8, 3)
+
+        points = vtk.vtkPoints()
+        points.SetData(numpy_support.numpy_to_vtk(
+            np.ascontiguousarray(coordinates), deep=True))
+
+        # VTK hüceyrə massivi — `offsets` + `connectivity` cütü (VTK 9-un
+        # öz daxili təmsili; köhnə `SetCells()` 9.6-dan etibarən
+        # köhnəlib). Vektorlaşdırılıb: 100k+ hüceyrədə Python dövrü
+        # nəzərəçarpan gecikmə verirdi.
+        offsets = np.arange(ncell + 1, dtype=np.int64) * 8
+        connectivity = np.arange(ncell * 8, dtype=np.int64)
+        cells = vtk.vtkCellArray()
+        cells.SetData(numpy_support.numpy_to_vtkIdTypeArray(offsets, deep=True),
+                      numpy_support.numpy_to_vtkIdTypeArray(connectivity, deep=True))
+
+        unstructured = vtk.vtkUnstructuredGrid()
+        unstructured.SetPoints(points)
+        unstructured.SetCells(vtk.VTK_HEXAHEDRON, cells)
+        return unstructured
+
+    def _build_structured_grid(self):
+        """Kartezian model — DƏYİŞMƏYİB (paylaşılan düyünlü struktur
+        şəbəkə: bərabər bloklarda o, həm daha yığcamdır, həm də həqiqi
+        həndəsəni tam təsvir edir)."""
         import vtk
         from vtkmodules.util import numpy_support
 
@@ -222,8 +320,7 @@ class VtkReservoirScene:
         coordinates = self._cell_corner_points()
         points.SetData(numpy_support.numpy_to_vtk(coordinates, deep=True))
         structured.SetPoints(points)
-
-        self._grid = structured
+        return structured
 
     # ── dəyərlər ───────────────────────────────────────────────────
     def update_values(self, values: np.ndarray, label: str = ""):
@@ -530,6 +627,13 @@ class VtkReservoirScene:
         geometry = model.geometry
         exaggeration = max(self.settings.vertical_exaggeration, 1e-6)
         depths = geometry.cell_depths().reshape(model.grid.shape)
+        # Quyu lüləsi hüceyrənin HƏQİQİ mərkəzindən keçir. Əvvəl X/Y
+        # `(i+0.5)·dx` kimi hesablanırdı — corner-point modeldə bu,
+        # nominal (ortalama) ölçüdür, ona görə maili/əyri sütunda lülə
+        # perforasiya etdiyi hüceyrələrin YANINDA qalırdı. Kartezian
+        # modeldə `cell_centroid()` məhz `(i+0.5)·dx` verir, yəni
+        # mövcud görüntü DƏYİŞMİR.
+        centroids = geometry.cell_centroid().reshape(model.grid.shape + (3,))
         # Lülə modelin SƏTHİNDƏN YUXARIDA başlayır — əks halda tamamilə
         # hüceyrələrin içində gizlənərdi (ilk render sınağında məhz bu
         # baş verdi: yalnız adlar görünürdü). Yuxarı uzantı modelin
@@ -547,8 +651,9 @@ class VtkReservoirScene:
                             and 0 <= p.k < grid.nz]
             if not perforations:
                 continue
-            x = (perforations[0].i + 0.5) * geometry.dx
-            y = (perforations[0].j + 0.5) * geometry.dy
+            head = perforations[0]
+            x = float(centroids[head.k, head.j, head.i, 0])
+            y = float(centroids[head.k, head.j, head.i, 1])
             z_values = [depths[p.k, p.j, p.i] for p in perforations]
             colour = ((0.165, 0.655, 0.627) if well.well_type is WellType.INJECTOR
                       else (0.851, 0.557, 0.169))     # PALETTE.water / .oil

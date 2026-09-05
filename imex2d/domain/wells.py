@@ -31,6 +31,13 @@ class Perforation:
     k: int = 0
     open: bool = True
     skin: float = 0.0
+    #: Perforasiyanın hüceyrəni HANSI ox boyunca deldiyi (Eclipse
+    #: `COMPDAT` "DIR" sütunu ilə eyni hərflər): "Z"/"K" şaquli (defolt,
+    #: mövcud bütün modellər), "X"/"I" və "Y"/"J" üfüqi tamamlama.
+    #: Peaceman hesablaması bunu hüceyrənin YERLİ oxuna çevirir — bax
+    #: `domain/geometry.py::completion_axis` və
+    #: `CornerPointGeometry.wellblock_geometry`.
+    direction: str = "Z"
 
 
 @dataclass
