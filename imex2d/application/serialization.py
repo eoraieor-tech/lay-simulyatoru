@@ -386,7 +386,10 @@ class ProjectSerializer:
         if not project.reservoir_models:
             return []
         model = list(project.reservoir_models.values())[-1]
-        dx, dy = model.geometry.dx, model.geometry.dy
+        # Perforasiya (i, j) → X/Y: hüceyrənin HƏQİQİ mərkəzindən
+        # (Phase 5E). Nominal `(i+0.5)*dx` corner-point modeldə quyunu
+        # yanlış koordinata miqrasiya edərdi.
+        centroids = model.geometry.cell_centroid()
         wells = []
         for well in model.wells:
             if not well.perforations:
@@ -394,7 +397,8 @@ class ProjectSerializer:
             p = well.perforations[0]
             wells.append(GeologicalWell(
                 name=well.name, in_model=True,
-                x=(p.i + 0.5) * dx, y=(p.j + 0.5) * dy,
+                x=float(centroids[model.grid.index(p.i, p.j, 0)][0]),
+                y=float(centroids[model.grid.index(p.i, p.j, 0)][1]),
                 note="köhnə layihədən miqrasiya edilib"))
         return wells
 

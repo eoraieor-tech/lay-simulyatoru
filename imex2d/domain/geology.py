@@ -248,8 +248,16 @@ def validate_wells(wells: List[GeologicalWell],
             i, j = xy_to_ij(well.x, well.y, geometry)
             cells.setdefault((i, j), []).append(well.name)
 
-            near_x = min(well.x % geometry.dx, geometry.dx - (well.x % geometry.dx))
-            near_y = min(well.y % geometry.dy, geometry.dy - (well.y % geometry.dy))
+            # Hüceyrə kənarına yaxınlıq — HƏMİN hüceyrənin ÖZ ölçüsü ilə
+            # (Phase 5E). Əvvəl `well.x % geometry.dx` işlədilirdi: bu,
+            # bərabər bloklarda düzgün, corner-point-də isə mənasızdır
+            # (sütunlar sürüşmüş/maili ola bilər, nominal `dx` şəbəkəsi
+            # həqiqi kənarlarla üst-üstə düşmür).
+            cell = geometry.grid.index(i, j, 0)
+            centre = geometry.cell_centroid()[cell]
+            half_x, half_y = geometry.cell_extents()[cell, 0:2] * 0.5
+            near_x = max(half_x - abs(well.x - centre[0]), 0.0)
+            near_y = max(half_y - abs(well.y - centre[1]), 0.0)
             if near_x < 1e-6 or near_y < 1e-6:
                 issues.append(ValidationIssue(
                     "warning",

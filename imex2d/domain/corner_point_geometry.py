@@ -134,6 +134,36 @@ def quad_metrics(quads: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]
     return area, centroid, area_vector
 
 
+def _point_in_quads(point: np.ndarray, quads: np.ndarray) -> np.ndarray:
+    """`(n,)` bool — 2D `point` hər dördbucağın (`(n, 4, 2)`) İÇİNDƏDİRMİ.
+
+    Hər dördbucaq İKİ üçbucağa (`v0,v1,v2` və `v0,v2,v3`) bölünür və
+    nöqtə barisentrik işarə testindən keçirilir. Bu, sarğı istiqamətindən
+    (saat əqrəbi ilə / əksinə) ASILI DEYİL — hər iki halda işləyir, ona
+    görə sol-əlli deck-lərdə də düzgün nəticə verir. Sərhəd üzərindəki
+    nöqtə İÇƏRİDƏ sayılır (`>= 0`), yəni qonşu sütunların ortaq kənarına
+    düşən quyu "heç bir hüceyrədə deyil" vəziyyətinə düşmür.
+    """
+    def _cross2(u, v):
+        """2D skalyar vektor hasili. `np.cross` NumPy 2.0-da 2 ölçülü
+        vektorlar üçün SİLİNİB, ona görə açıq yazılır."""
+        return u[..., 0] * v[..., 1] - u[..., 1] * v[..., 0]
+
+    def _in_triangle(a, b, c):
+        # İşarəli sahələr; hamısı eyni işarədədirsə (və ya sıfırdırsa)
+        # nöqtə üçbucağın içindədir.
+        d1 = _cross2(b - a, point - a)
+        d2 = _cross2(c - b, point - b)
+        d3 = _cross2(a - c, point - c)
+        non_negative = (d1 >= 0) & (d2 >= 0) & (d3 >= 0)
+        non_positive = (d1 <= 0) & (d2 <= 0) & (d3 <= 0)
+        return non_negative | non_positive
+
+    quads = np.asarray(quads, float)
+    v0, v1, v2, v3 = quads[:, 0], quads[:, 1], quads[:, 2], quads[:, 3]
+    return _in_triangle(v0, v1, v2) | _in_triangle(v0, v2, v3)
+
+
 def unit_normals(area_vectors: np.ndarray) -> np.ndarray:
     """Sahə-vektorlarını VAHİD normala çevirir; dejenerativ üzdə sıfır
     vektor (SÜKUTLA "1"-ə normallaşdırılmır — bax `validate`)."""
@@ -434,6 +464,86 @@ class CornerPointGeometry(CellGeometry):
     def cell_nodes(self, cell: int) -> np.ndarray:
         """`(8, 3)` — bir hüceyrənin təpələri (görüntü/ixrac üçün)."""
         return self.nodes[int(cell)]
+
+    # ── LOKAL ölçülər (Phase 5E) — HAMISI təpələrdən ─────────────────
+    def cell_extents(self) -> np.ndarray:
+        """`(ncell, 3)` — hər hüceyrənin X, Y, Z uzanması (təpələrin
+        sərhəd qutusu), m.
+
+        Bu, `dx`/`dy` NOMİNAL skalyarlarını ƏVƏZ EDİR: maili pillar,
+        fay atımı və dəyişkən lay qalınlığı hər hüceyrəyə ÖZ ölçüsünü
+        verir. Sərhəd qutusu QƏSDƏN seçilib — Peaceman quyu indeksi
+        (bax `simulation/well_model.py`) hüceyrənin areal ÖLÇÜSÜNÜ
+        tələb edir, bu isə əyri hüceyrə üçün ən yaxın mənalı ölçüdür."""
+        return self.nodes.max(axis=1) - self.nodes.min(axis=1)
+
+    def characteristic_length(self) -> np.ndarray:
+        """`(ncell,)` — `V^(1/3)`, HƏQİQİ çoxüzlü həcmdən."""
+        return np.cbrt(np.abs(self._volumes))
+
+    # ── quyu/dərinlik axtarışı — HƏQİQİ ayaq izi ─────────────────────
+    def _column_footprints(self) -> np.ndarray:
+        """`(ny, nx, 4, 2)` — hər sütunun ÜST layının tavan üzünün X/Y
+        ayaq izi (dördbucaq, `HEX_FACE_VERTEX_INDICES["Z-"]` sırası ilə).
+
+        Keşlənir: quyu axtarışı model başına bir neçə dəfə çağırılır,
+        amma massiv `nodes`-dan asılıdır və o, DƏYİŞMİR."""
+        cached = getattr(self, "_footprint_cache", None)
+        if cached is None:
+            top_layer = self.nodes[:self.grid.nx * self.grid.ny]
+            quad = top_layer[:, list(HEX_FACE_VERTEX_INDICES["Z-"]), 0:2]
+            cached = quad.reshape(self.grid.ny, self.grid.nx, 4, 2)
+            object.__setattr__(self, "_footprint_cache", cached)
+        return cached
+
+    def locate_column(self, x: float, y: float) -> tuple:
+        """`(x, y)` → `(i, j)` — HƏQİQİ ayaq izi üzərində axtarış.
+
+        Nominal `int(x/dx)` bölməsi corner-point-də YANLIŞ hüceyrə verir:
+        pillarlar maili ola bilər, fay atımı sütunları sürüşdürür, ayaq
+        izi düzbucaqlı olmaya bilər. Ona görə nöqtə hər sütunun tavan
+        dördbucağı ilə YOXLANILIR (sarğı işarəsi testi — dördbucaq
+        qabarıq olmasa da işləyir, çünki iki üçbucağa bölünür).
+
+        Nöqtə HEÇ BİR sütuna düşmürsə (grid-dən kənar, yaxud sütunlar
+        arası mikroskopik boşluq) ƏN YAXIN sütun mərkəzi qaytarılır —
+        `CellGeometry` ilə eyni müqavilə: bu metod HEÇ VAXT xəta atmır,
+        "sərhəddən kənar" `validate_wells`-də AYRICA bildirilir.
+
+        MƏHDUDİYYƏT (gizlədilmir): fay atımı areal olaraq ÜST-ÜSTƏ DÜŞƏN
+        sütunlar yarada bilər; belə nöqtə üçün ƏN KİÇİK indeksli sütun
+        qaytarılır. Bu, DETERMİNİSTİKDİR (təsadüfi deyil), amma "hansı
+        fay bloku" sualını HƏLL ETMİR — onun üçün quyu trayektoriyası
+        lazımdır, bu isə bu qatın məlumatı deyil.
+
+        Axtarış ÜST layın tavan üzü üzərindədir: sütun boyu ayaq izi
+        dərinliklə dəyişə bilər (maili pillar), ona görə çox dərin
+        perforasiya üçün nəticə təxminidir.
+        """
+        point = np.array([float(x), float(y)])
+        quads = self._column_footprints()                  # (ny, nx, 4, 2)
+        inside = _point_in_quads(point, quads.reshape(-1, 4, 2))
+        hits = np.flatnonzero(inside)
+        if hits.size:
+            flat = int(hits[0])
+        else:
+            centres = quads.mean(axis=2).reshape(-1, 2)    # (ny·nx, 2)
+            flat = int(np.argmin(((centres - point) ** 2).sum(axis=1)))
+        return int(flat % self.grid.nx), int(flat // self.grid.nx)
+
+    def column_layer_edges(self, i: int, j: int) -> np.ndarray:
+        """`(nz+1,)` — `(i, j)` sütununda HƏQİQİ lay sərhədləri.
+
+        Hər sərhəd həmin layın tavan/daban üzünün MƏRKƏZ dərinliyidir,
+        "tavan + kumulyativ orta `dz`" DEYİL — corner-point-də lay
+        qalınlığı sütundan sütuna dəyişir və laylar maili ola bilər.
+        """
+        grid = self.grid
+        cells = grid.index(int(i), int(j), 0) + np.arange(grid.nz) * grid.nx * grid.ny
+        column = self.nodes[cells]                         # (nz, 8, 3)
+        tops = column[:, 0:4, 2].mean(axis=1)
+        bottoms = column[:, 4:8, 2].mean(axis=1)
+        return np.concatenate([tops, bottoms[-1:]])
 
     # ── üz kəmiyyətləri (DƏQİQ) ──────────────────────────────────────
     def _faces(self, conn: Connections) -> Dict[str, np.ndarray]:

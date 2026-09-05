@@ -748,9 +748,66 @@ MÜSTƏVİ üzlərdə nəticə eynidir, ona görə Kartezian nəticələr dəyi�
 qlobal sarğı düzəlişi ilə, dejenerativ pillar / pinch-out / mənfi həcmli
 hüceyrələr isə sayılıb `DiagnosticReport`-a yazılır.
 
-**Testlər**: `tests/test_corner_point_geometry.py` — 44 test
+**Testlər**: `tests/test_corner_point_geometry.py` — 46 test
 (rekonstruksiya, dəqiq həcm, əyri üz sahəsi, həqiqi normal, MPFA-O/TPFA
 inteqrasiyası, Kartezian geriyə uyğunluğu, yönüm/dejenerativ hallar).
+
+### 5.19 Lokal hüceyrə ölçüləri (Phase 5E)
+
+§5.18 həndəsəni DÜZGÜN QURDU, amma istehsal hesablamalarının bir hissəsi
+hələ də `geometry.dx`/`.dy`/`.dz` SKALYARLARINI birbaşa oxuyurdu. Corner-
+point modeldə həmin sahələr YALNIZ nominal ortalamadır, yəni bu oxular
+GİZLİ bir "global DX/DY/DZ fallback" idi — həndəsə düzgün, ondan
+istifadə isə yanlış.
+
+Bu faza həmin oxuları LƏĞV EDİR. `CellGeometry`-yə hüceyrə-başına
+müqavilə əlavə olunub, `CornerPointGeometry` onu təpələrdən yenidən
+tətbiq edir:
+
+| Metod | Kartezian | Corner-point |
+|---|---|---|
+| `cell_thickness()` | `dz_k` | tavan/daban üz mərkəzləri arasındakı fərq |
+| `cell_extents()` | `(dx, dy, dz_k)` | təpələrin sərhəd qutusu |
+| `characteristic_length()` | `V^(1/3)` | `V^(1/3)`, HƏQİQİ həcmdən |
+| `locate_column(x, y)` | `int(x/dx)` | HƏQİQİ ayaq izi üzərində nöqtə-axtarışı |
+| `column_layer_edges(i, j)` | `top + Σdz` | həmin sütunun ÖZ künc dərinlikləri |
+
+`Z extent` (`cell_extents()[:,2]`) və `thickness` QƏSDƏN AYRI ölçülərdir:
+faya söykənən hüceyrədə sərhəd qutusu atım qədər hündür olur, şaquli
+qalınlıq isə olmur — ikisini eyniləşdirmək quyu indeksini şişirdərdi.
+
+**Dəyişən çağıranlar** (hamısı artıq hüceyrə-başına oxuyur):
+
+* `simulation/well_model.py` — Peaceman `r_e` hər perforasiyanın ÖZ
+  hüceyrəsinin areal ölçüsündən (`WI ∝ dz` lay-lay fərqlənir);
+* `domain/geometry.py` — `xy_to_ij`/`layer_edges`/`column_top_depth`/
+  `depth_to_k`/`interval_layers` həndəsəyə həvalə edilir;
+* `domain/geology.py` — quyunun hüceyrə kənarına yaxınlığı;
+* `application/geology_service.py` — sərt-data nümunəsinin X/Y sancma
+  nöqtəsi (əvvəl nominal `(i+½)dx` idi, hədəf massivi isə REAL
+  mərkəzlərdə qiymətləndirilir — yəni "hard data honored" pozulurdu);
+* `application/serialization.py`, `history/parameters.py`.
+
+**Onsuz da DÜZGÜN olanlar** (audit nəticəsi, dəyişməyib): məsamə həcmi
+(`PV = volumes()·PORO·NTG`, qeyri-aktivdə 0), TPFA transmissivliyi və
+yarım-məsafələr (§5.18-dən bəri real), CFL (`PV/throughput` — real
+PV-dən avtomatik gəlir).
+
+**İndeks ardıcıllığı**: bütün lokal ölçülər QLOBAL (`ncell`) indekslidir
+— xassələr, `ActiveMap` və `Connections` ilə eyni məkanda; ACTNUM
+reduksiyası YALNIZ xətti sistem sərhədində baş verir (bax `domain/
+grid.py` docstring-i), ona görə həndəsə ilə xassə heç vaxt sürüşmür.
+
+**Testlər**: `tests/test_local_cell_metrics.py` — 48 test, yeddi model
+üzərində (uniform, dəyişkən qalınlıq, maili, əyri, pinch-out, ACTNUM +
+dəyişkən həndəsə, qeyri-ortoqonal).
+
+> **Riyazi qeyd (testlərdə də sabitlənib)**: XƏLƏMƏ (maili lay, maili
+> pillar) hüceyrə həcmini Kavalyeri prinsipinə görə DƏYİŞMİR. Ona görə
+> "corner-point həcm qutu düsturundan fərqlidir" UNİVERSAL iddia
+> DEYİL — fərq üz SAHƏSİNDƏ, NORMALINDA və MƏSAFƏLƏRDƏ görünür. Həcm
+> yalnız ayaq izi dərinliklə dəyişəndə (pillar meyli pillardan pillara
+> fərqlənəndə) qutudan ayrılır.
 
 ---
 

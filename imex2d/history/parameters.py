@@ -226,7 +226,9 @@ def standard_parameters(model: ReservoirModel) -> List[ParameterDefinition]:
         # dəyişdirmək mənasızdır (ya hamısı su, ya hamısı neft zonası).
         # Belə halda hədləri bir hüceyrə qalınlığı qədər genişləndiririk
         # ki, parametr heç olmasa "kontakt var / yox" seçimini versin.
-        mean_dz = float(np.mean(model.geometry.dz))
+        # Hüceyrə-başına qalınlığın ortası (Phase 5E) — `geometry.dz`
+        # corner-point modeldə lay üzrə NOMİNAL ortalamadır.
+        mean_dz = float(np.mean(model.geometry.cell_thickness()))
         if high - low < mean_dz:
             margin = mean_dz
             low, high = low - margin, high + margin

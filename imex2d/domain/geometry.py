@@ -47,6 +47,81 @@ class CellGeometry:
     def volumes(self) -> np.ndarray:
         return self.dx * self.dy * self.dz_per_cell()
 
+    # ─────────────────────────────────────────────────────────────
+    # LOKAL (hüceyrə-başına) ÖLÇÜLƏR — Phase 5E "Variable Grid /
+    # Local Cell Metrics" müqaviləsi.
+    #
+    # NİYƏ BU METODLAR KARTEZİAN SİNFƏ DƏ ƏLAVƏ EDİLDİ: istehsal
+    # hesablamaları (quyu indeksi, quyu-sərhəd yoxlaması, nümunə
+    # mövqeyi) əvvəllər `geometry.dx`/`geometry.dy` SKALYARLARINI
+    # BİRBAŞA oxuyurdu. Corner-point modeldə həmin skalyarlar YALNIZ
+    # nominal ortalamadır (bax `corner_point_geometry.py` §"GERİYƏ
+    # UYĞUNLUQ"), ona görə belə oxu GİZLİ bir "global DX/DY fallback"
+    # idi. İndi çağıranlar YALNIZ bu hüceyrə-başına metodlardan
+    # istifadə edir; Kartezian halda nəticə əvvəlki skalyarla EYNİ
+    # ƏDƏDDİR (bərabər bloklarda hər hüceyrənin öz ölçüsü = dx/dy/dz),
+    # corner-point halda isə `CornerPointGeometry` onları HƏQİQİ
+    # təpə həndəsəsindən yenidən hesablayır.
+    def cell_thickness(self) -> np.ndarray:
+        """(ncell,) — hüceyrənin öz şaquli qalınlığı, m."""
+        return self.dz_per_cell()
+
+    def cell_extents(self) -> np.ndarray:
+        """(ncell, 3) — hər hüceyrənin X, Y, Z uzanması (m).
+
+        Kartezian bloklarda bu, `(dx, dy, dz_k)`-dır; corner-point-də
+        hüceyrənin təpələrinin sərhəd qutusudur (bax
+        `CornerPointGeometry.cell_extents`)."""
+        ncell = self.grid.ncell
+        return np.column_stack([np.full(ncell, float(self.dx)),
+                                np.full(ncell, float(self.dy)),
+                                self.dz_per_cell()])
+
+    def characteristic_length(self) -> np.ndarray:
+        """(ncell,) — hüceyrənin xarakterik ölçüsü `V^(1/3)`, m.
+
+        Həcm-əsaslı tərif QƏSDƏN seçilib: o, hüceyrə əyri/maili olsa da
+        mənalı qalır (ölçüsü uzunluqdur və həcmlə monotondur), halbuki
+        "ən böyük kənar" kimi təriflər xələnmiş hüceyrədə sistematik
+        şişir. Ox-boyu ölçü lazımdırsa `cell_extents()` işlədilməlidir."""
+        return np.cbrt(np.abs(self.volumes()))
+
+    # ── quyu/dərinlik axtarışının HƏNDƏSƏ-ASILI hissəsi ───────────
+    # Modul səviyyəli `xy_to_ij`/`layer_edges`/`depth_to_k` funksiyaları
+    # BU metodlara yönləndirilir (bax həmin funksiyaların docstring-i),
+    # ona görə corner-point həndəsəsi onları ÖZ təpələrindən cavablaya
+    # bilir və heç bir nominal `dx`/`dz` fallback-i qalmır.
+    def locate_column(self, x: float, y: float) -> tuple:
+        """`(x, y)` metr koordinatı → `(i, j)` sütun indeksi.
+
+        Bərabər bloklarda bu, sadə bölmədir. Sərhəddə (`x == x_max`)
+        `i = nx` çıxmasın deyə yuxarı hədd `nx-1`-ə, simmetrik olaraq
+        aşağı hədd `0`-a kəsilir — grid-dən kənar nöqtə ən yaxın kənar
+        hüceyrəyə düşür (kənarda olması `validate_wells`-də AYRICA
+        xəta kimi bildirilir, bu metod heç vaxt xəta atmır)."""
+        grid = self.grid
+        i = int(x / self.dx) if self.dx > 0 else 0
+        j = int(y / self.dy) if self.dy > 0 else 0
+        return (min(max(i, 0), grid.nx - 1), min(max(j, 0), grid.ny - 1))
+
+    def column_layer_edges(self, i: int, j: int) -> np.ndarray:
+        """`(nz+1,)` — `(i, j)` sütununda təbəqə sərhədlərinin MÜTLƏQ
+        dərinliyi; `edges[k]` k-cı layın tavanı, `edges[k+1]` dabanı."""
+        return self._column_top(i, j) + np.concatenate(
+            ([0.0], np.cumsum(np.asarray(self.dz, float))))
+
+    def _column_top(self, i: int, j: int) -> float:
+        """`(i, j)` sütununun tavan dərinliyi (m)."""
+        grid = self.grid
+        if self.top_depth_map is None:
+            return float(self.top_depth)
+        areal = np.asarray(self.top_depth_map, float).ravel()
+        if areal.size == grid.nx * grid.ny:
+            return float(areal.reshape(grid.ny, grid.nx)[j, i])
+        if areal.size == grid.ncell:
+            return float(areal.reshape(grid.shape)[0, j, i])
+        return float(self.top_depth)
+
     def cell_depths(self) -> np.ndarray:
         """Hər hüceyrənin mərkəz dərinliyi, m.
 
@@ -185,13 +260,13 @@ def xy_to_ij(x: float, y: float, geometry: CellGeometry) -> tuple:
     ən yaxın kənar hüceyrəyə düşsün (özü `validate_wells`-də ayrıca
     "sərhəddən kənar" xətası kimi bildirilir — bu funksiya heç vaxt
     xəta atmır, yalnız ən yaxın hüceyrəni qaytarır).
+
+    Phase 5E: hesablama HƏNDƏSƏNİN ÖZÜNƏ (`locate_column`) həvalə edilir
+    — corner-point modeldə sütunlar əyri/maili olduğu üçün nominal
+    `x/dx` bölməsi YANLIŞ hüceyrə verə bilər (bax
+    `CornerPointGeometry.locate_column`, həqiqi ayaq izi axtarışı).
     """
-    grid = geometry.grid
-    i = int((x - 0.0) / geometry.dx) if geometry.dx > 0 else 0
-    j = int((y - 0.0) / geometry.dy) if geometry.dy > 0 else 0
-    i = min(max(i, 0), grid.nx - 1)
-    j = min(max(j, 0), grid.ny - 1)
-    return i, j
+    return geometry.locate_column(x, y)
 
 
 def column_top_depth(x: float, y: float, geometry: CellGeometry) -> float:
@@ -203,24 +278,20 @@ def column_top_depth(x: float, y: float, geometry: CellGeometry) -> float:
     öz dərinlik modelini QURMASIN.
     """
     i, j = xy_to_ij(x, y, geometry)
-    grid = geometry.grid
-    if geometry.top_depth_map is None:
-        return float(geometry.top_depth)
-    areal = np.asarray(geometry.top_depth_map, float).ravel()
-    if areal.size == grid.nx * grid.ny:
-        return float(areal.reshape(grid.ny, grid.nx)[j, i])
-    if areal.size == grid.ncell:
-        return float(areal.reshape(grid.shape)[0, j, i])
-    return float(geometry.top_depth)
+    return float(geometry.column_layer_edges(i, j)[0])
 
 
 def layer_edges(x: float, y: float, geometry: CellGeometry) -> np.ndarray:
     """`(x, y)` sütununda təbəqə sərhədləri — `(nz + 1,)` MÜTLƏQ dərinlik.
 
     `edges[k]` k-cı təbəqənin tavanı, `edges[k+1]` dabanıdır.
+
+    Phase 5E: sərhədlər HƏNDƏSƏDƏN (`column_layer_edges`) gəlir —
+    corner-point modeldə lay qalınlığı sütundan sütuna dəyişdiyi üçün
+    "tavan + kumulyativ ORTA dz" yanlış olardı.
     """
-    return column_top_depth(x, y, geometry) + np.concatenate(
-        ([0.0], np.cumsum(np.asarray(geometry.dz, float))))
+    i, j = xy_to_ij(x, y, geometry)
+    return geometry.column_layer_edges(i, j)
 
 
 #: `interval_layers` üçün nisbi tolerans — layın qalınlığına görə (sərhəd
@@ -252,7 +323,11 @@ def interval_layers(x: float, y: float, top: float, bottom: float,
         raise ValueError(
             f"İnterval etibarsızdır: alt hədd ({bottom:g}) <= üst hədd ({top:g}).")
     edges = layer_edges(x, y, geometry)
-    thickness = np.asarray(geometry.dz, float)
+    # Tolerans HƏMİN SÜTUNUN öz lay qalınlığına görədir (qlobal orta
+    # `dz`-ə görə YOX) — corner-point-də qalınlıq sütundan sütuna
+    # dəyişir, ona görə orta qalınlıqla ölçülən tolerans nazik sütunda
+    # həddindən böyük, qalın sütunda isə həddindən kiçik olardı.
+    thickness = np.diff(edges)
     layers = []
     for k in range(geometry.grid.nz):
         overlap = min(bottom, edges[k + 1]) - max(top, edges[k])

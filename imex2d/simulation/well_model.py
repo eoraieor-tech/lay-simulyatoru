@@ -50,8 +50,14 @@ class PeacemanWellModel:
         out: List[WellConnection] = []
         kx_all = model.rock.permx.values
         ky_all = model.rock.permy.values
-        dx, dy = model.geometry.dx, model.geometry.dy
-        dz_all = model.geometry.dz_per_cell()
+        # LOKAL (hüceyrə-başına) ölçülər — Phase 5E. Əvvəllər burada
+        # `model.geometry.dx`/`.dy` SKALYARLARI oxunurdu; corner-point
+        # modeldə onlar YALNIZ nominal ortalamadır, yəni maili/faylı
+        # sütundakı quyu YANLIŞ r_e ilə (deməli yanlış debitlə)
+        # hesablanardı. İndi hər perforasiya öz hüceyrəsinin HƏQİQİ
+        # areal ölçüsünü və qalınlığını işlədir.
+        extents = model.geometry.cell_extents()          # (ncell, 3)
+        dz_all = model.geometry.cell_thickness()
         c_darcy = model.units.darcy_constant
         actnum = model.grid.active.actnum if model.grid.has_inactive_cells else None
 
@@ -66,6 +72,7 @@ class PeacemanWellModel:
                     continue
                 kx, ky = kx_all[cell], ky_all[cell]
                 dz = dz_all[cell]
+                dx, dy = float(extents[cell, 0]), float(extents[cell, 1])
                 wi = self._well_index(kx, ky, dx, dy, dz, well.radius,
                                       perf.skin, c_darcy)
                 out.append(WellConnection(

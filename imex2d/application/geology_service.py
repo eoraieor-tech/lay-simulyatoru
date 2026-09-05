@@ -487,7 +487,7 @@ class WellBasedGeologicalModelBuilder:
                 "Yalnız Kriging seçilibsə onun parametrləri (range/sill/nugget/axtarış "
                 "radiusu) Phase B mühərrikinə ötürülür.")
 
-        targets = self._cell_centres(grid, spec)
+        targets = self._cell_centres(grid, geometry)
         available = dataset.property_names()
         categorical_sources = [s for s in available
                                if classify_property(s, property_type_overrides)
@@ -557,11 +557,17 @@ class WellBasedGeologicalModelBuilder:
 
     # -------------------------------------------------------- internal
     @staticmethod
-    def _cell_centres(grid: CartesianGrid, spec: GeologicalGridSpec) -> np.ndarray:
-        x = (np.arange(grid.nx) + 0.5) * spec.dx
-        y = (np.arange(grid.ny) + 0.5) * spec.dy
-        yy, xx = np.meshgrid(y, x, indexing="ij")
-        return np.column_stack([xx.ravel(), yy.ravel()])
+    def _cell_centres(grid: CartesianGrid, geometry: CellGeometry) -> np.ndarray:
+        """`(nx·ny, 2)` — areal hədəf nöqtələri (hüceyrə mərkəzlərinin X/Y).
+
+        Mərkəzlər HƏNDƏSƏDƏN oxunur, `spec.dx`/`spec.dy` nominal
+        addımından YENİDƏN QURULMUR (Phase 5E). Bu qurucu həndəsəni
+        elə həmin `spec`-dən yaratdığı üçün nəticə HAZIRDA eynidir —
+        amma tək mənbə qalır: `_gather_*` metodları sərt datanı artıq
+        `geometry.cell_centroid()`-ə sancır, ona görə hədəf şəbəkəsi də
+        EYNİ mənbədən gəlməlidir (əks halda corner-point həndəsə bura
+        çatanda sərt data ilə hədəf şəbəkəsi bir-birindən sürüşərdi)."""
+        return geometry.cell_centroid()[:grid.nx * grid.ny, 0:2]
 
     @staticmethod
     def _surface(grid: CartesianGrid, spec: GeologicalGridSpec):
@@ -598,6 +604,20 @@ class WellBasedGeologicalModelBuilder:
             raise ValueError(f"'{source}' üçün istifadə edilə bilən sərt data tapılmadı.")
 
         depths_grid = geometry.cell_depths().reshape(grid.shape)   # (nz, ny, nx)
+        # Nümunə HƏDƏF massivindəki hüceyrənin MƏRKƏZİNƏ sancılır (bax
+        # yuxarıdakı izahat). Mərkəz HƏNDƏSƏDƏN alınır — əvvəl burada
+        # nominal `(i+0.5)*geometry.dx` işlədilirdi, bu isə corner-point
+        # həndəsədə hüceyrənin HƏQİQİ mərkəzi ilə üst-üstə DÜŞMÜR (yəni
+        # "sərt data honored" pozulurdu, çünki hədəf massivi real
+        # mərkəzlərdə qiymətləndirilir).
+        #
+        # X/Y məhz `_cell_centres` kimi AREAL (k = 0) mərkəzdən götürülür,
+        # Z isə `depths_grid[k]`-dən — çünki `full_targets` DƏ elə belə
+        # qurulur (areal X/Y + laya məxsus dərinlik). İki mənbəni fərqli
+        # seçmək (məs. X/Y-ni laya məxsus mərkəzdən almaq) Kartezian
+        # gridində fərq yaratmazdı, amma maili pillarlı həndəsədə sərt
+        # datanı hədəf nöqtəsindən SÜRÜŞDÜRƏRDİ.
+        centroids = geometry.cell_centroid()
         xs, ys, zs, codes = [], [], [], []
         skipped = 0
         for sample in resolved_samples:
@@ -611,8 +631,8 @@ class WellBasedGeologicalModelBuilder:
             if k is None:
                 skipped += 1
                 continue
-            xs.append((i + 0.5) * geometry.dx)
-            ys.append((j + 0.5) * geometry.dy)
+            xs.append(float(centroids[grid.index(i, j, 0)][0]))
+            ys.append(float(centroids[grid.index(i, j, 0)][1]))
             zs.append(float(depths_grid[k, j, i]))
             codes.append(int(sample.values[source]))
         if skipped:
@@ -780,6 +800,20 @@ class WellBasedGeologicalModelBuilder:
             raise ValueError(f"'{source}' üçün istifadə edilə bilən sərt data tapılmadı.")
 
         depths_grid = geometry.cell_depths().reshape(grid.shape)
+        # Nümunə HƏDƏF massivindəki hüceyrənin MƏRKƏZİNƏ sancılır (bax
+        # yuxarıdakı izahat). Mərkəz HƏNDƏSƏDƏN alınır — əvvəl burada
+        # nominal `(i+0.5)*geometry.dx` işlədilirdi, bu isə corner-point
+        # həndəsədə hüceyrənin HƏQİQİ mərkəzi ilə üst-üstə DÜŞMÜR (yəni
+        # "sərt data honored" pozulurdu, çünki hədəf massivi real
+        # mərkəzlərdə qiymətləndirilir).
+        #
+        # X/Y məhz `_cell_centres` kimi AREAL (k = 0) mərkəzdən götürülür,
+        # Z isə `depths_grid[k]`-dən — çünki `full_targets` DƏ elə belə
+        # qurulur (areal X/Y + laya məxsus dərinlik). İki mənbəni fərqli
+        # seçmək (məs. X/Y-ni laya məxsus mərkəzdən almaq) Kartezian
+        # gridində fərq yaratmazdı, amma maili pillarlı həndəsədə sərt
+        # datanı hədəf nöqtəsindən SÜRÜŞDÜRƏRDİ.
+        centroids = geometry.cell_centroid()
 
         xs, ys, zs, values, cell_indices, used_samples = [], [], [], [], [], []
         skipped = 0
@@ -795,8 +829,8 @@ class WellBasedGeologicalModelBuilder:
                 skipped += 1
                 continue
             used_samples.append(sample)
-            xs.append((i + 0.5) * geometry.dx)
-            ys.append((j + 0.5) * geometry.dy)
+            xs.append(float(centroids[grid.index(i, j, 0)][0]))
+            ys.append(float(centroids[grid.index(i, j, 0)][1]))
             zs.append(float(depths_grid[k, j, i]))
             values.append(float(sample.values[source]))
             cell_indices.append((i, j, k))
