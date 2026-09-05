@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from ..domain.corner_point_geometry import CornerPointGeometry
 from ..domain.diagnostics import DiagnosticReport
 from ..domain.geological_model import GeologicalModel
 from ..domain.geometry import CellGeometry
@@ -119,12 +120,19 @@ class GrdeclImporter:
 
     def _from_corner_point(self, deck: GrdeclDeck, grid: CartesianGrid,
                            report: DiagnosticReport, length_unit: str = "m"
-                           ) -> CellGeometry:
-        """COORD/ZCORN — bərabər bloka APPROKSİMASİYA.
+                           ) -> CornerPointGeometry:
+        """COORD/ZCORN — HƏQİQİ corner-point həndəsəsi (APPROKSİMASİYA YOX).
 
-        `CellGeometry` hazırda dəyişkən hüceyrə ölçüsü saxlamır, ona görə
-        orta ölçü hesablanır. Bu, dürüst şəkildə xəbərdarlıq tələb edir —
-        nəticələr orijinal həndəsə ilə tam üst-üstə düşməyəcək.
+        Əvvəl bu metod pillar/künc massivlərini SKALYAR `DX`/`DY`/`DZ`
+        ortalamasına çevirirdi — fay, maili lay, əyri hüceyrə və
+        qeyri-konformal mesh İTİRİLİRDİ. İndi hər hüceyrənin 8 təpəsi
+        AÇIQ qurulur (`CornerPointGeometry.from_grdecl`) və həcm/üz
+        sahəsi/normal/mərkəz həmin təpələrdən DƏQİQ hesablanır (bax
+        `domain/corner_point_geometry.py`).
+
+        Qaytarılan obyekt `CellGeometry`-nin ALT SİNFİDİR, ona görə
+        model zəncirinin qalanı (TPFA, hesabat, görüntü) DƏYİŞMƏDƏN
+        işləyir; MPFA-O isə eyni təpələri BİRBAŞA istehlak edir.
         """
         coord = deck.get("COORD")
         zcorn = deck.get("ZCORN")
@@ -140,29 +148,66 @@ class GrdeclImporter:
                 f"COORD/ZCORN ölçüsü uyğun gəlmir: {coord.size}/{zcorn.size}, "
                 f"gözlənilən {expected_coord}/{expected_zcorn}.")
 
-        pillars = coord.reshape((ny + 1), (nx + 1), 6)
-        x_pillars = pillars[:, :, 0]
-        y_pillars = pillars[:, :, 1]
-        dx = float(np.mean(np.abs(np.diff(x_pillars, axis=1))))
-        dy = float(np.mean(np.abs(np.diff(y_pillars, axis=0))))
+        try:
+            geometry, notes = CornerPointGeometry.from_grdecl(grid, coord, zcorn)
+        except ValueError as exc:                    # dejenerativ/uyğunsuz massiv
+            raise GrdeclError(f"COORD/ZCORN oxunmadı: {exc}") from exc
 
-        corners = zcorn.reshape(2 * nz, 2 * ny, 2 * nx)
-        cell_tops = corners[0::2].reshape(nz, 2 * ny, 2 * nx)
-        cell_bottoms = corners[1::2].reshape(nz, 2 * ny, 2 * nx)
-        thickness = float(np.mean(np.abs(cell_bottoms - cell_tops)))
+        self._report_corner_point(geometry, notes, report)
+        return geometry
 
-        top_layer = cell_tops[0].reshape(ny, 2, nx, 2).mean(axis=(1, 3))
+    @staticmethod
+    def _report_corner_point(geometry: CornerPointGeometry, notes: dict,
+                             report: DiagnosticReport) -> None:
+        """Corner-point idxalının həndəsi diaqnostikası.
 
-        report.warning(
-            "Fayl corner-point həndəsəsindədir. Model bərabər ölçülü "
-            f"bloklara approksimasiya olundu (DX≈{dx:.1f}, DY≈{dy:.1f}, "
-            f"DZ≈{thickness:.1f} m).", "GRDECL",
-            "Nəticələr orijinal həndəsə ilə tam üst-üstə düşməyəcək")
+        Heç bir hal SÜKUTLA keçmir: tərs-yönümlü deck, dejenerativ
+        pillar, sıfır həcmli (pinch-out) hüceyrə və köhnə skalyar API-nin
+        harada hələ də NOMİNAL qaldığı AÇIQ bildirilir.
+        """
+        volumes = geometry.volumes()
+        report.info(
+            f"COORD/ZCORN həqiqi corner-point həndəsəsi kimi oxundu "
+            f"({volumes.size} hüceyrə, 8 təpə/hüceyrə). Həcm "
+            f"{volumes.min():.4g}–{volumes.max():.4g} m³, üz sahəsi/normalı "
+            f"təpələrdən hesablanır — bərabər bloka APPROKSİMASİYA YOXDUR.",
+            "GRDECL")
 
-        return CellGeometry(grid=grid, dx=max(dx, 1e-3), dy=max(dy, 1e-3),
-                            dz=max(thickness, 1e-3),
-                            top_depth=float(np.mean(top_layer)),
-                            top_depth_map=top_layer.ravel())
+        if notes.get("flipped_orientation"):
+            report.info(
+                "Deck sol-əlli (left-handed) koordinat sistemindədir — bütün "
+                "hüceyrə həcmləri mənfi çıxdığı üçün künc sarğısı BİR DƏFƏ, "
+                "QLOBAL olaraq tərsinə çevrildi. Həndəsə dəyişmir, yalnız "
+                "təpə sırası normallaşdırılır.", "GRDECL")
+
+        degenerate = int(notes.get("degenerate_pillars", 0))
+        if degenerate:
+            report.warning(
+                f"{degenerate} pillar-ın şaquli uzanması sıfırdır (COORD-da "
+                f"tavan və daban nöqtəsi eynidir) — həmin pillarlarda künc "
+                f"X/Y koordinatı dərinlikdən asılı olmadan TAVAN nöqtəsindən "
+                f"götürüldü.", "GRDECL",
+                "COORD massivində həmin pillarların tavan/daban dəyərlərini yoxla")
+
+        collapsed = int(notes.get("collapsed_cells", 0))
+        if collapsed:
+            report.warning(
+                f"{collapsed} hüceyrənin həcmi sıfıra bərabərdir (Eclipse "
+                f"\"pinch-out\" layı — dörd künc üst-üstə düşür). Bu, XƏTA "
+                f"DEYİL, amma həmin hüceyrələrin məsamə həcmi 0-dır.", "GRDECL",
+                "Belə layları ACTNUM ilə qeyri-aktiv etmək daha təmizdir")
+
+        negative = int(notes.get("negative_volume_cells", 0))
+        if negative:
+            report.warning(
+                f"{negative} hüceyrənin həcmi MƏNFİDİR — həmin hüceyrələr "
+                f"tərs-yönümlü (inverted) və ya öz-özünü kəsən künclərə "
+                f"malikdir. Bu, deck-in həndəsi xətasıdır və SÜKUTLA "
+                f"mütləq qiymətə çevrilmir.", "GRDECL",
+                "ZCORN-da həmin hüceyrələrin tavan/daban dərinliklərini yoxla")
+
+        for note in geometry.approximation_notes():
+            report.info(note, "GRDECL")
 
     def _top_surface(self, deck: GrdeclDeck, grid: CartesianGrid, dz: float,
                      report: DiagnosticReport, length_unit: str = "m"

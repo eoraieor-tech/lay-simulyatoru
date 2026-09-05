@@ -18,6 +18,7 @@ from typing import Optional
 
 import numpy as np
 
+from ..domain.corner_point_geometry import CornerPointGeometry
 from ..domain.facies_field import FaciesField
 from ..domain.geological_model import Fault, GeologicalModel, Horizon
 from ..domain.geology import GeologicalWell
@@ -399,19 +400,36 @@ class ProjectSerializer:
 
     # ---------------------------------------------------- grid/geometry
     def _geometry_to_dict(self, geometry: CellGeometry) -> dict:
-        return {
+        """Kartezian sahələr + (corner-point olduqda) TƏPƏLƏR.
+
+        `nodes` OLMADAN saxlanan corner-point modeli geri oxunanda
+        SÜKUTLA bərabər bloka çevrilərdi — yəni layihəni saxlayıb açmaq
+        həqiqi həndəsəni İTİRƏRDİ. Ona görə təpələr də yazılır; köhnə
+        (nodes-suz) fayllar əvvəlki kimi `CellGeometry` kimi oxunur.
+        """
+        data = {
             "dx": geometry.dx, "dy": geometry.dy, "dz": geometry.dz.tolist(),
             "top_depth": geometry.top_depth,
             "top_depth_map": (None if geometry.top_depth_map is None
                               else _array(geometry.top_depth_map)),
         }
+        nodes = getattr(geometry, "nodes", None)
+        if nodes is not None:
+            data["nodes"] = _array(nodes)          # (ncell·8·3,) düz siyahı
+        return data
 
     def _geometry_from_dict(self, grid: CartesianGrid, data: dict) -> CellGeometry:
         surface = data.get("top_depth_map")
+        surface = None if surface is None else np.asarray(surface, float)
+        nodes = data.get("nodes")
+        if nodes is not None:
+            return CornerPointGeometry(
+                grid=grid, dx=data["dx"], dy=data["dy"], dz=data["dz"],
+                top_depth=data.get("top_depth", 0.0), top_depth_map=surface,
+                nodes=np.asarray(nodes, float).reshape(grid.ncell, 8, 3))
         return CellGeometry(
             grid=grid, dx=data["dx"], dy=data["dy"], dz=data["dz"],
-            top_depth=data.get("top_depth", 0.0),
-            top_depth_map=None if surface is None else np.asarray(surface, float))
+            top_depth=data.get("top_depth", 0.0), top_depth_map=surface)
 
     # -------------------------------------------------- geological model
     def geological_model_to_dict(self, model: GeologicalModel) -> dict:

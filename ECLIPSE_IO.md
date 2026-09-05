@@ -18,7 +18,7 @@ Dəstəklənən açar sözlər:
 | Qrup | Açar sözlər |
 |---|---|
 | Ölçü | `SPECGRID`, `DIMENS` |
-| Həndəsə | `DX`, `DY`, `DZ`, `TOPS` · `COORD`, `ZCORN` (approksimasiya) |
+| Həndəsə | `DX`, `DY`, `DZ`, `TOPS` · `COORD`, `ZCORN` (**həqiqi corner-point**) |
 | Xassələr | `PORO`, `PERMX`, `PERMY`, `PERMZ`, `NTG` |
 | Regionlar | `SATNUM`, `PVTNUM`, `EQLNUM`, `FIPNUM` |
 | Digər | `ACTNUM` (**tətbiq olunur** — bax aşağı), `MULTX/Y/Z` |
@@ -49,16 +49,46 @@ Bunlar gizlədilmir — hər biri istifadəçiyə xəbərdarlıq kimi göstəril
 
 | Məhdudiyyət | Davranış |
 |---|---|
-| **Corner-point həndəsə** | Oxunur, bərabər bloka **approksimasiya** olunur. Orta `DX/DY/DZ` hesablanır, istifadəçi xəbərdarlıq alır |
-| **Dəyişkən hüceyrə ölçüsü** | Orta qiymət götürülür + xəbərdarlıq |
+| **Corner-point həndəsə** | **Tam dəstəklənir.** `COORD`/`ZCORN` hər hüceyrə üçün 8 təpəyə açılır; həcm, üz sahəsi, normal və mərkəzlər həmin təpələrdən DƏQİQ hesablanır — bax aşağı |
+| **Dəyişkən hüceyrə ölçüsü** (`DX/DY/DZ` massiv kimi) | Orta qiymət götürülür + xəbərdarlıq (bu, `COORD/ZCORN` OLMAYAN, blok-mərkəzli deck-lərə aiddir) |
 | **`ACTNUM`** | **Tam dəstəklənir.** Qeyri-aktiv hüceyrə simulyasiyadan çıxarılır: `PV = 0`, qonşuluq bağlantısı qurulmur, xətti sistem `n_active` naməlumla həll olunur, həmin hüceyrədəki perforasiya söndürülür (`WI = 0`). Bax `imex2d/domain/grid.py::ActiveMap` və `tests/test_actnum.py` |
 | **`INCLUDE`** | Dəstəklənmir; həmin fayl oxunmur — xəbərdarlıq verilir |
 
-Səbəb: `CellGeometry` hazırda yalnız bərabər ölçülü bloklar saxlayır
-(bax `ARCHITECTURE.md`, 5.1). Corner-point dəstəyi həmin sinfin yeni
-implementasiyasını tələb edir — diskretizasiya kodu dəyişməyəcək,
-çünki o, `face_areas()` və `face_half_distances()` interfeysindən
-istifadə edir.
+### Corner-point həndəsə (COORD/ZCORN)
+
+Əvvəl bu iki açar söz oxunur, amma dərhal skalyar `DX/DY/DZ`
+ortalamasına çevrilirdi — fay, maili lay, əyri hüceyrə və qeyri-konformal
+mesh itirilirdi. İndi `imex2d/domain/corner_point_geometry.py::
+CornerPointGeometry` həndəsəni OLDUĞU KİMİ saxlayır:
+
+| Kəmiyyət | Əvvəl | İndi |
+|---|---|---|
+| Hüceyrə təpələri | yoxdur | `COORD` pillarları boyunca `ZCORN` dərinliyində xətti interpolyasiya → `(ncell, 8, 3)` |
+| Həcm | `dx·dy·dz` | hüceyrə mərkəzi + üz mərkəzləri ilə 24 tetraedrin cəmi (dəqiq çoxüzlü həcm) |
+| Üz sahəsi | oxa-perpendikulyar qutu üzü | mərkəz-fan üçbucaqlarının cəmi (əyri səthin həqiqi 3D sahəsi) |
+| Üz normalı | sabit `[1,0,0]`/`[0,1,0]`/`[0,0,1]` | `½(C−A)×(D−B)` vahid vektoru, hüceyrədən KƏNARA yönəlmiş |
+| Hüceyrə mərkəzi | `(i+½)dx, (j+½)dy, top+Σdz` | həcm-çəkili mərkəz |
+
+`CornerPointGeometry` `CellGeometry`-nin ALT SİNFİDİR, ona görə TPFA,
+hesabat, görüntü və serializasiya zənciri DƏYİŞMƏDƏN işləyir — onlar
+onsuz da `face_areas()`/`face_half_distances()` interfeysindən istifadə
+edirdi. MPFA-O isə eyni təpələri BİRBAŞA istehlak edir (bax
+`ARCHITECTURE.md` §5.17).
+
+**Kartezian modellər** CPG-nin xüsusi halıdır: `COORD/ZCORN` olmayan
+deck köhnə `CellGeometry` yolunu saxlayır, `CornerPointGeometry.
+from_cartesian()` isə istənilən Kartezian həndəsəni maşın dəqiqliyində
+eyni nəticə verən CPG təmsilinə çevirir.
+
+**Dürüstlük qeydi**: irs olunan `dx`/`dy`/`dz` sahələri NOMİNAL
+qiymətlər kimi qalır və YALNIZ `xy_to_ij()` (quyu → hüceyrə) və
+`depth_to_k()` (dərinlik → lay) köməkçiləri tərəfindən işlədilir.
+Bu, idxal zamanı `approximation_notes()` ilə AÇIQ bildirilir.
+
+Diaqnostika: sol-əlli (left-handed) deck avtomatik aşkarlanıb bir
+dəfəlik düzəldilir, dejenerativ pillar / sıfır həcmli (pinch-out) /
+mənfi həcmli hüceyrələr SAYILIR və hesabata yazılır — heç biri sükutla
+keçmir.
 
 ## Yazma
 

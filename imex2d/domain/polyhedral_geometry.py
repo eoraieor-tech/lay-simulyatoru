@@ -40,16 +40,38 @@ Qat diaqramı (bax audit §21, `ARCHITECTURE.md` §5.14/§5.15):
 
 HEXAHEDRAL FƏRZİYYƏLƏR (bax audit §16 — "document assumptions"):
   - Hər üz DÖRDBUCAQLIDIR (4 təpə) və TAM MÜSTƏVİ OLMAYA BİLƏR (əyri/
-    "warped" üz) — sahə/mərkəz/normal HƏR ÜZÜ İKİ ÜÇBUCAĞA bölərək
-    (fan-triangulyasiya, `(v0,v1,v2)` və `(v0,v2,v3)`) hesablanır. Bu,
-    HƏQİQİ əyri səthin YALNIZ TƏXMİNİDİR — tam müstəvi üzlər üçün DƏQİQ,
-    əyri üzlər üçün TƏXMİNİ nəticə verir (xəta üzün əyriliyi ilə mütənasib
-    böyüyür). Bu, silinməz bir riyazi məhdudiyyətdir, SÜKUTLA
+    "warped" üz) — sahə/mərkəz/normal HƏR ÜZÜ MƏRKƏZ-FAN üsulu ilə
+    üçbucaqlara bölərək hesablanır (bax "ÜZ DEKOMPOZİSİYASI" aşağıda).
+    Bu, HƏQİQİ əyri səthin YALNIZ TƏXMİNİDİR — tam müstəvi üzlər üçün
+    DƏQİQ, əyri üzlər üçün TƏXMİNİ nəticə verir (xəta üzün əyriliyi ilə
+    mütənasib böyüyür). Bu, silinməz bir riyazi məhdudiyyətdir, SÜKUTLA
     GİZLƏDİLMİR (bax `Face.is_planar`).
   - Həcm/mərkəz: tetraedr-parçalanması (bütün 8 təpənin ortası olan
     daxili istinad nöqtəsi `p0`-dan hər üzün üçbucaqlarına qədər) —
     standart, ÜMUMİ (qabarıq, YAXUD yüngül qeyri-qabarıq) çoxüzlülər
     üçün RİYAZİ CƏHƏTDƏN DÜZGÜN üsul (bax `HexahedralCell.volume`).
+    Üzlər mərkəz-fanla bölündüyü üçün bu, TAM OLARAQ "hüceyrə mərkəzi +
+    ÜZ MƏRKƏZLƏRİ ilə piramida parçalanması"dır.
+
+ÜZ DEKOMPOZİSİYASI (bax `Face._triangles`)
+------------------------------------------
+Üz `(A,B,C,D)` təpə-ortalaması `c0` ətrafında DÖRD üçbucağa bölünür:
+`(c0,A,B), (c0,B,C), (c0,C,D), (c0,D,A)`. Bu, `v0`-dan sadə fandan
+(`(A,B,C)+(A,C,D)`) FƏRQLİDİR və QƏSDƏN belədir: sadə fan bir diaqonal
+seçir, ona görə təpə sırasının başlanğıcından ASILIDIR — paylaşılan bir
+üzü owner və neighbor FƏRQLİ təpədən başlayaraq görür, yəni ƏYRİ üzdə
+İKİ FƏRQLİ sahə/mərkəz/həcm alınardı (qonşu hüceyrələr arasında boşluq/
+üst-üstə düşmə = qeyri-konservativ diskretizasiya). Mərkəz-fan dövri
+sürüşməyə VƏ tərsinə çevrilməyə görə simmetrikdir, ona görə owner və
+neighbor EYNİ ədədi alır. MÜSTƏVİ üzlərdə hər iki üsul EYNİ nəticəni
+verir — Kartezian modellərin nəticələri DƏYİŞMİR.
+
+Normal barədə: mərkəz-fan üçbucaqlarının SAHƏ-VEKTOR cəmi dördbucaqlı üz
+üçün TAM OLARAQ `½·(C−A)×(D−B)`-yə bərabərdir (diaqonalların vektor
+hasili) — yəni `Face.normal()` məhz həmin klassik düsturun VAHİD
+vektorudur. `Face.area()` isə üçbucaq sahələrinin SKALYAR cəmidir; əyri
+üzdə bu, sahə-vektorun uzunluğundan BÖYÜKDÜR (əyri səthin həqiqi sahəsi),
+müstəvi üzdə isə ikisi ÜST-ÜSTƏ DÜŞÜR.
 """
 
 from __future__ import annotations
@@ -110,11 +132,28 @@ class Face:
         self._decomposition_cache: Optional[Tuple[float, np.ndarray, np.ndarray]] = None
 
     def _triangles(self):
-        """Fan-triangulyasiya: `(v0,v1,v2), (v0,v2,v3), ...` — bax modul
-        docstring-i, "HEXAHEDRAL FƏRZİYYƏLƏR"."""
-        v0 = self.vertices[0]
-        for i in range(1, self.vertices.shape[0] - 1):
-            yield v0, self.vertices[i], self.vertices[i + 1]
+        """MƏRKƏZ-fan triangulyasiyası: apeks üzün TƏPƏ-ORTALAMASIDIR
+        (`c0 = mean(vertices)`), üçbucaqlar `(c0, v_i, v_{i+1})` —
+        HƏR KƏNAR üçün bir üçbucaq (dördbucaqlı üz üçün 4 ədəd).
+
+        NİYƏ `v0`-dan sadə fan DEYİL (bax modul docstring-i, "ÜZ
+        DEKOMPOZİSİYASI"): sadə fan üzün BİR diaqonalını seçir
+        (`v0–v2`), ona görə nəticə təpə sırasının HANSI təpədən
+        başladığından ASILIDIR. Paylaşılan (owner/neighbor) bir üz iki
+        hüceyrədə FƏRQLİ təpədən başlayır (məs. owner-in "X+" üzü
+        `(1,2,6,5)`, qonşunun "X-" üzü `(3,0,4,7)` — İKİ FƏRQLİ
+        diaqonal), yəni ƏYRİ (warped) üzdə iki hüceyrə EYNİ fiziki üzə
+        FƏRQLİ sahə/mərkəz/həcm verərdi. Mərkəz-fan həm dövri sürüşməyə,
+        həm də sıranın tərsinə çevrilməsinə görə SİMMETRİKDİR, ona görə
+        owner və neighbor EYNİ ədədi alır (bu, `GeneralGridGeometry.
+        validate()`-in owner/neighbor uyğunluq yoxlamasının ƏYRİ üzlərdə
+        də keçməsi DEMƏKDİR). MÜSTƏVİ üz üçün nəticə sadə fanla EYNİDİR
+        — Kartezian modellərdə heç nə dəyişmir.
+        """
+        c0 = self.vertices.mean(axis=0)
+        n = self.vertices.shape[0]
+        for i in range(n):
+            yield c0, self.vertices[i], self.vertices[(i + 1) % n]
 
     def _decompose(self) -> Tuple[float, np.ndarray, np.ndarray]:
         """`area()`/`centroid()`/`normal()` ARASINDA paylaşılan TƏK

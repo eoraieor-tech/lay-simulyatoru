@@ -1,17 +1,22 @@
 """Grid həndəsəsi interfeysi — Kartezian VƏ gələcək corner-point üçün
 ORTAQ müqavilə (bax audit tapşırığı §6).
 
-Hazırda YEGANƏ implementasiya `imex2d.domain.geometry.CellGeometry`-dir
-(struktur/bərabər-blok Kartezian). Bu ABC HEÇ NƏYİ DƏYİŞMİR — `CellGeometry`
-artıq bu metodların hamısını (bəziləri bu fazada ƏLAVƏ EDİLİB, bax
-`geometry.py`) doğru tətbiq edir. Məqsəd: gələcək corner-point/qeyri-struktur
-həndəsə sinfi YAZILANDA, hansı müqaviləyə əməl etməli olduğunu AÇIQ etmək —
-`TwoPointFluxDiscretization` və gələcək `MPFAODiscretization` YALNIZ bu
-metodlardan istifadə etməlidir, `CellGeometry`-nin daxili strukturundan
-(`dx`/`dy`/`dz`) BİRBAŞA YOX (MPFA-O həndəsə-müstəqil qala bilsin deyə).
+İKİ implementasiya var:
 
-Native corner-point (COORD/ZCORN-dən BİRBAŞA) HƏLƏ İMPLEMENTASİYA
-EDİLMİR — bax `ECLIPSE_IO.md`.
+  * `imex2d.domain.geometry.CellGeometry` — struktur/bərabər-blok
+    Kartezian (ilk və hələ də defolt yol);
+  * `imex2d.domain.corner_point_geometry.CornerPointGeometry` — HƏQİQİ
+    corner-point (COORD/ZCORN → hüceyrə başına 8 təpə), Phase 5D. O,
+    `CellGeometry`-nin ALT SİNFİDİR: eyni metodları eyni imzalarla,
+    amma qutu düsturu yerinə dəqiq çoxüzlü riyaziyyatla tətbiq edir.
+
+Bu ABC HEÇ NƏYİ DƏYİŞMİR — hər iki sinif metodların hamısını doğru
+tətbiq edir. Məqsəd: hansı müqaviləyə əməl edilməli olduğunu AÇIQ etmək
+— `TwoPointFluxDiscretization` və `MPFAODiscretization` YALNIZ bu
+metodlardan istifadə etməlidir, `CellGeometry`-nin daxili strukturundan
+(`dx`/`dy`/`dz`) BİRBAŞA YOX. Məhz buna görə corner-point dəstəyi
+diskretizasiya kodunda BİR SƏTİR belə dəyişiklik tələb etmədi (bax
+`ARCHITECTURE.md` §5.1/§5.18).
 
 Phase 3 ("General Geometry Foundation for MPFA-O") ƏLAVƏSİ: bu ABC
 DƏYİŞDİRİLMƏDİ (audit §4 nəticəsi — "improve if necessary", NECESSARY
@@ -19,11 +24,10 @@ tapılmadı). Səbəb: bu, VEKTORLAŞDIRILMIŞ (bütün grid TƏK massivlərlə)
 GRID-səviyyəli müqavilədir; `imex2d.domain.polyhedral_geometry.
 HexahedralCell`/`Face` isə HÜCEYRƏ-BAŞINA (per-cell), potensial qeyri-
 ortoqonal ÜMUMİ həndəsə NÜVƏSİDİR — bir səviyyə AŞAĞIDA yerləşir, bu
-ABC-ni ƏVƏZ ETMİR. Gələcək `CornerPointGeometry` (HƏLƏ YOXDUR) bu
-nüvəni hüceyrə-hüceyrə çağırıb nəticələri BU ABC-nin vektorlaşdırılmış
-formasına "yığa" bilər — yəni `polyhedral_geometry.py` gələcək bir
-`IGridGeometry` İMPLEMENTASİYASININ DAXİLİ ALƏTİDİR, ƏLAVƏ/ALTERNATİV
-İNTERFEYS YOX.
+ABC-ni ƏVƏZ ETMİR. `CornerPointGeometry` (Phase 5D) məhz bunu edir —
+eyni riyaziyyatı VEKTORLAŞDIRILMIŞ formada tətbiq edib bu ABC-nin
+müqaviləsini doldurur; yəni `polyhedral_geometry.py` bir `IGridGeometry`
+İMPLEMENTASİYASININ DAXİLİ ALƏTİDİR, ƏLAVƏ/ALTERNATİV İNTERFEYS YOX.
 """
 
 from __future__ import annotations

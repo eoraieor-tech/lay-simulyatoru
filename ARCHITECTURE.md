@@ -257,6 +257,10 @@ gələndə yalnız həndəsə sinfi əvəz olunacaq. Diskretizasiya kodu
 `face_areas()` və `face_half_distances()` metodlarından istifadə edir,
 `dx`-i birbaşa oxumur.
 
+> **Bu qərar özünü doğrultdu** (Phase 5D, §5.18): `CornerPointGeometry`
+> məhz həmin müqaviləni tətbiq edən bir alt sinif kimi əlavə olundu və
+> nə topologiya (`CartesianGrid`), nə də diskretizasiya kodu dəyişdi.
+
 ### 5.2 Geoloji model ilə rezervuar modeli ayrıldı
 | Geoloji model | Rezervuar modeli |
 |---|---|
@@ -491,11 +495,17 @@ topologiya sualıdır, bax §18) — hər hüceyrənin HƏR üzü (sərhəddə o
 ya olmasın) etibarlı sahə/mərkəz/normal daşıyır; hansı üzün sərhəd
 olduğunu XARİCİ topologiya (`Connections`) müəyyən edir.
 
-**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun bu nüvədən istifadəsi, ümumi
-(Kartezian-olmayan) GRID-səviyyəli həndəsə sinfi, native corner-point
-idxal, ACTNUM/qeyri-aktiv hüceyrə inteqrasiyası, qeyri-qabarıq (non-
-convex) hüceyrələr üçün formal doğrulama, faylların (COORD/ZCORN) bu
-nüvəyə bağlanması — hamısı gələcək faza.
+**Bilərəkdən EDİLMƏYƏNLƏR** (Phase 3-də): MPFA-O-nun bu nüvədən
+istifadəsi, ümumi (Kartezian-olmayan) GRID-səviyyəli həndəsə sinfi,
+native corner-point idxal, ACTNUM/qeyri-aktiv hüceyrə inteqrasiyası,
+qeyri-qabarıq (non-convex) hüceyrələr üçün formal doğrulama, faylların
+(COORD/ZCORN) bu nüvəyə bağlanması.
+
+> **Sonrakı fazaların yenilədiyi bəndlər**: GRID-səviyyəli həndəsə
+> §5.15-də (Phase 4), MPFA-O-nun istifadəsi §5.16/§5.17-də (Phase 5A/5B),
+> native corner-point idxal və `COORD/ZCORN`-un bu nüvəyə bağlanması isə
+> §5.18-də (Phase 5D) YAZILIB. ACTNUM-un MPFA yolunda dəstəyi və
+> qeyri-qabarıq hüceyrələrin formal doğrulaması HƏLƏ gələcək fazadır.
 
 ### 5.15 Grid-səviyyəli ümumi həndəsə (Phase 4)
 Yeni modul: `imex2d/domain/general_grid_geometry.py::GeneralGridGeometry` —
@@ -539,10 +549,15 @@ qərar/səbəb, bax §5.14-ün serializasiya qeydi).
 tərəfindən ÇAĞIRILMIR, `test_five_spot_reference_case_reproduces_
 legacy_results` (dəqiq addım sayı/OOIP/RF) dəyişmədən keçir.
 
-**Bilərəkdən EDİLMƏYƏNLƏR**: MPFA-O-nun bu qatdan istifadəsi, native
-corner-point idxal (COORD/ZCORN → bu qat), fay
+**Bilərəkdən EDİLMƏYƏNLƏR** (Phase 4-də): MPFA-O-nun bu qatdan
+istifadəsi, native corner-point idxal (COORD/ZCORN → bu qat), fay
 transmissivlik çarpanlarının bu qata daxil edilməsi (bu, DİSKRETİZASİYA
-işidir, HƏNDƏSƏ yox) — hamısı gələcək faza.
+işidir, HƏNDƏSƏ yox).
+
+> **Sonrakı fazalar**: MPFA-O bu qatdan Phase 5A-da (§5.16) istifadə
+> etməyə başladı; `COORD/ZCORN` → bu qat bağlantısı Phase 5D-də (§5.18)
+> `hexahedral_vertices()` dispetçeri ilə qurulub. Fay çarpanları HƏLƏ
+> gələcək fazadır.
 
 ### 5.16 MPFA-O riyazi nüvəsi (Phase 5A)
 
@@ -678,7 +693,7 @@ BİRƏBİR eynidir; fərq `O(Δρ·ΔD)`-dir və testlə ÖLÇÜLÜR.
 | Qeyri-xətti analitik Jacobian | **YOXDUR** (5B-2) — MPFA ilə `JacobianAssembler` AÇIQ imtina edir |
 | Nyuton/`FullyImplicitEngine`/`ImpesEngine` MPFA ilə | **YOXDUR** (5B-2) — AÇIQ imtina |
 | MPFA-da fay (fault) | **YOXDUR** (5D) — model faylıdırsa qalıq RƏDD EDİLİR |
-| corner-point | **YOXDUR** |
+| corner-point həndəsə (COORD/ZCORN → 8 təpə, dəqiq həcm/sahə/normal) | **implement edilib** (5D, bax §5.18) — MPFA-O `build()` təpələri birbaşa istehlak edir |
 | ACTNUM (MPFA yolunda) | **YOXDUR** (5D) — model qeyri-aktiv hüceyrə daşıyırsa qalıq AÇIQ RƏDD EDİLİR; TPFA yolu ACTNUM-u tam dəstəkləyir |
 
 **Simulyator HƏLƏ MPFA ilə qeyri-xətti hasilat proqnozu VERƏ BİLMİR** —
@@ -691,6 +706,51 @@ qalıq/Jacobian/Newton yolu HEÇ DƏYİŞMƏYİB;
 **Testlər**: `tests/test_mpfa_o_global_assembly.py` — 57 test
 (A–T kateqoriyaları, lokal→qlobal uyğunluq, qlobal anti-pseudo-MPFA,
 ikiqat-sayma detektoru, əl ilə yoxlanıla bilən qlobal matris).
+
+### 5.18 Native corner-point həndəsə (Phase 5D)
+
+`imex2d/domain/corner_point_geometry.py` — §5.14-də "gələcək faza"
+kimi qeyd olunan **native corner-point idxalı** artıq yazılıb.
+`COORD` (pillar oxları) və `ZCORN` (künc dərinlikləri) daha bərabər
+bloka approksimasiya EDİLMİR; hər hüceyrə üçün 8 təpə açıq qurulur və
+bütün ölçülər həmin təpələrdən hesablanır.
+
+    COORD + ZCORN
+        ↓  pillar boyunca xətti interpolyasiya  (corner_point_nodes)
+    (ncell, 8, 3) təpələr
+        ↓                                    ↓
+    CornerPointGeometry                 GeneralGridGeometry
+    (CellGeometry alt sinfi —           (üz-əsaslı, owner/neighbor —
+     TPFA/hesabat/görüntü)               MPFA-O, §5.15)
+
+**Niyə `CellGeometry`-nin ALT SİNFİ**: §5.1-dəki qərar ("topologiya ilə
+həndəsə ayrıldı, diskretizasiya `face_areas()`/`face_half_distances()`
+işlədir, `dx`-i birbaşa oxumur") məhz bu anı nəzərdə tuturdu. Ona görə
+yeni sinif həmin müqaviləni tətbiq edir və model zəncirinin qalanı
+(`GeologicalModel` → `ReservoirModelBuilder` → `ReservoirModel` → TPFA)
+BİR SƏTİR belə dəyişmir.
+
+**Vektorlaşdırma**: §5.14 nüvəsi (`HexahedralCell`/`Face`) hüceyrə
+başına Python obyektidir. `corner_point_geometry.py` EYNİ riyaziyyatın
+tam vektorlaşdırılmış (bütün grid üçün tək numpy keçidi) formasıdır;
+ikisinin ədədi uyğunluğu testlə qıfıllanıb, ona görə iki kod yolu
+ayrıla bilməz.
+
+**Üz parçalanmasında düzəliş**: `Face._triangles()` `v0`-dan sadə fan
+əvəzinə MƏRKƏZ-fan işlədir. Səbəb: sadə fan üzün bir diaqonalını seçir,
+paylaşılan üz isə owner və neighbor tərəfindən FƏRQLİ təpədən başlanır
+(`X+` = `(1,2,6,5)` vs `X-` = `(3,0,4,7)`) — ƏYRİ üzdə iki hüceyrə eyni
+fiziki üzə fərqli sahə/mərkəz verərdi, yəni hüceyrələr arasında boşluq/
+örtüşmə (qeyri-konservativ diskretizasiya). Mərkəz-fan simmetrikdir.
+MÜSTƏVİ üzlərdə nəticə eynidir, ona görə Kartezian nəticələr dəyişmir.
+
+**Diaqnostika** (heç biri sükutla keçmir): sol-əlli deck bir dəfəlik
+qlobal sarğı düzəlişi ilə, dejenerativ pillar / pinch-out / mənfi həcmli
+hüceyrələr isə sayılıb `DiagnosticReport`-a yazılır.
+
+**Testlər**: `tests/test_corner_point_geometry.py` — 44 test
+(rekonstruksiya, dəqiq həcm, əyri üz sahəsi, həqiqi normal, MPFA-O/TPFA
+inteqrasiyası, Kartezian geriyə uyğunluğu, yönüm/dejenerativ hallar).
 
 ---
 

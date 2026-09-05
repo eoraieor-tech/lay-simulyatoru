@@ -31,7 +31,7 @@ import numpy as np
 from scipy import sparse
 
 from ..domain.general_grid_geometry import (GeneralGridGeometry,
-                                            hexahedral_vertices_from_cartesian)
+                                            hexahedral_vertices)
 from ..domain.grid import CartesianGrid, Connections
 from ..domain.properties import PermeabilityTensor
 from ..interfaces.discretization import IFluxDiscretization
@@ -411,14 +411,16 @@ class MPFAODiscretization(IFluxDiscretization):
     def build(self, model) -> MPFADiscretizedGrid:
         """`ReservoirModel` → MPFA-O diskretizasiyası.
 
-        Həndəsə: `CellGeometry`-dən hekzahedral təpələr qurulur
-        (`hexahedral_vertices_from_cartesian`) — Kartezian modellər üçün
-        DƏQİQ. Qeyri-ortoqonal/corner-point təpə mənbəyi HƏLƏ YOXDUR
-        (Phase 5D); belə həndəsə ilə işləmək üçün `build_coefficients`-i
-        BİRBAŞA öz `GeneralGridGeometry`-nizlə çağırın.
+        Həndəsə: təpələr `hexahedral_vertices()` ilə alınır (Phase 5D) —
+        model `CornerPointGeometry` daşıyırsa COORD/ZCORN-dan gələn
+        HƏQİQİ təpələr OLDUĞU KİMİ işlədilir (əyri üzlər, qeyri-ortoqonal
+        normallar, dəqiq həcmlər); adi Kartezian `CellGeometry` üçün isə
+        qutu təpələri qurulur və nəticə ƏVVƏLKİ İLƏ EYNİ qalır. Yəni
+        MPFA-O artıq həndəsəni Kartezian FƏRZ ETMİR — çağıranın ayrıca
+        `GeneralGridGeometry` qurmasına EHTİYAC QALMIR.
         """
         conn = model.connections()
-        vertices = hexahedral_vertices_from_cartesian(model.grid, model.geometry)
+        vertices = hexahedral_vertices(model.grid, model.geometry)
         geometry = GeneralGridGeometry(vertices, conn)
         k_matrices = permeability_matrices(model)
 

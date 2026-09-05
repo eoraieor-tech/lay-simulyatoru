@@ -316,6 +316,35 @@ class GeneralGridGeometry:
         }
 
 
+def hexahedral_vertices(grid: CartesianGrid, geometry) -> np.ndarray:
+    """`(ncell, 8, 3)` təpələr — həndəsənin HANSI növ olmasından ASILI
+    OLMAYARAQ (Phase 5D: corner-point inteqrasiyası).
+
+    Bu, MPFA-O-nun (və hər hansı üz-əsaslı istehlakçının) həndəsə
+    mənbəyidir:
+
+      · `CornerPointGeometry` → HAZIR `nodes` OLDUĞU KİMİ qaytarılır
+        (COORD/ZCORN-dan gələn HƏQİQİ təpələr; yenidən qurulmur,
+        Kartezianlaşdırılmır);
+      · adi `CellGeometry`   → qutu təpələri qurulur (Kartezian model
+        CPG-nin XÜSUSİ HALIDIR, bax `corner_point_geometry.py` §"GERİYƏ
+        UYĞUNLUQ") — nəticə köhnə davranışla EYNİDİR.
+
+    Yəni MPFA-O üçün TƏK kod yolu qalır və `MPFAODiscretization.build()`
+    artıq həndəsəni Kartezian saymır.
+    """
+    nodes = getattr(geometry, "nodes", None)
+    if nodes is not None:
+        nodes = np.asarray(nodes, float)
+        if nodes.shape != (grid.ncell, 8, 3):
+            raise ValueError(
+                f"Həndəsənin `nodes` sahəsi ({grid.ncell},8,3) olmalıdır, "
+                f"alındı {nodes.shape}.")
+        return nodes
+    from .corner_point_geometry import cartesian_nodes
+    return cartesian_nodes(grid, geometry)
+
+
 def hexahedral_vertices_from_cartesian(grid: CartesianGrid, geometry) -> np.ndarray:
     """`CellGeometry`-dən (Kartezian) `GeneralGridGeometry`-yə TEST/KÖRPÜ
     funksiyası — hər hüceyrənin 8 təpəsini `geometry.dx/dy/dz/top_depth`-
