@@ -382,7 +382,19 @@ class GeologyPanel(QWidget):
 
         self.table = QTableWidget(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # 13 sütun `Stretch` rejimində başlıqları KƏSİRDİ ("Data layları"
+        # → "ata layl"), yəni yeni sütunların ADI oxunmurdu. Həll: `Stretch`
+        # SAXLANILIR (geniş pəncərədə sütunlar boşluğu BƏRABƏR bölür, tək
+        # bir sütun onu udmur), amma minimum sütun eni ƏN UZUN BAŞLIĞA görə
+        # təyin olunur. Ölçü font metrikasından hesablanır — sabit piksel
+        # DEYİL, ona görə fərqli DPI/şriftdə də, gələcəkdə yeni sütun
+        # əlavə olunanda da başlıqlar tam görünür; pəncərə çox darsa
+        # (məs. sol alət qutusu) üfüqi sürüşdürmə çubuğu çıxır.
+        header = self.table.horizontalHeader()
+        metrics = header.fontMetrics()
+        widest = max(metrics.horizontalAdvance(text) for text in self.COLUMNS)
+        header.setMinimumSectionSize(widest + 22)
+        header.setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setMinimumHeight(160)
         self.table.itemChanged.connect(self._on_item_changed)

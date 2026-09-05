@@ -1365,6 +1365,11 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.statusBar().showMessage(f"Model qurula bilmədi: {exc}")
             return
+        # UĞURDAN SONRA köhnə xəta mesajı TƏMİZLƏNİR — əks halda
+        # "MISSING lay → completion seç → yenidən interpolyasiya et"
+        # axınında artıq HƏLL OLUNMUŞ problemin mesajı status sətrində
+        # qalır və istifadəçini yanıldır.
+        self.statusBar().clearMessage()
         self.refresh_tree()
         self._refresh_provenance_choices()
         self.update_scal_plot()
