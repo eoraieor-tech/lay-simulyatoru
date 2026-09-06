@@ -66,12 +66,31 @@ sürüşməyə VƏ tərsinə çevrilməyə görə simmetrikdir, ona görə owner
 neighbor EYNİ ədədi alır. MÜSTƏVİ üzlərdə hər iki üsul EYNİ nəticəni
 verir — Kartezian modellərin nəticələri DƏYİŞMİR.
 
-Normal barədə: mərkəz-fan üçbucaqlarının SAHƏ-VEKTOR cəmi dördbucaqlı üz
-üçün TAM OLARAQ `½·(C−A)×(D−B)`-yə bərabərdir (diaqonalların vektor
-hasili) — yəni `Face.normal()` məhz həmin klassik düsturun VAHİD
-vektorudur. `Face.area()` isə üçbucaq sahələrinin SKALYAR cəmidir; əyri
-üzdə bu, sahə-vektorun uzunluğundan BÖYÜKDÜR (əyri səthin həqiqi sahəsi),
-müstəvi üzdə isə ikisi ÜST-ÜSTƏ DÜŞÜR.
+ÜÇ AYRI ANLAYIŞ (bax FINDING-3 düzəlişi)
+----------------------------------------
+`Face` üç FƏRQLİ kəmiyyət verir — onları QARIŞDIRMAQ qeyri-konservativ
+diskretizasiyaya aparır:
+
+    Face.area()                 SKALYAR sahə   Σ ½‖(b−a)×(c−a)‖
+    Face.oriented_area_vector() VEKTOR   A⃗ =  Σ ½ (b−a)×(c−a)
+    Face.normal()               VAHİD vektor   A⃗/‖A⃗‖
+
+Mərkəz-fan üçbucaqlarının SAHƏ-VEKTOR cəmi dördbucaqlı üz üçün TAM
+OLARAQ `½·(C−A)×(D−B)`-yə bərabərdir (diaqonalların vektor hasili) —
+yəni `oriented_area_vector()` məhz həmin klassik düsturdur və
+`normal()` onun VAHİD vektorudur.
+
+MÜSTƏVİ üzdə `‖A⃗‖ == area()`, deməli `area()·normal() == A⃗` (Kartezian,
+affin, shear, dip — hamısı bura düşür). ƏYRİ (warped) üzdə isə
+`‖A⃗‖ < area()`: `area()` əyri səthin HƏQİQİ sahəsidir, `A⃗` isə onun
+MÜSTƏVİ proyeksiyasıdır. Fərq üzün əyriliyinin birbaşa ölçüsüdür.
+
+HANSINI HARADA İŞLƏTMƏLİ: divergensiya teoremi (`∮ n dS`) və hər hansı
+axın diskretizasiyası (TPFA/MPFA-O sahə vektoru) `A⃗` TƏLƏB EDİR —
+`area()·normal()` YOX. YALNIZ `A⃗` ilə qapalı hüceyrədə `Σ A⃗_f = 0`
+olur; `area()·normal()` ilə əyri hüceyrədə ~1e-2 NİSBİ qalıq yaranır,
+yəni sabit sürət sahəsi SÜNİ mənbə/uducu doğurar. `area()` isə səthin
+FİZİKİ sahəsi lazım olanda (məs. hesabat/diaqnostika) işlədilir.
 """
 
 from __future__ import annotations
@@ -156,21 +175,40 @@ class Face:
             yield c0, self.vertices[i], self.vertices[(i + 1) % n]
 
     def _decompose(self) -> Tuple[float, np.ndarray, np.ndarray]:
-        """`area()`/`centroid()`/`normal()` ARASINDA paylaşılan TƏK
-        üçbucaqlaşdırma keçidi — bax audit §17/§24: "avoid repeated...
-        expensive polygon calculations". Nəticə keşlənir (`vertices`
-        konstruksiyadan sonra DƏYİŞMİR, ona görə keş etibarlıdır)."""
+        """`area()`/`centroid()`/`normal()`/`oriented_area_vector()`
+        ARASINDA paylaşılan TƏK üçbucaqlaşdırma keçidi — bax audit
+        §17/§24: "avoid repeated... expensive polygon calculations".
+        Nəticə keşlənir (`vertices` konstruksiyadan sonra DƏYİŞMİR, ona
+        görə keş etibarlıdır).
+
+        Qaytarır `(total_area, weighted_centroid, area_vector)`:
+
+          · `total_area`  — üçbucaq sahələrinin SKALYAR cəmi (əyri
+            səthin HƏQİQİ sahəsi);
+          · `area_vector` — ORİYENTASİYALI sahə vektoru
+            `A⃗ = Σ ½·(b−a)×(c−a)`.
+
+        `area_vector` MƏHZ bu formada (yarım vektor-hasillərin cəmi)
+        yığılır — `Σ area_tri · n̂_tri` kimi YOX. İkisi riyazi olaraq
+        eynidir, lakin dejenerativə yaxın üçbucaqda `cross/‖cross‖`
+        bölməsi sonra yenidən `‖cross‖`-a vurulur; birbaşa cəm həmin
+        gediş-gəlişi (və onun yuvarlaqlaşdırma itkisini) aradan qaldırır.
+        Oxa-uyğunlaşmış (Kartezian) üzdə `cross`-un tək qeyri-sıfır
+        komponenti var, `cross_i/‖cross‖ = ±1` DƏQİQ alınır — ona görə
+        Kartezian nəticə BİT-BƏRABƏR dəyişməz qalır.
+        """
         if self._decomposition_cache is not None:
             return self._decomposition_cache
         total_area = 0.0
         weighted_centroid = np.zeros(3)
-        weighted_normal = np.zeros(3)
+        area_vector = np.zeros(3)
         for a, b, c in self._triangles():
-            area, centroid, normal = _triangle_area_centroid_normal(a, b, c)
-            total_area += area
-            weighted_centroid += area * centroid
-            weighted_normal += area * normal
-        self._decomposition_cache = (total_area, weighted_centroid, weighted_normal)
+            cross = np.cross(b - a, c - a)
+            total_area += 0.5 * float(np.linalg.norm(cross))
+            weighted_centroid += (0.5 * float(np.linalg.norm(cross))
+                                  ) * ((a + b + c) / 3.0)
+            area_vector += 0.5 * cross
+        self._decomposition_cache = (total_area, weighted_centroid, area_vector)
         return self._decomposition_cache
 
     def area(self) -> float:
@@ -187,14 +225,38 @@ class Face:
             return self.vertices.mean(axis=0)
         return weighted_centroid / total_area
 
+    def oriented_area_vector(self) -> np.ndarray:
+        """ORİYENTASİYALI sahə vektoru `A⃗ = Σ_tri ½·(b−a)×(c−a)` —
+        üzün triangulyasiyasından, TƏPƏ SIRASINI (sağ əl qaydası)
+        QORUYARAQ.
+
+        ÜÇ AYRI ANLAYIŞI QARIŞDIRMA (bax modul docstring-i):
+
+          · `area()`                 — SKALYAR sahə (əyri səthin həqiqi
+                                       sahəsi), `Σ ½‖(b−a)×(c−a)‖`;
+          · `normal()`               — VAHİD normal, `A⃗/‖A⃗‖`;
+          · `oriented_area_vector()` — VEKTOR, `‖A⃗‖ ≤ area()`.
+
+        MÜSTƏVİ üzdə `A⃗ == area()·normal()` (bütün üçbucaq normalları
+        paraleldir, ona görə `‖A⃗‖ == area()`). QEYRİ-MÜSTƏVİ (warped)
+        üzdə isə `‖A⃗‖ < area()` — və divergensiya teoremi (`∮ n dS`)
+        MƏHZ `A⃗`-ni tələb edir, `area()·normal()`-ı YOX. Axın
+        diskretizasiyası (TPFA/MPFA-O) üçün DÜZGÜN həndəsi vektor
+        BUDUR: yalnız `A⃗` ilə qapalı hüceyrədə `Σ A⃗_f = 0` olur, yəni
+        sabit sürət sahəsi süni mənbə/uducu YARATMIR.
+        """
+        _, _, area_vector = self._decompose()
+        return area_vector.copy()      # keş MUTASİYADAN qorunur
+
     def normal(self) -> np.ndarray:
-        """Sahə-çəkili üçbucaq normallarının cəmi, VAHİD vektora
-        normallaşdırılıb. Tam müstəvi üz üçün bu, üçbucaqlaşdırmadan
-        ASILI OLMAYAN, DƏQİQ normaldır; əyri (warped) üz üçün İKİ
-        üçbucağın ORTALAMA normalıdır (bax `is_planar`)."""
-        _, _, weighted_normal = self._decompose()
-        norm = float(np.linalg.norm(weighted_normal))
-        return weighted_normal / norm if norm > 1e-30 else np.zeros(3)
+        """VAHİD normal — oriyentasiyalı sahə vektorunun istiqaməti
+        (`A⃗/‖A⃗‖`, bax `oriented_area_vector`). Tam müstəvi üz üçün bu,
+        üçbucaqlaşdırmadan ASILI OLMAYAN, DƏQİQ normaldır; əyri (warped)
+        üz üçün üçbucaqların SAHƏ-ÇƏKİLİ orta normalıdır (bax
+        `is_planar`)."""
+        _, _, area_vector = self._decompose()
+        norm = float(np.linalg.norm(area_vector))
+        return area_vector / norm if norm > 1e-30 else np.zeros(3)
 
     def is_planar(self, tol: float = 1e-9) -> bool:
         """Bütün üçbucaqların normalları (demək olar) EYNİDİRSƏ üz
@@ -304,15 +366,25 @@ class HexahedralCell:
         return weighted / total_volume
 
     def closure_residual(self) -> np.ndarray:
-        """`Σ(A_f · n_f)` bütün 6 üz üzrə (bax audit §16/Phase 4 §16).
+        """`Σ_f A⃗_f` bütün 6 üz üzrə (bax audit §16/Phase 4 §16).
 
-        QAPALI, qabarıq hüceyrə üçün bu RİYAZİ olaraq (divergensiya
-        teoremi) TƏQRIBƏN SIFIR olmalıdır — maşın-dəqiqliyinə yaxın
-        qalıq gözlənilir. Normal HEÇ VAXT bunu "sıfır etmək" üçün
-        düzəldilmir — bu, YALNIZ diaqnostikadır."""
+        QAPALI hüceyrə üçün bu RİYAZİ olaraq (divergensiya teoremi)
+        SIFIRDIR — maşın-dəqiqliyinə yaxın qalıq gözlənilir. Normal HEÇ
+        VAXT bunu "sıfır etmək" üçün düzəldilmir — bu, YALNIZ
+        diaqnostikadır.
+
+        DÜZƏLİŞ (FINDING-3): əvvəllər `face.area() * face.normal()`
+        cəmlənirdi — SKALYAR əyri-səth sahəsi × VAHİD orta normal. Bu,
+        üzlərin hamısı MÜSTƏVİ olanda (Kartezian, affin, shear, dip)
+        `A⃗` ilə eynidir, lakin ƏYRİ (warped, corner-point) üzdə DEYİL:
+        həmin halda hüceyrə əslində QAPALI olsa da, qalıq ~1e-2 NİSBİ
+        səhv verirdi. İndi HƏQİQİ oriyentasiyalı sahə vektoru
+        (`Face.oriented_area_vector`) cəmlənir və qalıq maşın
+        dəqiqliyindədir.
+        """
         total = np.zeros(3)
         for face in self.faces().values():
-            total += face.area() * face.normal()
+            total += face.oriented_area_vector()
         return total
 
     def validate(self, label: str = "Hüceyrə") -> ValidationResult:

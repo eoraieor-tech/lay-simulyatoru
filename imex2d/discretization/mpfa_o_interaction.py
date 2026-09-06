@@ -66,9 +66,16 @@ class MPFAOSubFace:
 
     Bax `docs/mpfa_o_phase5a.md` §2/§6.
 
-    `area_vector` — `a_σ = A_σ n_σ`, HƏMİŞƏ `F`-in **owner**-indən
-    KƏNARA (işarə konvensiyası §6). Qonşu tərəf üçün `-area_vector`
-    işlədilir (`outward_area_vector`).
+    `area_vector` — sub-üzün ORİYENTASİYALI sahə vektoru
+    `a⃗_σ = Σ ½(b−a)×(c−a)`, HƏMİŞƏ `F`-in **owner**-indən KƏNARA (işarə
+    konvensiyası §6). Qonşu tərəf üçün `-area_vector` işlədilir
+    (`outward_area_vector`).
+
+    `area` (SKALYAR, əyri səthin həqiqi sahəsi) və `area_vector` AYRI
+    kəmiyyətlərdir: müstəvi sub-üzdə `‖a⃗_σ‖ == area`, ƏYRİ (warped)
+    sub-üzdə `‖a⃗_σ‖ < area` (bax `Face.oriented_area_vector`,
+    FINDING-3). MPFA-O axın ifadəsi `a⃗_σ`-ni işlədir — yalnız onunla
+    hüceyrə üzrə `Σ a⃗_σ = 0` (konservativlik) təmin olunur.
     """
     local_index: int                #: bölgə daxilində indeks
     face_index: int                 #: QLOBAL üz indeksi (GeneralGridGeometry)
@@ -77,7 +84,7 @@ class MPFAOSubFace:
     neighbor: Optional[int]         #: `None` = sərhəd sub-üzü
     vertices: np.ndarray            #: (4,3) sub-üz poliqonu (owner-outward sırası)
     area: float
-    area_vector: np.ndarray         #: (3,) = A_σ · n_σ
+    area_vector: np.ndarray         #: (3,) = a⃗_σ (oriyentasiyalı, owner-outward)
     centroid: np.ndarray            #: (3,) sub-üzün öz mərkəzi (diaqnostika)
     node_point: np.ndarray          #: (3,) təpə koordinatı x_v
     face_centroid: np.ndarray       #: (3,) ana üzün mərkəzi x_F
@@ -297,10 +304,27 @@ def _build_sub_face(geometry: GeneralGridGeometry, face: int, node_id: int,
     area = sub.area()
     node_point = face_vertices[corner]
 
+    # FINDING-3: `a_σ` HƏQİQİ oriyentasiyalı sahə vektorudur
+    # (`Σ ½(b−a)×(c−a)`), `area()·normal()` DEYİL. Sub-üz ana üzün
+    # dörddəbiridir və ana üz ƏYRİ (warped) ola bilər — həmin halda
+    # skalyar sahə × vahid normal `Σ a_σ = 0` şərtini POZURDU, yəni
+    # MPFA-O bölgəsinə qeyri-konservativ həndəsə verilirdi. MÜSTƏVİ
+    # (Kartezian/affin) üzdə ikisi BİT-BƏRABƏRDİR — mövcud nəticələr
+    # dəyişmir.
+    area_vector = sub.oriented_area_vector()
+    # İşarə konvensiyası (§6): `a_σ` HƏMİŞƏ ana üzün OWNER-indən
+    # KƏNARA. `_sub_face_polygon` fırlanma istiqamətini qoruyur, ona
+    # görə bu adətən artıq doğrudur — amma təpə sırasına KOR-KORANƏ
+    # güvənmirik (FINDING-3 §3): ana üzün owner-outward vektoru ilə
+    # uzlaşdırılır.
+    parent_area_vector = grid_face.area_vector()
+    if float(np.dot(area_vector, parent_area_vector)) < 0.0:
+        area_vector = -area_vector
+
     return MPFAOSubFace(
         local_index=local_index, face_index=face, node_id=node_id,
         owner=owner, neighbor=grid_face.neighbor,
-        vertices=polygon, area=area, area_vector=area * sub.normal(),
+        vertices=polygon, area=area, area_vector=area_vector,
         centroid=sub.centroid(), node_point=node_point, face_centroid=face_centroid,
         continuity_point=node_point + eta * (face_centroid - node_point))
 

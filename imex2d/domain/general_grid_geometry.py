@@ -64,18 +64,46 @@ class GridFace:
     owner_local_name: str
     neighbor: Optional[int]
     face: Face
+    #: OWNER-OUTWARD düzəliş işarəsi (±1) — bax `GeneralGridGeometry.
+    #: _orient_faces`. Təpə sırası (`HEX_FACE_VERTEX_INDICES`) düzgün
+    #: olanda HƏMİŞƏ `+1`; sarğısı TƏRS olan (inverted) hüceyrədə `-1`.
+    #: Həm `normal_from`, həm `area_vector_from` EYNİ işarəni işlədir —
+    #: ikisi HEÇ VAXT bir-birindən ayrılmır.
+    orientation_sign: float = 1.0
 
     @property
     def is_boundary(self) -> bool:
         return self.neighbor is None
 
+    def normal(self) -> np.ndarray:
+        """OWNER-dan KƏNARA baxan VAHİD normal."""
+        return self.orientation_sign * self.face.normal()
+
+    def area_vector(self) -> np.ndarray:
+        """OWNER-dan KƏNARA baxan ORİYENTASİYALI sahə vektoru
+        `A⃗ = Σ ½(b−a)×(c−a)` (bax `Face.oriented_area_vector`).
+
+        DİQQƏT: bu, `face.area() * normal()` DEYİL — əyri (warped) üzdə
+        ikisi FƏRQLİDİR və axın diskretizasiyası üçün DÜZGÜN olan
+        BUDUR (bax FINDING-3)."""
+        return self.orientation_sign * self.face.oriented_area_vector()
+
     def normal_from(self, cell: int) -> np.ndarray:
         """`cell`-ə görə OUTWARD normal — bax audit §9: "n(j,F) =
         -n(i,F)"."""
+        return self._sign_for(cell) * self.normal()
+
+    def area_vector_from(self, cell: int) -> np.ndarray:
+        """`cell`-ə görə OUTWARD sahə vektoru. Daxili üz üçün
+        `A⃗_owner = −A⃗_neighbor` KONSTRUKSİYA İLƏ təmin olunur — TƏK
+        `Face` obyekti saxlanılır, qonşu yalnız İŞARƏNİ çevirir."""
+        return self._sign_for(cell) * self.area_vector()
+
+    def _sign_for(self, cell: int) -> float:
         if cell == self.owner:
-            return self.face.normal()
+            return 1.0
         if cell == self.neighbor:
-            return -self.face.normal()
+            return -1.0
         raise ValueError(f"Hüceyrə {cell} bu üzə (owner={self.owner}, "
                          f"neighbor={self.neighbor}) aid deyil.")
 
@@ -121,10 +149,15 @@ class GeneralGridGeometry:
         #: `Connections` sırası ilə hər əlaqənin qlobal üz indeksi.
         self._connection_faces: List[int] = []
         self._build_faces()
+        #: Təpə sırasına KOR-KORANƏ güvənmirik (bax `_orient_faces`).
+        self._reoriented_faces: List[int] = []
+        self._orient_faces()
 
         self._face_areas = np.array([gf.face.area() for gf in self.faces])
         self._face_centroids = np.array([gf.face.centroid() for gf in self.faces])
-        self._face_normals = np.array([gf.face.normal() for gf in self.faces])
+        self._face_normals = np.array([gf.normal() for gf in self.faces])
+        #: `(nface, 3)` — OWNER-outward ORİYENTASİYALI sahə vektorları.
+        self._face_area_vectors = np.array([gf.area_vector() for gf in self.faces])
         self._face_owner = np.array([gf.owner for gf in self.faces], dtype=int)
         self._face_neighbor = np.array(
             [(-1 if gf.neighbor is None else gf.neighbor) for gf in self.faces], dtype=int)
@@ -140,6 +173,17 @@ class GeneralGridGeometry:
             for k in range(conn.count):
                 owner, neighbor, axis = (int(conn.cell_a[k]), int(conn.cell_b[k]),
                                          int(conn.axis[k]))
+                # Sərhəd yoxlaması (bax audit §7 "invalid connectivity"):
+                # MƏNFİ indeks Python-un dövri indeksləməsi ilə SƏSSİZ
+                # olaraq SON hüceyrəyə bağlanardı, üstəlik `-1`
+                # `face_neighbor` massivində "sərhəd" sentinelidir — yəni
+                # EYNİ üz həm daxili, həm sərhəd görünərdi. Diapazondan
+                # kənar müsbət indeks isə çılpaq `IndexError` verirdi.
+                for cell in (owner, neighbor):
+                    if not 0 <= cell < self.ncell:
+                        raise ValueError(
+                            f"Connections[{k}]: hüceyrə indeksi {cell} "
+                            f"diapazondan kənardır (0..{self.ncell - 1}).")
                 owner_name = _AXIS_LOCAL_NAMES[axis][1]        # owner-un + üzü
                 neighbor_name = _AXIS_LOCAL_NAMES[axis][0]     # neighbor-un - üzü (EYNİ fiziki üz)
                 self._connection_faces.append(len(self.faces))
@@ -151,6 +195,31 @@ class GeneralGridGeometry:
             for name in HEX_FACE_VERTEX_INDICES:
                 if (cell, name) not in covered:
                     self._add_face(cell, name, None)
+
+    def _orient_faces(self) -> None:
+        """Hər üzün sahə vektorunun OWNER-dan KƏNARA baxdığını YOXLAYIR
+        (FINDING-3 §3: "Normalın orientation-ını sadəcə vertex ordering-ə
+        etibar etmə").
+
+        Meyar YERLİ və yaxşı qoyulmuşdur: `A⃗ · (x_F − c_owner) > 0`.
+        Bu, KONVEKS hüceyrənin hər üzü üçün doğrudur və YALNIZ sarğısı
+        tərs (inverted, mənfi həcmli) hüceyrədə pozulur — belə halda
+        həmin hüceyrənin BÜTÜN 6 üzü birdən çevrilir, yəni nəticə
+        özlüyündə uzlaşmış qalır. İki-hüceyrəli `A⃗ · d_ij > 0` meyarı
+        BURADA çevirmə üçün İŞLƏDİLMİR (güclü qeyri-ortoqonal griddə
+        qanuni şəkildə sıfıra yaxınlaşa bilər) — o, `validate()`-də
+        AYRICA bildirilir.
+
+        Düzgün `HEX_FACE_VERTEX_INDICES` sırası ilə qurulmuş hər hüceyrədə
+        bu metod HEÇ NƏYİ dəyişmir (`orientation_sign` `+1` qalır), ona
+        görə mövcud Kartezian/corner-point davranışı DƏYİŞMİR — sadəcə
+        səssiz yanlış istiqamət artıq mümkün deyil."""
+        for gf in self.faces:
+            outward = float(np.dot(gf.face.oriented_area_vector(),
+                                   gf.face.centroid() - self._cell_centroids[gf.owner]))
+            if outward < 0.0:
+                gf.orientation_sign = -1.0
+                self._reoriented_faces.append(gf.index)
 
     def _add_face(self, owner: int, owner_local_name: str, neighbor: Optional[int]) -> None:
         face_obj = self.cells[owner].faces()[owner_local_name]
@@ -188,6 +257,18 @@ class GeneralGridGeometry:
         """Owner-a görə OUTWARD (bax `GridFace.normal_from`, neighbor
         üçün İŞARƏNİ ÖZÜNÜZ dəyişdirin: `-face_normals[i]`)."""
         return self._face_normals
+
+    @property
+    def face_area_vectors(self) -> np.ndarray:
+        """`(nface, 3)` — OWNER-outward ORİYENTASİYALI sahə vektorları
+        `A⃗_f` (qonşu üçün İŞARƏNİ ÖZÜNÜZ dəyişdirin: `-face_area_
+        vectors[i]`, və ya `GridFace.area_vector_from`).
+
+        Bu, `face_areas[:, None] * face_normals` DEYİL — əyri (warped)
+        üzdə ikisi FƏRQLİDİR (bax `Face.oriented_area_vector`,
+        FINDING-3). Divergensiya/qapanma və axın diskretizasiyası üçün
+        DÜZGÜN kəmiyyət BUDUR."""
+        return self._face_area_vectors
 
     @property
     def face_owner(self) -> np.ndarray:
@@ -260,6 +341,7 @@ class GeneralGridGeometry:
         """Bax audit §15 — hüceyrələr, üzlər, DAXİLİ üzlərin owner/
         neighbor UYĞUNLUĞU (sahə/mərkəz/əks-normal). HEÇ NƏ düzəldilmir."""
         result = ValidationResult()
+        self._validate_topology(result)
         for i, cell in enumerate(self.cells):
             cell_result = cell.validate(label=f"Hüceyrə {i}")
             result.errors.extend(cell_result.errors)
@@ -284,7 +366,60 @@ class GeneralGridGeometry:
             if not np.allclose(gf.face.normal(), -neighbor_face.normal(), atol=1e-6):
                 result.errors.append(
                     f"Üz {gf.index}: owner/neighbor normalları əks istiqamətdə DEYİL.")
+            # FINDING-3 §3: sahə vektoru owner→neighbor istiqamətində
+            # OLMALIDIR. Bu, `_orient_faces`-dəki YERLİ meyardan AYRI,
+            # İKİ-hüceyrəli uzlaşma yoxlamasıdır — burada yalnız
+            # BİLDİRİLİR, ÇEVRİLMİR (güclü qeyri-ortoqonal griddə qalıq
+            # kiçik ola bilər, avtomatik çevirmə həndəsəni GİZLİCƏ
+            # korlayardı).
+            projection = float(np.dot(self._face_area_vectors[gf.index],
+                                      self.d_ij(gf.index)))
+            if projection <= 0.0:
+                result.errors.append(
+                    f"Üz {gf.index}: A⃗ · (c_neighbor − c_owner) = {projection:.3g} "
+                    f"≤ 0 — sahə vektoru owner {gf.owner} → neighbor "
+                    f"{gf.neighbor} istiqamətində DEYİL (tərs-yönümlü və ya "
+                    "həddindən artıq deformasiya olunmuş hüceyrə).")
         return result
+
+    def _validate_topology(self, result: ValidationResult) -> None:
+        """Bax audit §2/§7 — `Connections` bu sinif üçün XARİCİ girişdir və
+        `CartesianGrid.build_connections()`-dən BAŞQA mənbədən də gələ
+        bilər (fault/NNC, importer, test). İki pozuntu HƏNDƏSƏ
+        yoxlamalarından KEÇİB GEDƏ bilirdi, ona görə burada AÇIQ tutulur:
+
+          · `owner == neighbor` (hüceyrənin özünə əlaqəsi);
+          · EYNİ (hüceyrə, yerli üz) slotunun İKİ üzə düşməsi — məsələn
+            eyni hüceyrə cütü `Connections`-da İKİ dəfə verildikdə.
+            Nəticədə hüceyrə 6 yerinə 7 üz alır, `_cell_local_face`
+            üzərinə yazılır və yığılmış `Σ A·n` SIFIR OLMUR (qeyri-
+            konservativ həndəsə) — əvvəllər bu SƏSSİZ keçirdi.
+
+        HEÇ NƏ DÜZƏLDİLMİR — yalnız bildirilir (bax `validate()` müqaviləsi).
+        """
+        for face_index in self._reoriented_faces:
+            gf = self.faces[face_index]
+            result.errors.append(
+                f"Üz {face_index}: təpə sarğısı (winding) hüceyrə {gf.owner}-ə görə "
+                "TƏRSDİR — sahə vektoru/normal owner-outward olsun deyə ÇEVRİLDİ "
+                "(bax `_orient_faces`). Səbəb adətən tərs-yönümlü (mənfi həcmli) "
+                "hüceyrədir.")
+        slot_owner: Dict[Tuple[int, str], int] = {}
+        for gf in self.faces:
+            if gf.neighbor is not None and gf.neighbor == gf.owner:
+                result.errors.append(
+                    f"Üz {gf.index}: owner == neighbor ({gf.owner}) — hüceyrənin "
+                    "ÖZÜNƏ əlaqəsi etibarsızdır.")
+            slots = [(gf.owner, gf.owner_local_name)]
+            if gf.neighbor is not None:
+                slots.append((gf.neighbor, _OPPOSITE_LOCAL_NAME[gf.owner_local_name]))
+            for slot in slots:
+                first = slot_owner.setdefault(slot, gf.index)
+                if first != gf.index:
+                    result.errors.append(
+                        f"Hüceyrə {slot[0]} üçün '{slot[1]}' yerli üzü İKİ DƏFƏ "
+                        f"yaradılıb (üz {first} və üz {gf.index}) — təkrarlanan "
+                        "və ya ziddiyyətli `Connections` girişi.")
 
     # ──────────────────────────────────────────────────────── diaqnostika
     def quality_metrics(self) -> Dict[str, float]:

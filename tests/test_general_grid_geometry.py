@@ -292,3 +292,489 @@ def test_t_general_grid_geometry_does_not_affect_tpfa_regression():
     assert abs(result.ooip - REFERENCE_FIVE_SPOT["ooip"]) < 1.0
     assert result.steps == REFERENCE_FIVE_SPOT["steps"]
     assert result.converged
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FAZA 4 AUDİTİ — əlavə, DAHA SƏRT invariant testləri
+# ═══════════════════════════════════════════════════════════════════════════
+# Yuxarıdakı A–T testləri əsasən Kartezian (və AFFİN çevrilmiş, yəni bütün
+# üzləri MÜSTƏVİ qalan) həndəsəni yoxlayırdı. Aşağıdakılar auditin §2/§3/
+# §4/§6/§7/§10 tələblərini — paylaşılan üzlərin TƏKLİYİ, ORİYENTASİYALI
+# sahə-vektor qapanması, ACTNUM indeks xəritələməsi, HƏQİQƏTƏN əyri
+# (non-planar) grid, pinch-out və ETİBARSIZ `Connections` — ölçür.
+
+from imex2d.domain.grid import Connections                             # noqa: E402
+from imex2d.domain.polyhedral_geometry import HEX_FACE_VERTEX_INDICES  # noqa: E402
+
+_OPP = {"X-": "X+", "X+": "X-", "Y-": "Y+", "Y+": "Y-", "Z-": "Z+", "Z+": "Z-"}
+
+
+def _oriented_area_vector(face) -> np.ndarray:
+    """Üzün HƏQİQİ oriyentasiyalı sahə vektoru `Σ_tri ½·(b−a)×(c−a)`.
+
+    Divergensiya teoremi (`∮ n dS`) məhz BUNU tələb edir. `Face.area() *
+    Face.normal()` isə SKALYAR sahə × VAHİD normaldır — MÜSTƏVİ üzdə
+    ikisi eynidir, ƏYRİ (warped) üzdə isə FƏRQLİDİR (bax
+    `polyhedral_geometry.py` docstring-i, "Normal barədə").
+    """
+    total = np.zeros(3)
+    for a, b, c in face._triangles():
+        total += 0.5 * np.cross(b - a, c - a)
+    return total
+
+
+def _closure_residuals(ggg, oriented: bool = True) -> np.ndarray:
+    """`(ncell, 3)` — hər hüceyrə üçün YIĞILMIŞ `Σ_f (±A_f n_f)`.
+
+    `HexahedralCell.closure_residual()`-dan FƏRQİ: bu, hüceyrənin
+    `GeneralGridGeometry`-də QEYD OLUNMUŞ üzləri üzərindən gedir və
+    qonşudan görünən üz üçün İŞARƏNİ çevirir — yəni TOPOLOGİYANI da
+    yoxlayır, təkcə hüceyrə həndəsəsini yox.
+    """
+    residuals = np.zeros((ggg.ncell, 3))
+    for cell in range(ggg.ncell):
+        for face_index in ggg.cell_faces(cell):
+            gf = ggg.faces[face_index]
+            sign = 1.0 if gf.owner == cell else -1.0
+            contribution = (_oriented_area_vector(gf.face) if oriented
+                            else gf.face.area() * gf.face.normal())
+            residuals[cell] += sign * contribution
+    return residuals
+
+
+def _scenario(name):
+    """Auditin §6-da tələb olunan qeyri-Kartezian ssenariləri —
+    `(vertices, connections, grid)`. Təpə pozulmaları GRID-səviyyəlidir
+    (koordinatın FUNKSİYASI), ona görə PAYLAŞILAN təpələr hər iki
+    hüceyrədə EYNİ qalır — qonşu hüceyrələr arasında boşluq açılmır."""
+    actnum = None
+    if name == "actnum-inactive":
+        actnum = np.ones(3 * 3 * 1, dtype=np.int8)
+        actnum[4] = 0                                   # mərkəzi hüceyrə söndürülüb
+    elif name == "actnum-checkerboard":
+        actnum = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1], dtype=np.int8)
+
+    nx, ny, nz = (3, 3, 1) if actnum is not None else (3, 2, 2)
+    dz = [1.0] * nz if nz > 1 else 1.0
+    if name == "variable-thickness":
+        nx, ny, nz, dz = 3, 1, 3, [1.0, 3.0, 0.5]
+
+    grid = CartesianGrid(nx, ny, nz, actnum)
+    geometry = CellGeometry(grid, dx=2.0, dy=3.0, dz=dz, top_depth=0.0)
+    conn = grid.build_connections()
+    v = hexahedral_vertices_from_cartesian(grid, geometry)
+
+    if name == "dipping":
+        v[..., 2] += 0.5 * v[..., 0]                    # x-ə görə maili laylar
+    elif name == "skewed":
+        v[..., 0] += 0.4 * v[..., 2]                    # z-ə görə sürüşmə (shear)
+    elif name == "non-orthogonal":
+        v[..., 0] += 0.3 * v[..., 1]
+        v[..., 1] += 0.2 * v[..., 2]
+    elif name == "warped":
+        # z pozulması (x,y) üzrə BİLİNEAR DEYİL -> Z± üzləri qeyri-müstəvi
+        # olur; `(1 + 0.35·z)` amili isə hüceyrənin TAVANI ilə DÖŞƏMƏSİNİ
+        # FƏRQLİ əyir — əks halda ikisi eyni səthin sürüşməsi olardı və
+        # `A·n` töhfələri bir-birini SÜNİ şəkildə ixtisar edərdi.
+        # Pozulma yalnız KOORDİNATIN funksiyasıdır, ona görə PAYLAŞILAN
+        # təpə hər iki hüceyrədə EYNİ yerə düşür (boşluq açılmır).
+        v[..., 2] += (0.3 * np.sin(1.7 * v[..., 0]) * np.cos(1.1 * v[..., 1])
+                      * (1.0 + 0.35 * v[..., 2]))
+    elif name == "boundary-only":
+        empty = np.zeros(0, dtype=int)
+        conn = Connections(empty, empty, np.zeros(0, dtype=np.int8))
+    return v, conn, grid
+
+
+_SCENARIOS = ["uniform", "variable-thickness", "dipping", "warped", "skewed",
+              "non-orthogonal", "actnum-inactive", "actnum-checkerboard",
+              "boundary-only"]
+
+
+# ── U: hər (hüceyrə, yerli üz) DƏQİQ bir dəfə — duplikat üz YOXDUR ────────
+@pytest.mark.parametrize("scenario", _SCENARIOS)
+def test_u_every_local_face_slot_is_realised_exactly_once(scenario):
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+
+    seen: dict = {}
+    for gf in ggg.faces:
+        assert gf.owner != gf.neighbor, f"Üz {gf.index}: owner == neighbor"
+        slots = [(gf.owner, gf.owner_local_name)]
+        if gf.neighbor is not None:
+            slots.append((gf.neighbor, _OPP[gf.owner_local_name]))
+        for slot in slots:
+            assert slot not in seen, (
+                f"{slot} İKİ üzdə görünür: {seen.get(slot)} və {gf.index}")
+            seen[slot] = gf.index
+
+    # 6 slot × ncell, heç biri əskik/artıq deyil
+    assert len(seen) == 6 * ggg.ncell
+    # daxili üz sayı DƏQİQ əlaqə sayına bərabərdir (deduplikasiya işləyir)
+    assert int((~ggg.is_boundary).sum()) == conn.count
+    assert len(ggg.faces) == 6 * ggg.ncell - conn.count
+    for cell in range(ggg.ncell):
+        assert len(ggg.cell_faces(cell)) == 6
+
+
+# ── V: A_owner = −A_neighbor (eyni üz, eyni sahə, ƏKS oriyentasiya) ───────
+@pytest.mark.parametrize("scenario", _SCENARIOS)
+def test_v_shared_face_is_identical_from_both_sides(scenario):
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+
+    for gf in ggg.faces:
+        if gf.is_boundary:
+            continue
+        neighbor_face = ggg.cells[gf.neighbor].faces()[_OPP[gf.owner_local_name]]
+        scale = max(gf.face.area(), 1.0)
+        # EYNİ üz: sahə, mərkəz eyni; normal TAM ƏKS
+        assert abs(gf.face.area() - neighbor_face.area()) <= 1e-12 * scale
+        assert np.allclose(gf.face.centroid(), neighbor_face.centroid(), atol=1e-12)
+        assert np.allclose(gf.face.normal(), -neighbor_face.normal(), atol=1e-12)
+        # A_owner = −A_neighbor (ORİYENTASİYALI sahə vektoru)
+        assert np.allclose(_oriented_area_vector(gf.face),
+                           -_oriented_area_vector(neighbor_face), atol=1e-12 * scale)
+        assert np.allclose(gf.normal_from(gf.owner), -gf.normal_from(gf.neighbor))
+
+
+# ── W: YIĞILMIŞ qapanma Σ(A_f n_f) ≈ 0 (oriyentasiyalı sahə vektoru) ──────
+@pytest.mark.parametrize("scenario", _SCENARIOS)
+def test_w_assembled_geometric_conservation_holds(scenario):
+    """Tolerans əsaslandırması: qapanma cəmi ~`max(A_f)` tərtibli ədədlərin
+    fərqidir, ona görə MÜTLƏQ deyil, NİSBİ hədd (max üz sahəsinə görə)
+    götürülür; `1e-12` ikili üzən-nöqtə toplamasının (`~6·eps·A ≈ 1.3e-15·A`)
+    təxminən 700 qat üstündədir — HƏQİQİ topoloji səhvi (nisbət ~1e-2)
+    isə rahat tutur."""
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+
+    assert np.all(ggg.cell_volumes > 0.0)               # V > 0
+    scale = float(ggg.face_areas.max())
+    residual = np.linalg.norm(_closure_residuals(ggg, oriented=True), axis=1)
+    assert residual.max() <= 1e-12 * scale, (
+        f"{scenario}: qapanma pozulub, max |Σ A·n| = {residual.max():.3e}")
+
+
+# ── X: skalyar-sahə konvensiyası ƏYRİ üzdə qapanmanı POZUR (SƏNƏDLİ) ──────
+def test_x_scalar_area_convention_breaks_closure_on_warped_faces():
+    """`area()` və `oriented_area_vector()` AYRI kəmiyyətlərdir (FINDING-3).
+
+    `Face.area()` — üçbucaq sahələrinin SKALYAR cəmi (əyri səthin HƏQİQİ
+    sahəsi), `Face.normal()` — vahid normal. Qeyri-müstəvi üzdə
+    `area()·normal()` ≠ `A⃗`, ona görə ONUNLA qapanma SIFIR VERMİR —
+    HƏNDƏSƏ isə əslində QAPALIDIR (`oriented=True` ölçüsü maşın
+    dəqiqliyindədir).
+
+    Bu test həmin FƏRQİ ölçür və onun ölçülə bilən qaldığını təsdiqləyir;
+    məhz buna görə istehsalat kodu (`closure_residual`,
+    `GridFace.area_vector`, MPFA-O `a⃗_σ`) artıq `area()·normal()` DEYİL,
+    `oriented_area_vector()` işlədir — bax `tests/test_oriented_area_
+    vector.py`. `area()` yalnız səthin FİZİKİ sahəsi lazım olanda qalır.
+    """
+    v, conn, grid = _scenario("warped")
+    ggg = GeneralGridGeometry(v, conn)
+
+    non_planar = [gf for gf in ggg.faces if not gf.face.is_planar(1e-9)]
+    assert non_planar, "ssenari HƏQİQƏTƏN qeyri-müstəvi üz yaratmadı"
+
+    scale = float(ggg.face_areas.max())
+    oriented = np.linalg.norm(_closure_residuals(ggg, oriented=True), axis=1).max()
+    scalar = np.linalg.norm(_closure_residuals(ggg, oriented=False), axis=1).max()
+
+    assert oriented <= 1e-12 * scale        # HƏQİQİ həndəsə QAPALIDIR
+    assert scalar > 1e-6 * scale            # skalyar konvensiya İSƏ deyil
+
+    # müstəvi üzlü (affin) griddə ikisi ÜST-ÜSTƏ DÜŞÜR — Kartezian reqressiyası
+    v2, conn2, _ = _scenario("skewed")
+    affine = GeneralGridGeometry(v2, conn2)
+    assert all(gf.face.is_planar(1e-9) for gf in affine.faces)
+    assert np.linalg.norm(_closure_residuals(affine, oriented=False),
+                          axis=1).max() <= 1e-12 * float(affine.face_areas.max())
+
+
+# ── Y: ACTNUM / indeks xəritələməsi ──────────────────────────────────────
+@pytest.mark.parametrize("scenario", ["actnum-inactive", "actnum-checkerboard"])
+def test_y_actnum_index_mapping_is_global_and_consistent(scenario):
+    """`Connections` QLOBAL indekslərlə işləyir, `GeneralGridGeometry` də
+    QLOBAL `(ncell,8,3)` təpələrlə qurulur — deməli `geometry cell index`
+    ≡ `global cell index`. `active` indeks YALNIZ xətti sistem
+    sərhədindədir (bax `grid.py` docstring-i) və həndəsəyə SIZMAMALIDIR."""
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+    active = grid.active
+
+    assert ggg.ncell == grid.ncell                      # QLOBAL, aktiv DEYİL
+    assert ggg.ncell != grid.n_active                   # ssenaridə həqiqətən qeyri-aktiv var
+
+    faces = ggg.connection_faces()
+    assert faces.shape == (conn.count,)
+    assert len(set(faces.tolist())) == conn.count       # BİYEKSİYA
+    for k, face_index in enumerate(faces):
+        gf = ggg.faces[int(face_index)]
+        assert gf.owner == int(conn.cell_a[k])
+        assert gf.neighbor == int(conn.cell_b[k])
+        assert not gf.is_boundary
+        assert ggg.face_owner[face_index] == gf.owner
+        assert ggg.face_neighbor[face_index] == gf.neighbor
+        # owner→neighbor istiqaməti: n · (c_j − c_i) > 0
+        assert np.dot(ggg.face_normals[face_index], ggg.d_ij(int(face_index))) > 0.0
+        # AKTİV↔QEYRİ-AKTİV daxili üz HEÇ VAXT qurulmamalıdır
+        assert active.is_active(gf.owner) and active.is_active(gf.neighbor)
+
+    # qeyri-aktiv hüceyrə axın topologiyasında İŞTİRAK ETMİR
+    for cell in np.flatnonzero(active.actnum == 0):
+        assert ggg.neighbors(int(cell)) == []
+        assert all(ggg.is_boundary_face(f) for f in ggg.cell_faces(int(cell)))
+    # daxili üzlərin heç biri qeyri-aktiv hüceyrəyə toxunmur
+    interior = ~ggg.is_boundary
+    assert bool(active.is_active(ggg.face_owner[interior]).all())
+    assert bool(active.is_active(ggg.face_neighbor[interior]).all())
+
+
+# ── Z: analitik affin etalon (qutu / maili prizma / sürüşmüş prizma) ──────
+@pytest.mark.parametrize("label,matrix", [
+    ("box", np.diag([2.0, 3.0, 5.0])),
+    ("inclined prism", [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.5, 0.0, 1.0]]),
+    ("sheared prism", [[1.0, 0.3, 0.0], [0.0, 1.0, 0.4], [0.0, 0.0, 1.0]]),
+    ("shear xz", [[1.0, 0.0, 0.7], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+])
+def test_z_affine_reference_matches_closed_form_geometry(label, matrix):
+    """Vahid kubun `S` affin çevrilməsi üçün həndəsə QAPALI ŞƏKİLDƏ
+    məlumdur: `V = |det S|`, `centroid = S·(½,½,½)`, üz sahə-vektoru
+    `A = cof(S)·e = det(S)·S⁻ᵀ·e` (Nanson düsturu). Bu, TƏTBİQDƏN TAM
+    MÜSTƏQİL etalondur."""
+    S = np.asarray(matrix, float)
+    unit = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                     [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], float)
+    cell = HexahedralCell(unit @ S.T)
+
+    assert np.isclose(cell.volume(), abs(np.linalg.det(S)), rtol=0, atol=1e-12)
+    assert np.allclose(cell.centroid(), S @ np.full(3, 0.5), atol=1e-12)
+
+    cofactor = np.linalg.det(S) * np.linalg.inv(S).T
+    unit_normals = {"X+": [1, 0, 0], "X-": [-1, 0, 0], "Y+": [0, 1, 0],
+                    "Y-": [0, -1, 0], "Z+": [0, 0, 1], "Z-": [0, 0, -1]}
+    for name, face in cell.faces().items():
+        expected = cofactor @ np.array(unit_normals[name], float)
+        assert np.isclose(face.area(), np.linalg.norm(expected), atol=1e-12)
+        assert np.allclose(face.normal(), expected / np.linalg.norm(expected),
+                           atol=1e-12)
+        assert np.allclose(_oriented_area_vector(face), expected, atol=1e-12)
+
+
+# ── AA: pinch-out (sıfır qalınlıqlı lay) AÇIQ şəkildə bildirilir ──────────
+def test_aa_pinch_out_layer_is_reported_not_silently_accepted():
+    grid = CartesianGrid(2, 1, 3)
+    geometry = CellGeometry(grid, dx=2.0, dy=3.0, dz=[1.0, 1.0, 1.0], top_depth=0.0)
+    conn = grid.build_connections()
+    v = hexahedral_vertices_from_cartesian(grid, geometry)
+    middle = np.array([grid.ijk(c)[2] == 1 for c in range(grid.ncell)])
+    v[middle, :, 2] = v[middle, 0, 2][:, None]          # orta lay -> sıfır qalınlıq
+
+    ggg = GeneralGridGeometry(v, conn)
+    assert np.any(ggg.cell_volumes <= 0.0)
+    result = ggg.validate()
+    assert not result.ok
+    assert any("həcm" in message for message in result.errors)
+
+
+# ── AB: ETİBARSIZ `Connections` SƏSSİZ qəbul edilmir ──────────────────────
+def _linear_three_cells():
+    grid = CartesianGrid(3, 1, 1)
+    geometry = CellGeometry(grid, dx=2.0, dy=3.0, dz=1.0, top_depth=0.0)
+    return grid, hexahedral_vertices_from_cartesian(grid, geometry)
+
+
+def _conn(a, b, axis=0):
+    return Connections(np.array(a, dtype=int), np.array(b, dtype=int),
+                       np.full(len(a), axis, dtype=np.int8))
+
+
+def test_ab_duplicate_connection_is_reported():
+    """REQRESSİYA: eyni hüceyrə cütü İKİ dəfə verildikdə əvvəllər
+    `validate()` `ok=True` qaytarırdı, HALBUKİ hüceyrə 7 üz alırdı,
+    `_cell_local_face[(0,"X+")]` üzərinə YAZILIRDI və yığılmış
+    `Σ A·n` = ±(bir üzün sahəsi) ≠ 0 olurdu — SƏSSİZ yanlış həndəsə."""
+    grid, v = _linear_three_cells()
+    ggg = GeneralGridGeometry(v, _conn([0, 0], [1, 1]))
+
+    result = ggg.validate()
+    assert not result.ok, "təkrarlanan əlaqə SƏSSİZ qəbul edildi"
+    assert any("İKİ DƏFƏ" in message for message in result.errors), result.errors
+
+
+def test_ab2_self_connection_is_reported():
+    grid, v = _linear_three_cells()
+    result = GeneralGridGeometry(v, _conn([1], [1])).validate()
+    assert not result.ok
+    assert any("owner == neighbor" in message for message in result.errors), result.errors
+
+
+@pytest.mark.parametrize("a,b", [([0], [3]), ([3], [1]), ([0], [-1]), ([-2], [1])])
+def test_ab3_out_of_range_connection_raises_clear_error(a, b):
+    """REQRESSİYA: MƏNFİ indeks Python-un dövri indeksləməsi ilə SƏSSİZ
+    olaraq SON hüceyrəyə bağlanırdı (`_neighbor_lists[-1]`), üstəlik
+    `face_neighbor` massivində `-1` "sərhəd" sentineli ilə qarışırdı —
+    yəni EYNİ üz həm daxili (qonşu siyahısında), həm də sərhəd
+    (`is_boundary`) görünürdü."""
+    grid, v = _linear_three_cells()
+    with pytest.raises(ValueError, match="hüceyrə indeksi"):
+        GeneralGridGeometry(v, _conn(a, b))
+
+
+def test_ab4_inconsistent_axis_is_reported_by_validation():
+    """Qonşu OLMAYAN (və ya yanlış oxda elan olunmuş) əlaqə — həndəsə
+    uyğunsuzluğu `validate()`-də tutulur."""
+    grid, v = _linear_three_cells()
+    assert not GeneralGridGeometry(v, _conn([0], [1], axis=2)).validate().ok
+    assert not GeneralGridGeometry(v, _conn([0], [2], axis=0)).validate().ok
+
+
+# ── AC: yerli↔qlobal üz axtarışı hər iki tərəfdən EYNİ üzü verir ──────────
+@pytest.mark.parametrize("scenario", _SCENARIOS)
+def test_ac_face_index_round_trip_is_symmetric(scenario):
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+    for cell in range(ggg.ncell):
+        for name in HEX_FACE_VERTEX_INDICES:
+            face_index = ggg.face_index(cell, name)
+            gf = ggg.faces[face_index]
+            assert cell in (gf.owner, gf.neighbor)
+            if gf.is_boundary:
+                assert gf.owner == cell and gf.owner_local_name == name
+            else:
+                other = gf.neighbor if gf.owner == cell else gf.owner
+                assert ggg.face_index(other, _OPP[name]) == face_index
+
+
+# ── AD: normal HƏMİŞƏ owner-dan KƏNARA, owner→neighbor istiqamətindədir ───
+@pytest.mark.parametrize("scenario", _SCENARIOS)
+def test_ad_all_normals_point_outward_from_their_owner(scenario):
+    v, conn, grid = _scenario(scenario)
+    ggg = GeneralGridGeometry(v, conn)
+    for gf in ggg.faces:
+        outward = np.dot(gf.face.normal(),
+                         gf.face.centroid() - ggg.cell_centroids[gf.owner])
+        assert outward > 0.0, f"Üz {gf.index} owner {gf.owner}-dan KƏNARA baxmır"
+        if not gf.is_boundary:
+            assert np.dot(ggg.face_normals[gf.index], ggg.d_ij(gf.index)) > 0.0
+            assert np.dot(gf.normal_from(gf.neighbor), -ggg.d_ij(gf.index)) > 0.0
+
+
+# ── AE: vektorlaşdırılmış təpə qurucusu skalyar etalona BƏRABƏRDİR ────────
+def test_ae_vectorised_vertices_match_scalar_reference():
+    grid = CartesianGrid(4, 3, 3)
+    geometry = CellGeometry(grid, dx=7.0, dy=11.0, dz=[3.0, 5.0, 2.0],
+                            top_depth=1234.0)
+    vectorised = hexahedral_vertices_from_cartesian(grid, geometry)
+
+    layer_top = np.concatenate(([0.0], np.cumsum(np.atleast_1d(geometry.dz))))
+    reference = np.zeros((grid.ncell, 8, 3))
+    for c in range(grid.ncell):
+        i, j, k = grid.ijk(c)
+        x0, x1 = i * geometry.dx, (i + 1) * geometry.dx
+        y0, y1 = j * geometry.dy, (j + 1) * geometry.dy
+        z0 = geometry.top_depth + layer_top[k]
+        z1 = geometry.top_depth + layer_top[k + 1]
+        reference[c] = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+                        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]
+    assert np.array_equal(vectorised, reference)
+
+    # üz sırası DETERMİNİSTİKDİR — eyni giriş, BİT-BƏRABƏR eyni çıxış
+    conn = grid.build_connections()
+    first = GeneralGridGeometry(vectorised, conn)
+    second = GeneralGridGeometry(vectorised, conn)
+    assert np.array_equal(first.face_owner, second.face_owner)
+    assert np.array_equal(first.face_neighbor, second.face_neighbor)
+    assert np.array_equal(first.face_areas, second.face_areas)
+    assert np.array_equal(first.face_normals, second.face_normals)
+    assert np.array_equal(first.connection_faces(), second.connection_faces())
+
+
+# ── AF: Kartezian analitik etalon (həcm, mərkəz, sahə, normal) ────────────
+def test_af_cartesian_regression_against_closed_form_values():
+    grid = CartesianGrid(3, 2, 2)
+    geometry = CellGeometry(grid, dx=7.0, dy=11.0, dz=[3.0, 5.0], top_depth=1234.0)
+    conn = grid.build_connections()
+    ggg = GeneralGridGeometry(hexahedral_vertices_from_cartesian(grid, geometry),
+                              conn)
+
+    i, j, k = grid.ijk_array(np.arange(grid.ncell))
+    layer_top = np.concatenate(([0.0], np.cumsum(geometry.dz)))
+    expected_centroids = np.stack([
+        (i + 0.5) * geometry.dx, (j + 0.5) * geometry.dy,
+        geometry.top_depth + 0.5 * (layer_top[k] + layer_top[k + 1])], axis=-1)
+
+    assert np.allclose(ggg.cell_volumes, geometry.volumes(), rtol=0, atol=1e-9)
+    assert np.allclose(ggg.cell_centroids, expected_centroids, atol=1e-9)
+
+    axis_unit = {0: [1.0, 0.0, 0.0], 1: [0.0, 1.0, 0.0], 2: [0.0, 0.0, 1.0]}
+    for k_conn, face_index in enumerate(ggg.connection_faces()):
+        axis = int(conn.axis[k_conn])
+        gf = ggg.faces[int(face_index)]
+        layer = grid.ijk(gf.owner)[2]
+        expected_area = {0: geometry.dy * geometry.dz[layer],
+                         1: geometry.dx * geometry.dz[layer],
+                         2: geometry.dx * geometry.dy}[axis]
+        assert np.isclose(gf.face.area(), expected_area, rtol=0, atol=1e-9)
+        assert np.allclose(gf.face.normal(), axis_unit[axis], atol=1e-12)
+
+
+# ── AG: degenerativ / patoloji hüceyrə həndəsəsi (audit §7) ───────────────
+def _unit_cell_vertices() -> np.ndarray:
+    return np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                     [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], float)
+
+
+def _mutate(kind: str) -> np.ndarray:
+    v = _unit_cell_vertices()
+    if kind == "zero-volume":
+        v[4:] = v[:4]                       # tavan döşəməyə çökür
+    elif kind == "extremely-thin":
+        v[4:, 2] = 1e-14                    # dz -> maşın sıfırı
+    elif kind == "inverted":
+        v[4:, 2] = -1.0                     # mənfi (tərs-yönümlü) həcm
+    elif kind == "all-vertices-identical":
+        v[:] = v[0]
+    elif kind == "nan-vertex":
+        v[0, 0] = np.nan
+    elif kind == "inf-vertex":
+        v[2, 1] = np.inf
+    elif kind == "collapsed-face":
+        v[1] = v[0]
+        v[5] = v[4]                         # Y- üzü XƏTTƏ çökür (sahə = 0)
+    elif kind == "collapsed-edge":
+        v[1] = v[0]                         # YALNIZ bir təpə birləşir -> qanuni paz
+    elif kind == "thin-but-finite":
+        v[4:, 2] = 1e-6
+    else:                                   # pragma: no cover
+        raise AssertionError(kind)
+    return v
+
+
+@pytest.mark.parametrize("kind", ["zero-volume", "extremely-thin", "inverted",
+                                  "all-vertices-identical", "nan-vertex",
+                                  "inf-vertex", "collapsed-face"])
+def test_ag_degenerate_cells_are_rejected_with_an_explicit_error(kind):
+    """Audit §7 — bunların HEÇ BİRİ SƏSSİZ qəbul edilməməlidir."""
+    with np.errstate(invalid="ignore"):
+        result = GeneralGridGeometry(_mutate(kind)[None, ...], None).validate()
+    assert not result.ok, f"{kind} SƏSSİZ qəbul edildi"
+    assert result.errors, f"{kind} üçün AÇIQ xəta mesajı yoxdur"
+
+
+@pytest.mark.parametrize("kind", ["collapsed-edge", "thin-but-finite"])
+def test_ag2_legitimate_degenerate_hexahedra_are_accepted(kind):
+    """SƏNƏDLİ HƏDD: bir təpənin qonşusuna çökməsi (paz/pinch-out kənarı)
+    corner-point gridlərdə QANUNİDİR — həcm/üz sahələri hələ də müsbətdir,
+    ona görə `validate()` bunu xəta SAYMIR. Eyni şəkildə `1e-12`-dən
+    QALIN, amma çox nazik hüceyrə də qəbul edilir: hədd MÜTLƏQDİR
+    (`volume <= 1e-12`), NİSBİ deyil — yəni SAHƏ miqyasında (dx~100 m)
+    "nazik" hüceyrə üçün fiziki filtr DEYİL, yalnız ədədi sıfır
+    mühafizəsidir. Bu test həmin həddi AÇIQ şəkildə sabitləyir."""
+    ggg = GeneralGridGeometry(_mutate(kind)[None, ...], None)
+    assert ggg.cell_volumes[0] > 0.0
+    assert ggg.validate().ok
+    # qanuni olsa da, QAPANMA hələ də qorunur
+    assert np.linalg.norm(_closure_residuals(ggg, oriented=True)[0]) <= 1e-12
