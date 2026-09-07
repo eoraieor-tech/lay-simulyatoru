@@ -100,6 +100,23 @@ def _figure(nrows=1, ncols=1):
     return fig, canvas, fig.subplots(nrows, ncols)
 
 
+def _saturation_map_stats(property_maps) -> Optional[dict]:
+    """`SW` xəritəsinin qısa statistikası — xəritə yoxdursa `None`.
+
+    NaN dəyərlər ATILIR: örtülməmiş və ya qeyri-aktiv hüceyrə bütün
+    statistikanı NaN-a çevirməməlidir (`PropertyMap.stats()` bunu etmir).
+    """
+    prop = (property_maps or {}).get("SW")
+    if prop is None:
+        return None
+    values = np.asarray(prop.values, float)
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return None
+    return {"min": float(finite.min()), "mean": float(finite.mean()),
+            "max": float(finite.max())}
+
+
 class MainWindow(QMainWindow):
 
     def __init__(self, project: Project, service: SimulationService,
@@ -1348,6 +1365,11 @@ class MainWindow(QMainWindow):
         try:
             geology = self._build_geological_model()
             self.project.add_geological_model(geology)
+            # Panel `SW` xəritəsinin mövcudluğunu MODELDƏN ÖYRƏNİR və bu,
+            # `initial_conditions()` OXUNMAZDAN ƏVVƏL baş verməlidir —
+            # əks halda seçim bir addım köhnə vəziyyəti daşıyardı.
+            self.numerical_panel.set_saturation_map(
+                _saturation_map_stats(geology.property_maps))
             model = self.model_builder.build(
                 geological_model=geology,
                 wells=self.well_panel.values(),
@@ -2094,6 +2116,9 @@ class MainWindow(QMainWindow):
             self.numerical_panel.initial_sw.setValue(ic.water_saturation)
             self.numerical_panel.datum_depth.setValue(ic.datum_depth)
             self.numerical_panel.use_equilibration.setChecked(ic.use_equilibration)
+            self.numerical_panel.set_saturation_map(
+                _saturation_map_stats(model.property_maps))
+            self.numerical_panel.use_saturation_map.setChecked(ic.use_saturation_map)
             if ic.oil_water_contact is not None:
                 self.numerical_panel.owc.setValue(ic.oil_water_contact)
 

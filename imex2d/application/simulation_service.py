@@ -24,6 +24,9 @@ from ..simulation.impes_engine import ImpesEngine
 from ..simulation.capillary import BrooksCoreyCapillaryProvider
 from ..simulation.initialization.equilibrium import (
     EquilibriumInitializationProvider)
+from ..simulation.initialization.saturation_map import (
+    SaturationMapInitializationProvider, SaturationMapOverride,
+    water_saturation_from_map)
 from ..simulation.linear_solver import ScipyCgIluSolver
 from ..simulation.pvt.black_oil import BlackOilPVTProvider
 from ..simulation.scal_adapter import CoreyRelativePermeabilityAdapter
@@ -134,12 +137,41 @@ class ModelAwareSimulationService(SimulationService):
         self.pvt_provider = (BlackOilPVTProvider(model.pvt_table)
                              if model.pvt_table is not None else None)
         self.capillary_provider = self._capillary(model)
-        self.initialization_provider = (
-            EquilibriumInitializationProvider(self.pvt_provider,
-                                              self.capillary_provider)
-            if model.initial_conditions.use_equilibration else None)
+        self.initialization_provider = self._initialization(
+            model, self.pvt_provider, self.capillary_provider)
 
         return super().create_engine(model, config)
+
+    @staticmethod
+    def _initialization(model, pvt_provider=None, capillary_provider=None):
+        """İki bayraqdan ilkin şərt provider-i (bax `domain/initial.py`).
+
+            use_equilibration  use_saturation_map  Provider
+            ─────────────────  ──────────────────  ──────────────────────────────
+            False              False               None (mühərrik skalyar işlədir)
+            False              True                SaturationMapInitializationProvider
+            True               False               EquilibriumInitializationProvider
+            True               True                SaturationMapOverride(Equilibrium)
+
+        Xəritə TƏLƏB OLUNUB, amma oxunmursa — SƏSSİZCƏ skalyara qayıtmırıq:
+        istifadəçi bayraq qaldırıbsa, o, xəritə gözləyir; skalyar nəticə
+        onun bilmədiyi başqa bir hesabdır.
+        """
+        ic = model.initial_conditions
+        inner = (EquilibriumInitializationProvider(pvt_provider, capillary_provider)
+                 if ic.use_equilibration else None)
+        if not ic.use_saturation_map:
+            return inner
+
+        try:
+            water_saturation_from_map(model)
+        except ValueError as exc:
+            LOG.error("İlkin Sw xəritəsi oxunmadı: %s", exc)
+            raise ModelValidationError([str(exc)]) from exc
+
+        if inner is None:
+            return SaturationMapInitializationProvider()
+        return SaturationMapOverride(inner)
 
     @staticmethod
     def _relative_permeability(model):

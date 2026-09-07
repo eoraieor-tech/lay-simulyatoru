@@ -186,6 +186,56 @@ class ReservoirModel:
                 "İlkin Sw hərəkətli doyumluluq intervalından kənardadır.",
                 "ilkin şərtlər",
                 f"Swc = {scal.swc:.3f} … 1−Sor = {1.0 - scal.sor:.3f}")
+        self._check_saturation_map(report)
+
+    def _check_saturation_map(self, report: DiagnosticReport) -> None:
+        """`SW` xəritəsi ilə `use_saturation_map` bayrağının uyğunluğu.
+
+        XƏBƏRDARLIQ HALI (xəritə var, bayraq bağlı) məhz A1-də tapılan
+        səhvdir: geologiya cədvəlində Sw doldurulur, xəritə modelə düşür,
+        3D görüntüdə görünür — amma ilkin şərt skalyar qalır və OOIP
+        istifadəçinin məlumatını ƏKS ETDİRMİR. Səhv səssiz idi, indi deyil.
+        """
+        prop = (self.property_maps or {}).get("SW")
+        if not self.initial_conditions.use_saturation_map:
+            if prop is not None:
+                report.warning(
+                    "SW xəritəsi modeldə var, lakin ilkin şərtlərdə istifadə "
+                    "olunmur — OOIP skalyar Sw = "
+                    f"{self.initial_conditions.water_saturation:.3f} ilə "
+                    "hesablanır.", "ilkin şərtlər",
+                    "Ədədi parametrlər panelində «İlkin Sw geologiya "
+                    "xəritəsindən» seçimini işarələyin.")
+            return
+
+        if prop is None:
+            report.error(
+                "İlkin Sw xəritədən istənilir, lakin modeldə SW xəritəsi yoxdur.",
+                "ilkin şərtlər",
+                "Geologiya cədvəlindəki Sw sütununu doldurub interpolyasiya edin.")
+            return
+
+        values = np.asarray(prop.values, dtype=float).ravel()
+        if values.size != self.ncell:
+            report.error(
+                f"SW xəritəsinin ölçüsü grid ilə uyğun gəlmir: "
+                f"{values.size} != {self.ncell}.", "ilkin şərtlər")
+            return
+
+        usable = values[self.active.mask & np.isfinite(values)]
+        if usable.size == 0:
+            report.error("SW xəritəsində istifadə edilə bilən dəyər yoxdur "
+                         "(aktiv hüceyrələrin hamısı NaN).", "ilkin şərtlər")
+            return
+
+        low, high = self.scal_parameters.swc, 1.0 - self.scal_parameters.sor
+        outside = int(((usable < low - 1e-12) | (usable > high + 1e-12)).sum())
+        report.info(
+            f"İlkin Sw SW xəritəsindən: min {usable.min():.3f} · "
+            f"orta {usable.mean():.3f} · maks {usable.max():.3f}.",
+            "ilkin şərtlər",
+            f"SCAL hədlərindən ({low:.3f} … {high:.3f}) kənarda {outside} "
+            "hüceyrə — mühərrik onları kəsəcək.")
 
     def _check_faults(self, report: DiagnosticReport) -> None:
         seen = {}

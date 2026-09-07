@@ -1649,9 +1649,15 @@ class NumericalPanel(QWidget):
         self.engine.currentIndexChanged.connect(self.changed)
         form.addRow("Hesablama sxemi", self.engine)
         self.use_equilibration = QCheckBox("Equilibration (dərinlikdən asılı ilkin şərtlər)")
+        self.use_saturation_map = QCheckBox("İlkin Sw geologiya xəritəsindən (SW)")
+        self.saturation_map_info = QLabel()
+        self.saturation_map_info.setStyleSheet(
+            f"color:{PALETTE.text_dim};font-size:11px")
         self.datum_depth = _spin(2000.0, 0.0, 8000.0, 1, 50.0, "m")
         self.owc = _spin(2050.0, 0.0, 8000.0, 1, 10.0, "m")
         form.addRow(self.use_equilibration)
+        form.addRow(self.use_saturation_map)
+        form.addRow(self.saturation_map_info)
         for label, widget in [("Başlanğıc təzyiq", self.initial_pressure),
                               ("Başlanğıc təzyiq vahidi", self.initial_pressure_unit),
                               ("Başlanğıc Sw", self.initial_sw),
@@ -1665,11 +1671,40 @@ class NumericalPanel(QWidget):
             sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
             sig.connect(self.changed)
         self.use_equilibration.stateChanged.connect(self.changed)
+        self.use_saturation_map.stateChanged.connect(self._saturation_source_changed)
+        self.set_saturation_map(None)
         note = QLabel("Söndürülübsə, bütün hüceyrələrdə eyni təzyiq və Sw "
                       "işlədilir (köhnə davranış).")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         form.addRow(note)
+
+    def _saturation_source_changed(self):
+        """Xəritə rejimində skalyar sahə İŞLƏMİR — söndürülür ki,
+        istifadəçi nəticəyə təsir etməyən qutunu doldurmasın."""
+        self.initial_sw.setEnabled(not self.use_saturation_map.isChecked())
+        self.changed.emit()
+
+    def set_saturation_map(self, stats: Optional[dict]) -> None:
+        """`SW` xəritəsinin mövcudluğunu bildirir (`PropertyMap.stats()`).
+
+        Xəritə yoxdursa seçim SEÇİLƏ BİLMİR — amma ARTIQ seçilibsə
+        (məs. `.imx` faylından belə açılıb) söndürülmür: əks halda
+        istifadəçi qutunu geri qaldıra bilməzdi. Bu halda vəziyyət
+        etiketdə AÇIQ yazılır və model diaqnostikası xəta verir.
+        """
+        available = stats is not None
+        self.use_saturation_map.setEnabled(
+            available or self.use_saturation_map.isChecked())
+        if available:
+            self.saturation_map_info.setText(
+                f"SW: min {stats['min']:.3f} · orta {stats['mean']:.3f} · "
+                f"maks {stats['max']:.3f}")
+            self.use_saturation_map.setToolTip("")
+        else:
+            self.saturation_map_info.setText("SW xəritəsi yoxdur.")
+            self.use_saturation_map.setToolTip(
+                "Əvvəlcə geologiya cədvəlini interpolyasiya edin.")
 
     def initial_conditions(self) -> InitialConditions:
         equilibrate = self.use_equilibration.isChecked()
@@ -1680,7 +1715,8 @@ class NumericalPanel(QWidget):
             datum_pressure=pressure_bar,
             water_saturation=self.initial_sw.value(),
             oil_water_contact=self.owc.value() if equilibrate else None,
-            use_equilibration=equilibrate)
+            use_equilibration=equilibrate,
+            use_saturation_map=self.use_saturation_map.isChecked())
 
     def engine_choice(self) -> str:
         return self.engine.currentData()

@@ -38,6 +38,9 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
+from ..logging_setup import get_logger
+
+LOG = get_logger(__name__)
 
 
 class ParameterKind(Enum):
@@ -122,11 +125,18 @@ def _set_scal(attribute: str):
 
 
 def _reconcile_initial_saturation(model: ReservoirModel) -> None:
+    initial = model.initial_conditions
+    if initial.use_saturation_map:
+        # İlkin doyumluluq `SW` xəritəsindən gəlir — bu skalyarı
+        # tənzimləmək HEÇ NƏYƏ təsir etmir. Onu yenə də dəyişsəydik,
+        # optimallaşdırıcı nəticəyə TƏSİR ETMƏYƏN kəmiyyəti "uyğunlaşdırıb"
+        # mənasız axtarış aparardı (bax `ModelAwareSimulationService`
+        # docstring-i — eyni səhv sinfi).
+        return
     scal = model.scal_parameters
     low, high = scal.swc, 1.0 - scal.sor
     if high <= low:                       # yararsız SCAL — yoxlama tutacaq
         return
-    initial = model.initial_conditions
     initial.water_saturation = float(
         np.clip(initial.water_saturation, low, high))
 
@@ -151,6 +161,13 @@ def standard_parameters(model: ReservoirModel) -> List[ParameterDefinition]:
     Sıralama təsadüfi deyil: praktikada keçiricilik və məsamə həcmi
     ən böyük təsirə malikdir, SCAL isə cəbhənin formasını dəqiqləşdirir.
     """
+    if model.initial_conditions.use_saturation_map:
+        LOG.warning("İlkin Sw `SW` xəritəsindən gəlir — skalyar ilkin "
+                    "doyumluluq uyğunlaşdırmadan KƏNARDA saxlanılır "
+                    "(SOR/SWC dəyişəndə tənzimlənmir), çünki nəticəyə "
+                    "təsir etmir. Doyumluluğu uyğunlaşdırmaq üçün xəritənin "
+                    "özü parametrləşdirilməlidir.")
+
     definitions = [
         ParameterDefinition(
             "PERM_MULT", _scale_horizontal_permeability,

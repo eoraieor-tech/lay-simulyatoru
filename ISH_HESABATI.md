@@ -352,3 +352,74 @@ Hamısı yuxarıda müvafiq mərhələdə ətraflı izah olunub, burada siyahı 
 - [x] 5 — 2-ci bölmənin UI-si (+ `wells_to_dataset` adapteri)
 - [x] 6 — 7-ci bölmə ilə birləşmə + ssenari generatoru
 - [x] 7 — yekun: golden (UYĞUNDUR) + tam test dəsti (624 keçdi) + `run.bat` (qismən, yuxarı bax)
+
+---
+
+# A1 — Geologiya cədvəlindən gələn `SW` xəritəsinin simulyasiyaya qoşulması
+
+## Problem
+
+`SW` xəritəsi geologiya cədvəlindən modelə çatırdı (3D-də görünürdü), amma
+HEÇ BİR mühərrik onu oxumurdu: ilkin doyumluluq həmişə skalyar
+`InitialConditions.water_saturation`-dan qurulurdu, ona görə OOIP və RF
+istifadəçinin verdiyi Sw məlumatını əks etdirmirdi.
+
+## Həll
+
+Mühərriklərə TOXUNULMADI — hər ikisi onsuz da `IInitializationProvider`-ə
+hörmət edir, ona görə dəyişiklik yalnız provider qatında və onu quran
+servisdədir. Yeni bayraq: `InitialConditions.use_saturation_map`
+(defolt `False` → köhnə davranış). Prioritet cədvəli `domain/initial.py`
+docstring-indədir; hər iki bayraq açıq olanda təzyiq hidrostatik qalır,
+doyumluluq isə xəritədən gəlir (ölçmə modelin üstündədir) və keçid
+zonasının əvəz olunduğu jurnala INFO kimi yazılır.
+
+Fayllar: `domain/initial.py`, YENİ
+`simulation/initialization/saturation_map.py` (saf oxuma/yoxlama funksiyası
++ iki provider), `application/simulation_service.py`
+(`_initialization` — yeganə qoşulma nöqtəsi), `domain/reservoir_model.py`
+(diaqnostika), `application/serialization.py` (bayraq `.imx`-ə yazılır),
+`history/parameters.py`, `ui/panels.py`, `ui/main_window.py`.
+
+## Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Xəritə statistikası üçün ayrıca `count_outside_scal_limits`** — kəsmənin
+   ÖZÜ mühərrikdə qalır (`relperm.saturation_limits()`), modul yalnız neçə
+   hüceyrənin kəsiləcəyini sayır. Saf funksiyanın imzası tapşırıqdakı kimi
+   `-> np.ndarray` qaldı, say ayrı funksiyadadır (diaqnostika da onu işlədir).
+2. **§3.8 (history matching):** kodda ayrıca "ilkin Sw" `ParameterDefinition`
+   YOXDUR — skalyar yalnız `_reconcile_initial_saturation` vasitəsilə (SOR/SWC
+   dəyişəndə) toxunulurdu. Ona görə variant (a) funksiya səviyyəsində tətbiq
+   olundu: xəritə rejimində reconcile heç nə etmir, xəbərdarlıq isə
+   `standard_parameters()` qurulanda BİR DƏFƏ yazılır (hər `apply()`-da yox —
+   optimallaşdırma yüzlərlə dəfə çağırır, jurnal dolardı).
+3. **UI-də checkbox söndürülmə qaydası:** xəritə yoxdursa seçim SEÇİLƏ BİLMİR,
+   AMMA artıq seçilibsə (məs. `.imx` faylından belə açılıb) söndürülmür —
+   əks halda istifadəçi qutunu geri qaldıra bilməz və xəta vəziyyətində
+   ilişib qalardı. Səssiz "geri qayıtma" yoxdur: vəziyyət etiketdə yazılır,
+   model diaqnostikası isə ERROR verir.
+4. **Diaqnostikada `SW` xəritəsi var, bayraq bağlı → WARNING** (tapşırıqda
+   tələb olunduğu kimi) — məhz bu səhvin təkrarlanmasının qarşısını alır.
+
+## Yoxlama
+
+- `python -m pytest -q` → **1976 keçdi**, 1 uğursuz:
+  `test_phase_b_production_integration.py::test_differential_phase_a_vs_phase_b_permx_differ_and_why`.
+  Bu, bu işdən ƏVVƏL də uğursuzdur (təmiz `git stash` ağacında yoxlanılıb) —
+  test `_cell_centres(grid, geometry)`-ə `geometry` yerinə `spec` ötürür,
+  A1 ilə əlaqəsi yoxdur.
+- `python tools/golden.py` → **ÜÇÜ DƏ UYĞUNDUR** (RF rəqəmləri dəyişməyib).
+- Yeni testlər: `tests/test_initial_saturation_map.py` (38 test) — saf
+  funksiya, 4 provider halı, hər iki mühərrik, OOIP/RF, kəsmə (+ kəsilən
+  hüceyrə sayının JURNALA düşməsi), diaqnostika, `.imx` round-trip (köhnə
+  açarsız sözlük daxil), history mühafizəsi, UI.
+- §2.1 iddiası yoxlanıldı: `SyntheticGeologicalModelBuilder` yalnız
+  `PORO`/`PERMX`/`PERMY`/`PERMZ` yaradır (`scenarios.py:127-130`), `SW`
+  YARATMIR — yəni golden keysləri bu dəyişiklikdən təsirlənə bilməz.
+- **GUI əl ilə yoxlanmayıb:** bu mühitdə `python app.py` açıla bilmir —
+  offscreen rejimdə VTK `failed to get valid pixel format` verib
+  segmentation fault-la dayanır. Bu, TƏMİZ ağacda da eynidir (yoxlanılıb),
+  yəni mühit məhdudiyyətidir. Panel məntiqi (checkbox → `initial_conditions()`,
+  skalyar sahənin sönməsi, etiket/tooltip) offscreen Qt widget testləri ilə
+  örtülüb, amma real klikləmə axını (cədvələ Sw yaz → interpolyasiya → RF
+  dəyişir) istifadəçi tərəfindən təsdiqlənməlidir.
