@@ -35,12 +35,13 @@ xəttinin İCRA YOLUNDAN ÇIXARILIB.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from ..domain.corner_point_geometry import CornerPointGeometry
 from ..domain.data_availability import (DataStatus, ModelDataAvailability,
                                         PropertyAvailability, format_layers)
 from ..domain.diagnostics import DiagnosticReport
@@ -48,6 +49,8 @@ from ..domain.facies_field import FaciesField
 from ..domain.geological_model import GeologicalModel
 from ..domain.geometry import CellGeometry, depth_to_k, xy_to_ij
 from ..domain.grid import CartesianGrid
+from ..domain.structural_grid import (LAYERING_RULES, structural_nodes,
+                                      structure_statistics, validate_structure)
 from ..domain.properties import (CategoricalUncertainty, PropertyMap, PropertyProvenance,
                                  PropertyUncertainty)
 from ..domain.structure import RegionSet
@@ -299,9 +302,33 @@ DEFAULT_RULES: Dict[str, PropertyRule] = {
 }
 
 
+#: STRUKTUR SƏTHLƏRİ (A2) — `geology_adapter.AREAL_TARGETS` ilə EYNİ
+#: cütlük, amma bu qatın dilində: bunlar petrofiziki xassə DEYİL, grid
+#: HƏNDƏSƏSİNİN girişidir. Ona görə `structure_from_wells=True` olanda
+#: qalan xassələrdən ƏVVƏL və YALNIZ BİR DƏFƏ (areal) hesablanırlar.
+STRUCTURAL_SURFACES = ("TOP", "BOTTOM")
+
+#: `GeologicalGridSpec.thickness_source` üçün icazəli dəyərlər.
+THICKNESS_SOURCES = ("wells", "constant")
+
+#: `GeologicalGridSpec.on_zero_thickness` üçün icazəli siyasətlər.
+ZERO_THICKNESS_POLICIES = ("error", "clamp", "deactivate")
+
+
 @dataclass
 class GeologicalGridSpec:
-    """Interpolyasiyanın aparılacağı grid."""
+    """Interpolyasiyanın aparılacağı grid.
+
+    STRUKTUR REJİMİ (A2, TAM opt-in). `structure_from_wells=False`
+    (DEFOLT) olanda bu sinif və `build()` HƏRFİ OLARAQ əvvəlki kimi
+    işləyir: həndəsə `top_depth + i·dip_x + j·dip_y` düz maili
+    müstəvidir, qalınlıq `dz`-dən gəlir. `True` olanda isə həndəsə
+    QUYULARDAN interpolyasiya edilmiş TOP/BOTTOM səthlərindən qurulur
+    (bax `domain/structural_grid.py`) və `top_depth`/`dip_x`/`dip_y`
+    (`thickness_source="wells"` olanda həm də `dz`) ARTIQ İŞTİRAK
+    ETMİR — bu, `InterpolationReport`-a AÇIQ sətir kimi yazılır, çünki
+    məhz "verilən parametr səssizcə işləmir" nöqsanı bu işin səbəbidir.
+    """
     nx: int = 41
     ny: int = 41
     nz: int = 1
@@ -311,6 +338,22 @@ class GeologicalGridSpec:
     top_depth: float = 2000.0
     dip_x: float = 0.0
     dip_y: float = 0.0
+
+    #: `False` (DEFOLT) → hazırkı düz müstəvi, HEÇ NƏ dəyişmir.
+    structure_from_wells: bool = False
+    #: `"wells"` — qalınlıq TOP+BOTTOM fərqindən; `"constant"` — tavan
+    #: quyulardan (əyri səth), qalınlıq isə `Σ dz` (praktikada çox vaxt
+    #: yalnız lay tavanı məlum olur).
+    thickness_source: str = "wells"
+    #: `nz` təbəqəyə bölmə qaydası — bax `structural_grid.LAYERING_RULES`.
+    layering: str = "proportional"
+    #: Sıfır/mənfi/həddindən nazik qalınlıq tapılanda NƏ EDİLSİN:
+    #: `"error"` (DEFOLT, `report.blocking`), `"clamp"` (BOTTOM = TOP +
+    #: `min_thickness`, RƏQƏMLƏ hesabatda), `"deactivate"` (HƏLƏ YOX —
+    #: açıq `NotImplementedError`).
+    on_zero_thickness: str = "error"
+    #: Ədədi cəhətdən həll edilə bilən ən kiçik lay qalınlığı, m.
+    min_thickness: float = 0.1
 
 
 @dataclass
@@ -494,6 +537,38 @@ class WellBasedGeologicalModelBuilder:
                                is PropertyType.CATEGORICAL]
         continuous_sources = [s for s in available if s not in categorical_sources]
 
+        # ══ MƏRHƏLƏ 2 (A2): YALNIZ AREAL hədəflər (TOP/BOTTOM) ══════════
+        # Struktur rejimində həndəsə TOP/BOTTOM-dan ASILIDIR, ona görə
+        # onlar QALAN xassələrdən ƏVVƏL, hələ MÜVƏQQƏTİ (düz qutu)
+        # həndəsə ilə hesablanır. Bu təhlükəsizdir, çünki `_interpolate_
+        # areal` HƏM hədəfləri (`_cell_centres`: `cell_centroid()
+        # [:nx·ny, 0:2]`, yalnız X/Y), HƏM DƏ nümunə/hədəf Z-sini SIFIR
+        # götürür — yəni müvəqqəti həndəsənin HEÇ BİR ölçüsü nəticəyə
+        # keçmir (bax orada, dairəvi asılılığın qırılması).
+        #
+        # Sıra KRİTİKDİR: qalan xassələr (PORO/PERMX/…/SW) 3D Kriging/SGS
+        # ilə hüceyrə mərkəzinin Z-ini işlədir, ona görə onlar YALNIZ
+        # HƏQİQİ həndəsə qurulduqdan SONRA hesablanmalıdır.
+        structural_sources: List[str] = []
+        structural_blocking: List[str] = []
+        if spec.structure_from_wells:
+            structural_sources = [s for s in continuous_sources
+                                  if s in STRUCTURAL_SURFACES]
+            surfaces = self._interpolate_areal(
+                dataset, structural_sources, targets, grid, geometry, model, report,
+                calibrated_strategies)
+            # ══ MƏRHƏLƏ 3-4: HƏQİQİ həndəsə → modelə mənimsətmə ═════════
+            geometry, structural_blocking = self._build_structural_geometry(
+                grid, spec, surfaces, report)
+            model.geometry = geometry
+            # Bloklayan struktur problemi modelin ÖZÜNDƏ qalır ki,
+            # `ReservoirModelBuilder`-in mövcud validasiya qapısı onu
+            # görsün — model qaytarılır, amma simulyasiyaya BURAXILMIR.
+            model.structural_issues = list(structural_blocking)
+            targets = self._cell_centres(grid, geometry)
+            continuous_sources = [s for s in continuous_sources
+                                  if s not in structural_sources]
+
         for source in categorical_sources:
             config = (facies_config or {}).get(source)
             if config is not None and config.deterministic:
@@ -536,9 +611,19 @@ class WellBasedGeologicalModelBuilder:
 
         self._fill_missing_permeability(model, grid, ky_over_kx, kv_over_kh, report)
         issues = model.validate()
+        # STRUKTUR rejimi (`on_zero_thickness="error"`): dejenerativ səth/
+        # həndəsə ARTIQ `report.blocking`-ə AÇIQ mesajla yazılıb və
+        # `model.structural_issues`-də saxlanılır — ona görə həmin
+        # problemlər BURADA DƏRHAL xəta ATMIR (model istifadəçiyə
+        # göstərilsin deyə qaytarılır). Simulyasiya qapısı yenə qapalıdır:
+        # `ReservoirModelBuilder` elə `model.validate()`-i çağırır.
+        tolerated = set(structural_blocking) | set(model.structural_issues)
+        if tolerated:
+            tolerated |= set(geometry.validate())
         if layer_config is None:
-            if issues:
-                raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(issues))
+            other = [issue for issue in issues if issue not in tolerated]
+            if other:
+                raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(other))
             return model, report
 
         # LAY-MƏLUMATLI rejim: MISSING lay AÇIQ, GÖZLƏNİLƏN nəticədir
@@ -548,7 +633,8 @@ class WellBasedGeologicalModelBuilder:
         # QALAN hər cür problem (fiziki cəhətdən qeyri-mümkün dəyər,
         # dejenerativ həndəsə) ƏVVƏLKİ kimi DƏRHAL xətadır.
         completeness = set(model.completeness_issues())
-        other = [issue for issue in issues if issue not in completeness]
+        other = [issue for issue in issues
+                 if issue not in completeness and issue not in tolerated]
         if other:
             raise ValueError("Qurulan geoloji model natamamdır: " + "; ".join(other))
         for message in sorted(completeness):
@@ -577,6 +663,208 @@ class WellBasedGeologicalModelBuilder:
         j = np.arange(grid.ny)
         jj, ii = np.meshgrid(j, i, indexing="ij")
         return spec.top_depth + ii * spec.dip_x + jj * spec.dip_y
+
+    # ═══════════════════ A2 — QUYULARDAN GƏLƏN STRUKTUR
+    def _interpolate_areal(self, dataset: WellDataset, sources: Sequence[str],
+                           targets: np.ndarray, grid: CartesianGrid,
+                           geometry: CellGeometry, model: GeologicalModel,
+                           report: "InterpolationReport",
+                           calibrated_strategies: Optional[Dict[str, PropertyStrategy]] = None
+                           ) -> Dict[str, np.ndarray]:
+        """AREAL hədəflərin (TOP/BOTTOM) TƏK səth kimi interpolyasiyası.
+
+        `build()`-un MƏRHƏLƏ 2-sidir (bax orada): həndəsə hələ MÜVƏQQƏTİ
+        (düz qutu) olduğu üçün bu addım YALNIZ `(x, y)`-dən asılı ola
+        bilər — `targets` məhz belədir (`_cell_centres`: areal X/Y).
+
+        Nəticə `(nx·ny,)` səthdir və `(ncell,)`-ə TƏKRARLANARAQ
+        `property_maps`-a yazılır: struktur səthi lay indeksindən ASILI
+        DEYİL (quyu cədvəlində hər quyu üçün TƏK lay üstü/altı dərinliyi
+        var), ona görə hər K eyni səthi daşıyır.
+
+        Bu səthlər həndəsə qurulduqdan SONRA BİR DAHA interpolyasiya
+        EDİLMİR — əks halda "həndəsə səthdən, səth həndəsədən" dairəvi
+        asılılığı yaranardı.
+
+        İNTERPOLYASİYA BURADA QƏSDƏN 2D-DİR: həm nümunələrin, həm
+        hədəflərin Z-si SIFIR verilir. Səbəb dairəvi asılılığı QIRMAQDIR
+        — Z müvəqqəti (düz qutu) həndəsədən gəlsəydi, `spec.top_depth`/
+        `dip_x`/`dip_y`/`dz` şaquli məsafə vasitəsilə kriginq çəkilərinə,
+        oradan da QURULAN HƏNDƏSƏYƏ təsir edərdi, yəni "bu parametrlər
+        struktur rejimində iştirak etmir" iddiası YALAN olardı (bax
+        `tests/test_structural_grid.py::test_structural_geometry_ignores_
+        top_depth_and_dip_completely`). Struktur səthi onsuz da
+        `(x, y) → dərinlik` funksiyasıdır: onun öz Z-si NƏTİCƏDİR,
+        giriş deyil.
+        """
+        # (nz, ny, nx) sıfır — `_estimate_layer` ilə eyni imza, amma
+        # şaquli məsafə HƏMİŞƏ sıfırdır, yəni kriginq təmiz arealdır.
+        depths_grid = np.zeros(grid.shape)
+        layer_mean_depth = np.zeros(grid.nz)
+        overrides = self._kriging_overrides()
+        surfaces: Dict[str, np.ndarray] = {}
+
+        for source in sources:
+            samples = dataset.samples_for(source, None)
+            if not samples:
+                raise ValueError(f"'{source}' üçün areal nöqtə tapılmadı.")
+            wells = {sample.well for sample in samples}
+            if len(wells) == 1:
+                report.warn(
+                    f"'{source}': yalnız 1 quyuda ({sorted(wells)[0]}) dəyər var — "
+                    "interpolyasiya edilən səth SABİTDİR (üfüqi müstəvi). Struktur "
+                    "relyefi yoxdur, çünki onu təyin edəcək ikinci nöqtə yoxdur.")
+            elif len(wells) < 3:
+                report.warn(
+                    f"'{source}': yalnız {len(wells)} quyuda dəyər var — üç nöqtədən "
+                    "az olanda variogram qiymətləndirilə bilmir və Kriging səthi "
+                    "DEGENERASİYA edir (praktikada xətti/sabit çıxır). Struktur "
+                    "rejiminin mənalı olması üçün ən azı 3 quyuda lay üstü/altı "
+                    "dərinliyi lazımdır.")
+
+            strategy = ((calibrated_strategies or {}).get(source)
+                        or self._resolve_property_strategy(source))
+            # `_estimate_layer` ölçülmüş `sample.depth`-ə üstünlük verir
+            # (bax `_sample_depth`) — areal səthdə bu, süni şaquli
+            # məsafə yaradardı, ona görə nümunələr DƏRİNLİKSİZ nüsxə
+            # kimi ötürülür. Dəyərlərin özü toxunulmur.
+            flattened = [replace(sample, depth=None, layer=None)
+                         for sample in samples]
+            estimate = self._estimate_layer(flattened, source, 0, strategy, overrides,
+                                            targets, depths_grid, layer_mean_depth)
+            for message in estimate.warnings:
+                report.warn(f"'{source}' (areal struktur səthi): {message}")
+
+            surface = np.asarray(estimate.estimate, float).ravel()
+            surfaces[source] = surface
+            rule = self.rules.get(source, PropertyRule(source))
+            values = np.tile(surface, grid.nz)
+            model.add_property(PropertyMap.from_array(rule.target, values, grid.ncell))
+            report.add(rule.target, source, rule.log_transform, values)
+        return surfaces
+
+    def _build_structural_geometry(self, grid: CartesianGrid, spec: GeologicalGridSpec,
+                                   surfaces: Dict[str, np.ndarray],
+                                   report: "InterpolationReport"
+                                   ) -> Tuple[CellGeometry, List[str]]:
+        """İnterpolyasiya edilmiş TOP/BOTTOM səthlərindən HƏQİQİ həndəsə.
+
+        `(geometry, blocking)` qaytarır: `blocking` boş deyilsə həndəsə
+        istifadəçinin öz meyarlarına görə YARARSIZDIR — model yenə də
+        qaytarılır (3D-də görünsün deyə), amma `GeologicalModel.
+        structural_issues` vasitəsilə `ReservoirModelBuilder` onu QƏBUL
+        ETMİR.
+
+        İSTİFADƏ OLUNMAYAN PARAMETRLƏR AÇIQ BİLDİRİLİR: bu rejimdə
+        `spec.top_depth`/`dip_x`/`dip_y` (və `thickness_source="wells"`
+        olanda `spec.dz`) həndəsəyə HEÇ CÜR təsir etmir. Məhz belə
+        "parametr səssizcə işləmir" halı bu işin (A2) səbəbi olduğu üçün
+        burada susmaq QADAĞANDIR.
+        """
+        if spec.thickness_source not in THICKNESS_SOURCES:
+            raise ValueError(
+                f"thickness_source '{spec.thickness_source}' tanınmır — "
+                f"dəstəklənən: {', '.join(THICKNESS_SOURCES)}.")
+        if spec.layering not in LAYERING_RULES:
+            raise ValueError(
+                f"layering '{spec.layering}' tanınmır — dəstəklənən: "
+                f"{', '.join(LAYERING_RULES)}.")
+        if spec.on_zero_thickness not in ZERO_THICKNESS_POLICIES:
+            raise ValueError(
+                f"on_zero_thickness '{spec.on_zero_thickness}' tanınmır — "
+                f"dəstəklənən: {', '.join(ZERO_THICKNESS_POLICIES)}.")
+        if spec.on_zero_thickness == "deactivate":
+            raise NotImplementedError(
+                "on_zero_thickness='deactivate' HƏLƏ İMPLEMENTASİYA EDİLMƏYİB: "
+                "sıfır qalınlıqlı sütunu deaktiv etmək üçün geoloji modeldə "
+                "ACTNUM qurulmalıdır, hazırda isə quyu→geologiya yolu ACTNUM "
+                "YARATMIR (`CartesianGrid.actnum` yalnız GRDECL idxalında dolur). "
+                "Bunu səssizcə 'clamp' kimi işlətmək YANLIŞ həcm verərdi, ona görə "
+                "açıq imtina edilir — 'error' və ya 'clamp' seçin.")
+
+        top = surfaces.get("TOP")
+        if top is None:
+            raise ValueError(
+                "structure_from_wells=True seçilib, amma quyu cədvəlində 'lay üstü' "
+                "(TOP) dərinliyi YOXDUR — struktur səthi qurula bilməz. Ya sütunu "
+                "doldurun, ya da struktur rejimini söndürün.")
+        top = np.asarray(top, float).ravel()
+
+        if spec.thickness_source == "wells":
+            bottom = surfaces.get("BOTTOM")
+            if bottom is None:
+                raise ValueError(
+                    "thickness_source='wells' seçilib, amma quyu cədvəlində 'lay altı' "
+                    "(BOTTOM) dərinliyi YOXDUR. Ya sütunu doldurun, ya da "
+                    "thickness_source='constant' seçin (tavan quyulardan, qalınlıq "
+                    "DZ-dən).")
+            bottom = np.asarray(bottom, float).ravel()
+            report.warn(
+                "STRUKTUR REJİMİ: həndəsə quyuların lay üstü/altı dərinliklərindən "
+                "qurulur — `tavan dərinliyi`, `maillik X`, `maillik Y` və `DZ` "
+                "parametrləri BU MODELDƏ İSTİFADƏ OLUNMUR.")
+        else:
+            thickness = np.asarray(spec.dz, float)
+            total = (float(thickness) * grid.nz if thickness.ndim == 0
+                     else float(thickness.sum()))
+            bottom = top + total
+            report.warn(
+                f"STRUKTUR REJİMİ (thickness_source='constant'): lay TAVANI "
+                f"quyulardan gəlir, qalınlıq isə verilmiş DZ cəmindən "
+                f"({total:g} m) — `tavan dərinliyi`, `maillik X` və `maillik Y` "
+                "parametrləri BU MODELDƏ İSTİFADƏ OLUNMUR.")
+
+        blocking: List[str] = []
+        issues = validate_structure(top, bottom, spec.min_thickness, grid)
+        if issues:
+            if spec.on_zero_thickness == "clamp":
+                # AÇIQ, RƏQƏMLƏ göstərilən düzəliş — "səssiz təmizləmə"
+                # DEYİL: neçə sütunun dəyişdiyi hesabata yazılır.
+                finite = np.isfinite(top) & np.isfinite(bottom)
+                repaired = finite & (bottom - top < spec.min_thickness)
+                count = int(repaired.sum())
+                bottom = np.where(repaired, top + spec.min_thickness, bottom)
+                report.warn(
+                    f"on_zero_thickness='clamp': {count} sütunda lay altı "
+                    f"lay üstü + {spec.min_thickness:g} m səviyyəsinə QALDIRILDI "
+                    f"(ümumi {top.size} sütundan). Aşkar edilən problemlər: "
+                    + " | ".join(issues))
+                remaining = validate_structure(top, bottom, spec.min_thickness, grid)
+                if remaining:
+                    # NaN 'clamp' ilə düzəlmir — o, YOX olan məlumatdır,
+                    # nazik lay deyil.
+                    blocking.extend(
+                        f"Struktur səthi yararsızdır (clamp ilə düzəlmədi): {message}"
+                        for message in remaining)
+            else:
+                blocking.extend(f"Struktur səthi yararsızdır: {message}"
+                                for message in issues)
+
+        nodes = structural_nodes(grid, top, bottom, spec.dx, spec.dy,
+                                 layering=spec.layering)
+        geometry = CornerPointGeometry.from_nodes(grid, nodes)
+
+        stats = structure_statistics(top, bottom, grid)
+        report.warn(
+            f"Struktur statistikası: qalınlıq {stats['min_thickness']:.2f} / "
+            f"{stats['mean_thickness']:.2f} / {stats['max_thickness']:.2f} m "
+            f"(min/orta/maks), lay üstü {stats['min_top']:.1f} – "
+            f"{stats['max_top']:.1f} m (relyef {stats['relief']:.1f} m), "
+            f"ümumi bulk həcm {float(np.nansum(geometry.volumes())) / 1e6:.3f} mln m³.")
+
+        for message in geometry.validate():
+            blocking.append(f"Qurulan həndəsə yararsızdır: {message}")
+        metrics = geometry.quality_metrics(grid.build_connections())
+        report.warn(
+            f"Həndəsə keyfiyyəti: hüceyrə həcmi {metrics['min_cell_volume']:.1f} – "
+            f"{metrics['max_cell_volume']:.1f} m³, qeyri-ortoqonallıq "
+            f"{metrics['mean_non_orthogonality_angle_deg']:.2f}° (orta) / "
+            f"{metrics['max_non_orthogonality_angle_deg']:.2f}° (maks) — "
+            "TPFA üçün 0° idealdır.")
+
+        for message in blocking:
+            report.block(message)
+        return geometry, blocking
 
     @staticmethod
     def _gather_categorical_hard_data(dataset: WellDataset, source: str, grid: CartesianGrid,

@@ -423,3 +423,102 @@ Fayllar: `domain/initial.py`, YENİ
   skalyar sahənin sönməsi, etiket/tooltip) offscreen Qt widget testləri ilə
   örtülüb, amma real klikləmə axını (cədvələ Sw yaz → interpolyasiya → RF
   dəyişir) istifadəçi tərəfindən təsdiqlənməlidir.
+
+
+---
+
+# A2 — Quyulardan gələn lay üstü/altı (TOP/BOTTOM) səthlərinin grid həndəsəsinə qoşulması
+
+## Problem
+
+Geologiya cədvəlindəki «lay üstü»/«lay altı» dərinlikləri toplanır
+(`geology_adapter.AREAL_TARGETS`), interpolyasiya olunur
+(`property_maps["TOP"]/["BOTTOM"]`), hesabatda və 3D-də göstərilirdi — amma
+GRID HƏNDƏSƏSİ onlardan QURULMURDU. `_surface()` yalnız `top_depth +
+i·dip_x + j·dip_y` düz maili müstəvi verirdi, `CellGeometry.dz` isə LAY
+ÜZRƏ (`(nz,)`) olduğu üçün sütundan sütuna dəyişən qalınlığı ifadə edə
+bilmirdi. Nəticədə istifadəçinin doldurduğu struktur dərinlikləri məsamə
+həcminə, cazibəyə, equilibration-a və perforasiya→K uyğunlaşdırmasına
+SƏSSİZCƏ heç cür təsir etmirdi.
+
+## Həll
+
+Yeni həndəsə motoru YAZILMADI — `CornerPointGeometry` (770 sətir, hazır və
+test edilmiş) İSTİFADƏ olundu. Boşluq yalnız konstruksiyada idi: yeni saf
+modul `domain/structural_grid.py` interpolyasiya edilmiş TOP/BOTTOM
+səthlərindən `(ncell, 8, 3)` təpə massivi qurur (`structural_nodes`,
+`proportional` bölgü) və onu yoxlayır (`validate_structure`,
+`structure_statistics`); qalanını `CornerPointGeometry.from_nodes()` edir.
+Serializasiya (`nodes`) və VTK CPG dəstəyi onsuz da hazır idi.
+
+`GeologicalGridSpec`-ə beş sahə: `structure_from_wells` (defolt `False` →
+HEÇ NƏ dəyişmir), `thickness_source` (`"wells"`/`"constant"`), `layering`
+(`"proportional"`), `on_zero_thickness` (`"error"`/`"clamp"`/`"deactivate"`),
+`min_thickness`. `build()` İKİ MƏRHƏLƏLİ oldu: müvəqqəti düz həndəsə →
+YALNIZ areal TOP/BOTTOM (`_interpolate_areal`) → həqiqi həndəsə
+(`_build_structural_geometry`) → `model.geometry` → QALAN xassələr (artıq
+düzgün dərinliklərlə).
+
+Fayllar: YENİ `domain/structural_grid.py`, `application/geology_service.py`,
+`domain/geological_model.py` (`structural_issues`),
+`application/serialization.py` (həmin siyahı `.imx`-ə yazılır),
+`ui/panels.py` (checkbox + qalınlıq mənbəyi comboxu + söndürmə),
+`ui/main_window.py` (spec-ə ötürmə + quyu i/j/K yenidən hesablanması),
+YENİ `tests/test_structural_grid.py` (45 test).
+
+## Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Areal interpolyasiya QƏSDƏN 2D-dir** (nümunə və hədəf Z-si sıfır).
+   Tapşırıq §3.2 areal addımın "yalnız (x, y) işlətdiyini" fərz edirdi,
+   amma `_estimate_layer` HƏMİŞƏ 3D-dir (Z sütunu əlavə edir) — yəni Z
+   müvəqqəti həndəsədən gəlsəydi, `top_depth`/`dip_x`/`dip_y`/`dz` şaquli
+   məsafə vasitəsilə kriginq çəkilərinə, oradan da QURULAN HƏNDƏSƏYƏ təsir
+   edərdi və "bu parametrlər iştirak etmir" iddiası YALAN olardı. Bunu test
+   aşkarladı (`test_structural_geometry_ignores_top_depth_and_dip_completely`
+   əvvəlcə UĞURSUZ oldu), sonra düzəldildi. Nümunələr həm də `depth=None`
+   nüsxə kimi ötürülür — CSV-dən gələn `depth` sütunu süni şaquli məsafə
+   yaratmasın.
+2. **`GeologicalModel.structural_issues`** — `on_zero_thickness="error"`
+   halında model QAYTARILMALI (istifadəçi görsün), amma
+   `ReservoirModelBuilder` QƏBUL ETMƏMƏLİDİR. Mövcud yeganə qapı
+   `GeologicalModel.validate()`-dir; həndəsə validasiyası isə MÜSBƏT-amma-
+   nazik sütunu tutmur (`min_thickness` istifadəçinin öz meyarıdır). Ona
+   görə `completeness_issues()` ilə EYNİ məntiqli açıq sahə əlavə olundu və
+   `.imx`-ə yazılır — əks halda yararsız layihəni saxlayıb açmaq qapını
+   SÜKUTLA açardı (köhnə fayllarda açar yoxdur → boş siyahı).
+3. **UI paneli `GridPanel` yox, `GridGeometryPanel` adlanır** (tapşırıqdakı
+   ad köhnədir) — dəyişiklik həmin sinfə edildi. Yeni açarlar `values()`-ə
+   ƏLAVƏ EDİLMƏDİ, ayrıca `structure_values()`-dədir: `values()` sintetik
+   qurucuya `**` ilə birbaşa açılır (`geology_builder.build(**grid_values)`)
+   və ona bu açarlar naməlumdur.
+4. **`thickness_source="constant"` halında DZ söndürülmür** — orada
+   qalınlıq MƏHZ DZ-dən gəlir; söndürülən yalnız tavan dərinliyi və
+   mailliklərdir.
+
+## Yoxlama
+
+- `python -m pytest -q` → **2027 keçdi** (45 yeni test), 1 uğursuz:
+  `test_phase_b_production_integration.py::test_differential_phase_a_vs_phase_b_
+  permx_differ_and_why`. Bu, A2-dən ƏVVƏL də uğursuzdur (təmiz ağacda
+  yoxlanılıb, eyni sətir, eyni səbəb: test `_cell_centres`-ə `geometry`
+  yerinə `spec` ötürür).
+- `python tools/golden.py` → **ÜÇÜ DƏ UYĞUNDUR** (RF: 3.179645 / 8.411893 /
+  6.766724 — dəyişməyib).
+- Fizika sübutları (§5) ayrıca testlərdədir: PV nisbəti = qalınlıq nisbəti
+  (1:2:3:4), düz strukturda PV və TPFA transmissibillikləri Kartezian ilə
+  MAŞIN DƏQİQLİYİNDƏ eyni, maili strukturda YANAL üzlərdə cazibə yaranır
+  (düz halda sıfırdır), equilibration-da qalxıqda neft zonası qalın,
+  `interval_layers` sütun-həssasdır, `.imx` round-trip bit-bə-bit eynidir.
+- Uçdan-uca qəbul meyarı: eyni 4 quyu ilə struktur rejimi PV-ni
+  1.22 mln m³ → 1.98 mln m³ dəyişir (OOIP və RF ilə birlikdə), checkbox
+  söndürüləndə isə BİT-BƏ-BİT köhnə rəqəmə qayıdır.
+- **GUI əl ilə yoxlanmayıb:** bu mühitdə `python app.py` açıla bilmir —
+  offscreen rejimdə VTK `failed to get valid pixel format` verib
+  segmentation fault-la dayanır. A1-də olduğu kimi, bu TƏMİZ ağacda da
+  eynidir (`git stash` ilə yenidən yoxlanılıb), yəni mühit
+  məhdudiyyətidir. Panel məntiqi (checkbox → söndürmə → tooltip →
+  `structure_values()`) offscreen Qt widget testləri ilə, `_interpolate_
+  geology` bağlantısı isə AST + saf köməkçi (`_describe_moved_wells`)
+  testləri ilə örtülüb. 3D görüntüdə əyri layın GÖRÜNMƏSİ və
+  interpolyasiyadan sonra quyu indeksləri dialoqu istifadəçi tərəfindən
+  təsdiqlənməlidir.

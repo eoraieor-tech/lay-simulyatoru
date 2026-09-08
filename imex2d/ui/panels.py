@@ -137,6 +137,30 @@ class GridGeometryPanel(QWidget):
         self.dip_x = _spin(0.0, -20.0, 20.0, 2, 0.5, "m/hüc")
         self.dip_y = _spin(0.0, -20.0, 20.0, 2, 0.5, "m/hüc")
 
+        # ── A2: struktur QUYULARDAN ─────────────────────────────────
+        # İşarələnəndə grid həndəsəsi geologiya cədvəlindəki «lay üstü»/
+        # «lay altı» dərinliklərinin interpolyasiyasından qurulur; tavan
+        # dərinliyi, maillik və (mənbə "quyulardan" olanda) DZ ARTIQ
+        # İŞTİRAK ETMİR, ona görə həmin sahələr SÖNDÜRÜLÜR — istifadəçi
+        # işləməyən dəyər doldurmasın (bax `_on_structure_toggled`).
+        self.structure_from_wells = QCheckBox(
+            "Struktur quyulardan (lay üstü/altı)")
+        self.structure_from_wells.setToolTip(
+            "Grid həndəsəsi geologiya cədvəlindəki lay üstü/altı dərinliklərindən "
+            "qurulur (əyri səth, sütundan sütuna dəyişən qalınlıq).\n"
+            "Yalnız 'İnterpolyasiya et' düyməsi ilə qurulan modelə aiddir.")
+        self.thickness_source = QComboBox()
+        self.thickness_source.addItem("Quyulardan (üst + alt)", "wells")
+        self.thickness_source.addItem("Sabit (aşağıdakı DZ)", "constant")
+        self.thickness_source.setToolTip(
+            "Quyulardan: qalınlıq = lay altı − lay üstü.\n"
+            "Sabit: tavan quyulardan (əyri səth), qalınlıq isə verilmiş DZ cəmi — "
+            "praktikada çox vaxt yalnız lay tavanı məlum olur.")
+        self.structure_from_wells.toggled.connect(self._on_structure_toggled)
+        self.structure_from_wells.toggled.connect(self.changed)
+        self.thickness_source.currentIndexChanged.connect(self._on_structure_toggled)
+        self.thickness_source.currentIndexChanged.connect(self.changed)
+
         top_rows = [("NX", self.nx), ("NY", self.ny), ("DX", self.dx),
                     ("DY", self.dy), ("NZ (təbəqə sayı)", self.nz),
                     ("Qalınlıq necə verilir", self.thickness_mode),
@@ -158,6 +182,9 @@ class GridGeometryPanel(QWidget):
             if signal is not None:
                 signal.connect(self.changed)
 
+        form.addRow(self.structure_from_wells)
+        form.addRow("Qalınlıq mənbəyi (struktur)", self.thickness_source)
+
         self._sync_table_rows(self.nz.value())
 
         self.info = QLabel()
@@ -167,6 +194,7 @@ class GridGeometryPanel(QWidget):
         # `_on_mode_changed` məlumat sətrini yeniləyir, ona görə YALNIZ
         # `self.info` yaradıldıqdan sonra çağırıla bilər.
         self._on_mode_changed()
+        self._on_structure_toggled()
 
     def _on_mode_changed(self):
         """Baza dərinliyi ilə DZ eyni kəmiyyəti təyin edir.
@@ -185,6 +213,43 @@ class GridGeometryPanel(QWidget):
             self.per_layer.setChecked(False)
         self.dz.setEnabled(not by_base and not self.per_layer.isChecked())
         self.base_depth.setEnabled(by_base)
+        self._refresh_info()
+
+    #: Struktur rejimində İŞLƏMƏYƏN sahələrin tooltip mətni — səssiz
+    #: "parametr təsir etmir" halının qarşısını alır (bax A2, §3.5).
+    _UNUSED_TOOLTIP = ("Bu dəyər struktur rejimində istifadə olunmur — "
+                       "həndəsə quyuların lay üstü/altı dərinliklərindən qurulur.")
+
+    def _on_structure_toggled(self, *_args) -> None:
+        """Struktur rejimində iştirak etməyən sahələri SÖNDÜRÜR.
+
+        `top_depth`/`dip_x`/`dip_y` HƏR İKİ qalınlıq mənbəyində
+        iştirak etmir; `dz` (və onunla bağlı `base_depth`/`per_layer`/
+        cədvəl) yalnız mənbə "quyulardan" olanda söndürülür — "sabit"
+        rejimində qalınlıq məhz DZ-dən gəlir.
+        """
+        structural = self.structure_from_wells.isChecked()
+        self.thickness_source.setEnabled(structural)
+        thickness_from_wells = (structural
+                                and self.thickness_source.currentData() == "wells")
+
+        for widget in (self.top_depth, self.dip_x, self.dip_y):
+            widget.setEnabled(not structural)
+            widget.setToolTip(self._UNUSED_TOOLTIP if structural else "")
+        for widget in (self.thickness_mode, self.base_depth, self.per_layer,
+                       self.dz_table, self.dz):
+            widget.setToolTip(self._UNUSED_TOOLTIP if thickness_from_wells else "")
+
+        if thickness_from_wells:
+            for widget in (self.thickness_mode, self.base_depth, self.per_layer,
+                           self.dz_table, self.dz):
+                widget.setEnabled(False)
+        else:
+            # Söndürülməmiş vəziyyəti öz normal məntiqi bərpa etsin
+            # (rejim/`per_layer` asılılıqları burada TƏKRARLANMIR).
+            self.thickness_mode.setEnabled(True)
+            self.dz_table.setEnabled(True)
+            self._on_mode_changed()
         self._refresh_info()
 
     def _on_per_layer_toggled(self, checked: bool) -> None:
@@ -304,6 +369,14 @@ class GridGeometryPanel(QWidget):
                     dy=self.dy.value(), dz=dz_value,
                     nz=self.nz.value(), top_depth=self.top_depth.value(),
                     dip_x=self.dip_x.value(), dip_y=self.dip_y.value())
+
+    def structure_values(self) -> dict:
+        """A2 struktur seçimləri — `values()`-dən AYRICA saxlanılır,
+        çünki `values()` sintetik model qurucusuna (`geology_builder.
+        build(**grid_values)`) BİRBAŞA açılır və ona bu açarlar
+        naməlumdur."""
+        return dict(structure_from_wells=self.structure_from_wells.isChecked(),
+                    thickness_source=self.thickness_source.currentData())
 
     def depth_range(self) -> tuple:
         """Layın dərinlik intervalı — OWC seçimində istifadəçiyə göstərilir."""

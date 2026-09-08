@@ -441,6 +441,10 @@ class ProjectSerializer:
             "name": model.name,
             "grid": {"nx": model.grid.nx, "ny": model.grid.ny, "nz": model.grid.nz},
             "geometry": self._geometry_to_dict(model.geometry),
+            # A2: bloklayan struktur problemi faylda QALMALIDIR — əks
+            # halda yararsız həndəsəli layihəni saxlayıb açmaq qapını
+            # SÜKUTLA açardı (köhnə fayllarda açar yoxdur → boş siyahı).
+            "structural_issues": list(model.structural_issues),
             "property_maps": [_property_map(p) for p in model.property_maps.values()],
             "regions": {"region_id": _property_map(model.regions.region_id),
                         "names": {str(k): v for k, v in model.regions.names.items()}},
@@ -462,7 +466,8 @@ class ProjectSerializer:
             horizons=[Horizon(h["name"]) for h in data.get("horizons", [])],
             faults=[Fault(f["name"], None, f.get("throw", 0.0), f.get("dip", 90.0))
                     for f in data.get("faults", [])],
-            coordinate_system=data.get("coordinate_system", "LOCAL"))
+            coordinate_system=data.get("coordinate_system", "LOCAL"),
+            structural_issues=list(data.get("structural_issues", [])))
         for item in data.get("property_maps", []):
             model.add_property(_property_map_from(item))
         for item in data.get("facies_fields", []):

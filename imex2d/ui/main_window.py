@@ -1546,11 +1546,13 @@ class MainWindow(QMainWindow):
                 "Geologiya cədvəlində xəta var — aşağıdakı yoxlama panelinə baxın.")
             return
 
+        structure_values = self.grid_panel.structure_values()
         spec = GeologicalGridSpec(
             nx=grid_values["nx"], ny=grid_values["ny"], nz=grid_values["nz"],
             dx=grid_values["dx"], dy=grid_values["dy"], dz=grid_values["dz"],
             top_depth=grid_values["top_depth"],
-            dip_x=grid_values["dip_x"], dip_y=grid_values["dip_y"])
+            dip_x=grid_values["dip_x"], dip_y=grid_values["dip_y"],
+            **structure_values)
         # LAY-MƏLUMATLI rejim: `geometry`/`policy` verilir ki, quyunun
         # "Data layları" bəyanı HƏR LAY ÜÇÜN AYRICA nümunəyə çevrilsin.
         # Rejim söndürülübsə hər ikisi defolt qalır → ƏVVƏLKİ davranış.
@@ -1573,9 +1575,21 @@ class MainWindow(QMainWindow):
                 allow_cross_layer_fallback=self.geology_panel.cross_layer_fallback_allowed(),
                 name="Quyu cədvəlindən geoloji model",
                 layer_config=layer_config)
-        except ValueError as exc:
+        except (ValueError, NotImplementedError) as exc:
             QMessageBox.critical(self, "İnterpolyasiya edilmədi", str(exc))
             return
+
+        # ══ KRİTİK (A2): HƏNDƏSƏ DƏYİŞMİŞ OLA BİLƏR ════════════════════
+        # Struktur rejimində `build()` modelin həndəsəsini quyulardan
+        # qurulmuş corner-point həndəsə ilə ƏVƏZ EDİR. Quyu cədvəlindəki
+        # `i`/`j`/`K üst`/`K alt` sütunları METRDƏN törənir (`xy_to_ij`,
+        # `depth_to_k`, `interval_layers`), ona görə həndəsə dəyişəndə
+        # onlar YENİDƏN hesablanmalıdır — əks halda perforasiyalar
+        # SƏSSİZCƏ yanlış təbəqəni göstərərdi.
+        before = self._well_index_snapshot()
+        self.geology_panel.set_geometry(geology.geometry)
+        self.well_panel.set_geology_context(wells, geology.geometry)
+        moved = self._describe_moved_wells(before, self._well_index_snapshot())
 
         text = report.as_text()
         if skipped:
@@ -1590,9 +1604,40 @@ class MainWindow(QMainWindow):
                 "Aşağıdakı laylar üçün məlumat yoxdur və tamamlama üsulu "
                 "seçilməyib — simulyasiya bu modellə işə düşməyəcək:\n\n"
                 + "\n\n".join(report.blocking))
+        if moved:
+            QMessageBox.information(
+                self, "Quyu indeksləri yeniləndi",
+                "Həndəsə quyulardan qurulan struktura görə dəyişdi, ona görə "
+                "aşağıdakı quyuların hüceyrə/təbəqə indeksləri yenidən "
+                "hesablandı:\n\n" + "\n".join(moved))
         self._geology_model_from_wells = geology
         self.geology_panel.mark_fresh()
         self.rebuild_model()
+
+    def _well_index_snapshot(self) -> dict:
+        """`{quyu: (i, j, K üst, K alt)}` — həndəsə dəyişməzdən ƏVVƏL/
+        SONRA müqayisə üçün (bax `_interpolate_geology`)."""
+        snapshot = {}
+        for well in self.well_panel.values():
+            if not well.perforations:
+                continue
+            layers = sorted({p.k for p in well.perforations})
+            first = well.perforations[0]
+            snapshot[well.name] = (first.i, first.j, layers[0], layers[-1])
+        return snapshot
+
+    @staticmethod
+    def _describe_moved_wells(before: dict, after: dict) -> list:
+        """Yalnız HƏQİQƏTƏN dəyişən quyular — sətir başına bir mesaj."""
+        messages = []
+        for name, new in after.items():
+            old = before.get(name)
+            if old is None or old == new:
+                continue
+            messages.append(
+                f"• {name}: ({old[0]}, {old[1]}) K {old[2] + 1}–{old[3] + 1}  →  "
+                f"({new[0]}, {new[1]}) K {new[2] + 1}–{new[3] + 1}")
+        return messages
 
     def _cross_validate_geology(self):
         """'Cross-validation et' düyməsi — M4. Nəticəni QURULAN modelə

@@ -69,6 +69,16 @@ class GeologicalModel:
     horizons: List[Horizon] = field(default_factory=list)
     faults: List[Fault] = field(default_factory=list)
     coordinate_system: str = "LOCAL"
+    #: A2 (STRUKTUR REJİMİ) — quyulardan qurulan həndəsənin BLOKLAYAN
+    #: problemləri: kəsişən lay üstü/altı səthləri, NaN, istifadəçinin
+    #: verdiyi minimumdan nazik sütun. `completeness_issues()` ilə EYNİ
+    #: MƏNTİQ (bax `application/geology_service._build_structural_
+    #: geometry`): model QAYTARILIR ki, istifadəçi onu 3D-də görüb
+    #: səbəbi anlasın, amma `validate()` bunları XƏTA kimi bildirdiyi
+    #: üçün `ReservoirModelBuilder` modeli QƏBUL ETMİR. Səssiz düzəliş
+    #: YOXDUR — düzəliş yalnız AÇIQ `on_zero_thickness="clamp"` ilə və
+    #: hesabatda RƏQƏMLƏ göstərilir.
+    structural_issues: List[str] = field(default_factory=list)
     #: Kateqorik (SIS ilə yaradılan) fasiya sahələri — `regions`-dan
     #: (SATNUM/SCAL region, stoxastik DEYİL) AYRICA saxlanılır, bax
     #: `domain/facies_field.py` modul docstring-i.
@@ -210,6 +220,7 @@ class GeologicalModel:
             if req not in self.property_maps:
                 issues.append(f"Geoloji modeldə məcburi '{req}' xəritəsi yoxdur.")
         issues.extend(self.geometry.validate())
+        issues.extend(self.structural_issues)
         issues.extend(self.completeness_issues())
         if "PORO" in self.property_maps:
             issues.extend(validate_porosity(self._defined_values("PORO"), "PORO").errors)
