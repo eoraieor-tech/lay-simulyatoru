@@ -1,6 +1,7 @@
 """Nyuton döngəsi (A6, mərhələ 3)."""
 
 import numpy as np
+import pytest
 
 from helpers import default_scal, five_spot_model, make_service
 from imex2d.application.config import OutputConfig, SimulationConfig
@@ -239,17 +240,38 @@ def test_works_with_pvt_above_the_bubble_point():
         assert result.converged, f"dt={dt}: {result.status.value}"
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "İki fazalı (neft-su) mühərrikdə sərbəst qaz fazası yoxdur, ona görə "
+    "doymuş qolda mənfi görünən neft sıxılması Nyutonu dayandırır — "
+    "aşağıdakı izaha bax."))
 def test_crossing_the_bubble_point_now_converges():
-    """ƏVVƏLKİ MƏLUM MƏHDUDİYYƏT DÜZƏLDİLDİ: Pb-də Bo/μo-nun DOYMUŞ
-    qoldan DOYMAMIŞ qola keçməsi ∂Bo/∂p-nin işarəsini dəyişdirirdi və
-    Nyutonu ossilyasiyaya salırdı. Qaz fazası (mühərrikdə HEÇ YERDƏ
-    istifadə olunmayan Rs xaric) onsuz da modelləşdirilmədiyi üçün
-    (bax `ReservoirModel.diagnose()`-un xəbərdarlığı: "nəticələr nikbin
-    ola bilər"), Bo/μo indi Pb-nin HƏR İKİ tərəfində EYNİ (doymamış
-    maye) düsturu ilə HAMAR davam edir — bax `test_pvt.py`-də
-    `test_oil_fvf_is_smooth_across_the_bubble_point`. Tam variable
-    switching (real qaz fazası) hələ də A7-nin işi olaraq qalır, lakin
-    bu artıq YIĞILMA üçün lazım deyil.
+    """MƏLUM MƏHDUDİYYƏT (ölçülüb): Pb-dən AŞAĞIDA Nyuton yığılmır.
+
+    SƏBƏB — Pb-dəki qırılma DEYİL, doymuş qolun ÖZÜ. Fiziki olaraq
+    p < Pb üçün dBo/dp > 0 (təzyiq artdıqca qaz nefte həll olur, neft
+    şişir). Neft fazasının görünən sıxılması isə co = −(1/Bo)·dBo/dp,
+    yəni MƏNFİ olur:
+
+        p = 200 bar, Pb = 240 bar →  co = −1.43×10⁻³ 1/bar
+        (müqayisə üçün süxur sıxılması cr = +4.5×10⁻⁵ 1/bar — 32 dəfə kiçik)
+
+    Bu, REAL black-oil modelində problem deyil: ayrılan qaz SƏRBƏST QAZ
+    FAZASI kimi izlənir və həcm balansını bağlayır. Bu mühərrik isə iki
+    fazalıdır (neft-su), qaz fazası YOXDUR — ona görə neft toplanma
+    həddi ∂(φ·So/Bo)/∂p yanlış işarə alır və Nyuton ~CNV 0.1-də ilişir
+    (50 iterasiyada da yığılmır; ölçüldü).
+
+    Qeyd: `PVTTable.compressibility()` `np.abs(...)` tətbiq etdiyi üçün
+    IMPES/`total_compressibility` yolu bu işarədən qorunur — YALNIZ
+    `oil_fvf_derivative`-i BİRBAŞA istifadə edən implicit Jakobian
+    təsirlənir.
+
+    Əvvəllər bu test YAŞIL idi, çünki `build_pvt_table` Bo/μo-nu bütün
+    diapazona DOYMAMIŞ düsturla hesablayırdı — yığılma məhz PVT-ni
+    QEYRİ-FİZİKİ etməklə alınmışdı (μo(p→0) → 0). Bu, düzəldildi
+    (bax `test_pvt.py`). Yığılmanın DÜZGÜN həlli qaz fazası + variable
+    switching-dir (A7) — o gələndə `strict=True` bu testi qırmızı
+    edəcək ki, marker silinsin.
     """
     scal = default_scal()
     model = _rate_controlled(scal=scal)

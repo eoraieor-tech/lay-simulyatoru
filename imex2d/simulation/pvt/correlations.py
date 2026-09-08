@@ -109,6 +109,68 @@ def water_viscosity(temperature_c: float, salinity_ppm: float = 0.0) -> float:
     return max(a * t_f ** b, 0.05)
 
 
+def saturated_undersaturated_oil_properties(pressure_bar, api: float,
+                                            gas_gravity: float,
+                                            temperature_c: float,
+                                            bubble_point_bar: float):
+    """Rs(p), Bo(p), μo(p) — Pb-də ŞAXELƏNƏN neft xassələri.
+
+    Bu funksiya PVT-nin YEGANƏ fiziki mənbəyidir: həm cədvəl generatoru
+    (`build_pvt_table`), həm də testlər EYNİ şaxələnməni görür, ona görə
+    şaxələnmə bir daha "cədvəl qurularkən itmə" ehtimalı yoxdur.
+
+    p < Pb (DOYMUŞ — qaz neftdən ayrılır):
+        Rs = Standing(p)                      → p azaldıqca AZALIR
+        Bo = Vazquez-Beggs(Rs(p))             → p azaldıqca AZALIR (Bo → ~1.05)
+        μo = Beggs-Robinson(μod, Rs(p))       → p azaldıqca ARTIR (μo → μod)
+    p ≥ Pb (DOYMAMIŞ — tək fazalı maye):
+        Rs = Rsb (sabit)
+        Bo = Bob·exp(co·(Pb − p))              → p artdıqca AZALIR
+        μo = μob·(p/Pb)^0.278                  → p artdıqca ARTIR
+
+    HƏR İKİ qol EYNİ anchor-dan (Pb nöqtəsində Rs = Rsb) qurulur:
+    Bob = VB(Rsb), μob = BR(μod, Rsb). Ona görə Pb-də KƏSİLMƏZLİK
+    maşın dəqiqliyi ilə təminatlıdır (qollar orada eyni düstura çevrilir).
+
+    Vahidlər: giriş/çıxış METRIC (bar, °C, sm³/sm³, cP). Sahə vahidinə
+    (psia/°F/scf-STB) çevirmə YALNIZ ayrı-ayrı korrelyasiya funksiyalarının
+    İÇİNDƏ baş verir; bu səviyyədə heç bir əlavə konversiya YOXDUR, ona
+    görə şaxələnmə vahid çevirmələrinə TOXUNMUR.
+    """
+    pressure = np.asarray(pressure_bar, float)
+    pb = float(max(bubble_point_bar, 1e-9))
+    saturated = pressure < pb
+
+    # ---- anchor: Pb nöqtəsi (hər iki qol üçün EYNİ) ----
+    rs_at_pb = float(standing_solution_gor(np.array([pb]), api, gas_gravity,
+                                           temperature_c)[0])
+    bo_at_pb = float(vazquez_beggs_oil_fvf(np.array([rs_at_pb]), api,
+                                           gas_gravity, temperature_c)[0])
+    mu_dead = beggs_robinson_dead_oil_viscosity(api, temperature_c)
+    mu_at_pb = float(beggs_robinson_saturated_viscosity(
+        mu_dead, np.array([rs_at_pb]))[0])
+
+    # ---- Rs: doymuş qolda təzyiqdən asılı, doymamış qolda plato ----
+    rs = np.where(saturated,
+                  standing_solution_gor(pressure, api, gas_gravity, temperature_c),
+                  rs_at_pb)
+
+    # ---- doymuş qol: Bo/μo Rs(p) MASSİVİ ilə (skalyar Rsb ilə DEYİL) ----
+    bo_saturated = vazquez_beggs_oil_fvf(rs, api, gas_gravity, temperature_c)
+    mu_saturated = beggs_robinson_saturated_viscosity(mu_dead, rs)
+
+    # ---- doymamış qol: Pb-dən yuxarı sadəcə mayenin sıxılması/lozluğu ----
+    co = vazquez_beggs_undersaturated_compressibility(
+        rs_at_pb, api, gas_gravity, temperature_c, pb)
+    bo_undersaturated = bo_at_pb * np.exp(co * (pb - pressure))
+    ratio = np.maximum(pressure / pb, 1e-6)
+    mu_undersaturated = mu_at_pb * ratio ** 0.278
+
+    bo = np.where(saturated, bo_saturated, bo_undersaturated)
+    mu_oil = np.where(saturated, mu_saturated, mu_undersaturated)
+    return rs, bo, mu_oil
+
+
 def build_pvt_table(api: float = 32.0,
                     gas_gravity: float = 0.75,
                     temperature_c: float = 70.0,
@@ -136,46 +198,21 @@ def build_pvt_table(api: float = 32.0,
         temperature_c = convert_temperature(temperature_c, temperature_unit, "C")
     pressure = np.linspace(pressure_min, pressure_max, int(n_points))
 
-    rs_saturated = standing_solution_gor(pressure, api, gas_gravity, temperature_c)
     if bubble_point_bar is None:
         bubble_point_bar = float(pressure_max * 0.6)
-    rs_at_pb = float(standing_solution_gor(np.array([bubble_point_bar]), api,
-                                           gas_gravity, temperature_c)[0])
 
-    # Rs YALNIZ hesabat/diaqnostika üçündür (bax `ReservoirModel.diagnose`,
-    # `rendering/renderers.py`) — mühərrikin qalıq/Jakobian hesablamasında
-    # HEÇ YERDƏ istifadə OLUNMUR (bu, iki fazalı modeldə sərbəst qaz
-    # fazasının izlənmədiyinin birbaşa nəticəsidir). Ona görə Pb-də
-    # doymuş qaz-neft nisbətinin "qırılması" saxlanılır — bu, YALNIZ
-    # görüntüləmə üçündür və Nyutona TƏSİR ETMİR.
-    rs = np.where(pressure < bubble_point_bar, rs_saturated, rs_at_pb)
-
-    # Bo(p) və μo(p) İSƏ Nyutonun HƏLL ETDİYİ tənliklərə birbaşa girir
-    # (bax `BlackOilPVTProvider`/`ResidualAssembler`). TAPILAN SƏHV: bu
-    # ikisi əvvəllər Pb-də FƏRQLİ düsturlara keçirdi (doymuş qaz-neft
-    # qarışığı ↔ doymamış maye) — DƏYƏR kəsilməzdir, lakin TÖRƏMƏ Pb-də
-    # sıçrayır (∂Bo/∂p işarə dəyişir). Bu, Nyutonu Pb ətrafında sonsuz
-    # OSSİLYASİYAYA sala bilir (ölçüldü və sənədləşdirilib —
-    # `test_line_search_prevents_infinite_oscillation_near_a_well`).
+    # ŞAXƏLƏNMƏ: Rs, Bo, μo-nun ÜCÜ DƏ Pb-də doymuş/doymamış qola ayrılır.
     #
-    # Qərar: qaz fazası onsuz da modelləşdirilmədiyi üçün (istifadəçiyə
-    # UI-də artıq bildirilir: "nəticələr nikbin ola bilər"), Pb-dən
-    # AŞAĞIDA da EYNİ (doymamış maye) düsturunu davam etdiririk —
-    # doymuş qarışığa KEÇMİRİK. Bu, Bo/μo-nu BÜTÜN təzyiq oblastında
-    # HAMAR (C¹) edir və qırılmanı kökündən aradan qaldırır — "yumşaq
-    # uğursuzluq" kimi bir SONRAKI TƏDBİR deyil, məhz SƏBƏBİN özünün
-    # düzəldilməsidir.
-    bo_at_pb = float(vazquez_beggs_oil_fvf(np.array([rs_at_pb]), api,
-                                           gas_gravity, temperature_c)[0])
-    co = vazquez_beggs_undersaturated_compressibility(
-        rs_at_pb, api, gas_gravity, temperature_c, bubble_point_bar)
-    bo = bo_at_pb * np.exp(-co * (pressure - bubble_point_bar))
-
-    mu_dead = beggs_robinson_dead_oil_viscosity(api, temperature_c)
-    mu_at_pb = float(beggs_robinson_saturated_viscosity(
-        mu_dead, np.array([rs_at_pb]))[0])
-    ratio = np.maximum(pressure / max(bubble_point_bar, 1e-9), 1e-6)
-    mu_oil = mu_at_pb * ratio ** 0.278
+    # REQRESSİYA TARİXÇƏSİ (və niyə geri qaytarıldı): əvvəl bu blokda
+    # YALNIZ `rs` üçün `np.where(...)` maskası vardı, Bo və μo isə BÜTÜN
+    # diapazona doymamış düsturla (Bob·exp(co·(Pb−p)) və μob·(p/Pb)^m)
+    # hesablanırdı — məqsəd Nyutonun Pb-də ∂Bo/∂p işarə dəyişməsindən
+    # doğan ossilyasiyasını aradan qaldırmaq idi. Lakin bu, FIZIKANI
+    # dağıdırdı: μo(p→0) → 0 (qeyri-fiziki) və Bo-nun Pb-də piki itirdi.
+    # Ossilyasiya artıq xətti axtarış (line search) ilə həll olunur — PVT-ni
+    # qeyri-fiziki etməklə DEYİL. Bax `saturated_undersaturated_oil_properties`.
+    rs, bo, mu_oil = saturated_undersaturated_oil_properties(
+        pressure, api, gas_gravity, temperature_c, bubble_point_bar)
 
     return PVTTable(
         pressure=pressure,

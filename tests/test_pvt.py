@@ -51,37 +51,89 @@ def test_solution_gor_increases_then_flattens_at_bubble_point():
     assert np.ptp(table.solution_gor[above]) < 1e-9, "Rs doyma üstündə sabit deyil"
 
 
-def test_oil_fvf_is_smooth_across_the_bubble_point():
-    """TAPILAN SƏHV: Bo(p) əvvəllər Pb-də DOYMUŞ (artan) qoldan
-    DOYMAMIŞ (azalan) qola keçirdi — DƏYƏR kəsilməzdir, lakin ∂Bo/∂p
-    işarə dəyişirdi. Bu, Nyutonu Pb ətrafında sonsuz ossilyasiyaya
-    salırdı (bax `test_line_search_prevents_infinite_oscillation_near_a_well`).
-
-    Rs (həll olmuş qaz-neft nisbəti) mühərrikdə HEÇ YERDƏ
-    istifadə olunmur (yalnız hesabat/diaqnostika) — ona görə Bo/μo-nu
-    Pb-nin HƏR İKİ tərəfində EYNİ (doymamış maye) düsturu ilə hamar
-    saxlamaq heç bir əlavə fiziki dəqiqlik itirmir, YALNIZ artıq
-    modelləşdirilməyən qaz-ayrılma effektini (onsuz da izlənmirdi)
-    təmsil etmir — bu, UI-nin artıq verdiyi xəbərdarlıqla (`"nəticələr
-    nikbin ola bilər"`) uyğundur.
-    """
-    pb = 240.0
-    table = _table(bubble_point_bar=pb, pressure_max=400.0)
-    # Monoton: Bo təzyiqlə İSTİQAMƏTİNİ DƏYİŞMİR (kəskin işarə
-    # dəyişikliyi yoxdur) — köhnə "pik Pb-də" forması artıq yoxdur.
-    diffs = np.diff(table.oil_fvf)
-    assert np.all(diffs <= 1e-9) or np.all(diffs >= -1e-9), \
-        "Bo(p) Pb-də hələ də istiqamətini dəyişir (qırılma qalıb)"
+# ── Pb-də şaxələnmə (doymuş ↔ doymamış) — QƏBUL MEYARLARI ────────────
+#
+# REQRESSİYA: bir müddət Bo/μo BÜTÜN təzyiq diapazonunda YALNIZ doymamış
+# düsturla hesablanırdı (Bo monoton azalan düz xətt, μo → 0 when p → 0).
+# Aşağıdakı testlər həmin şaxələnmənin geri qayıtdığını KİLİDLƏYİR.
+_BRANCH_CASE = dict(api=32.0, gas_gravity=0.75, temperature_c=70.0)
+_PB = 190.0
 
 
-def test_oil_viscosity_is_smooth_across_the_bubble_point():
-    """`test_oil_fvf_is_smooth_across_the_bubble_point`-in eynisi, μo
-    üçün — əvvəllər Pb-də minimum (V-şəklində qırılma) idi."""
-    pb = 240.0
-    table = _table(bubble_point_bar=pb, pressure_max=400.0)
-    diffs = np.diff(table.oil_viscosity)
-    assert np.all(diffs <= 1e-9) or np.all(diffs >= -1e-9), \
-        "μo(p) Pb-də hələ də istiqamətini dəyişir (qırılma qalıb)"
+def _branch(pressure):
+    """Kəsilməz (cədvəl düyünlərindən asılı olmayan) Rs/Bo/μo."""
+    return C.saturated_undersaturated_oil_properties(
+        np.asarray(pressure, float), bubble_point_bar=_PB, **_BRANCH_CASE)
+
+
+def _branch_table():
+    return _table(bubble_point_bar=_PB, pressure_min=1.0, pressure_max=400.0,
+                  n_points=40, **_BRANCH_CASE)
+
+
+def test_oil_fvf_approaches_stock_tank_value_at_atmospheric_pressure():
+    """Bo(p → 1 atm) ≈ 1.05 — bütün həll olmuş qaz ayrıldığı üçün."""
+    _, bo, _ = _branch([1.01325])
+    assert 1.02 <= bo[0] <= 1.10, f"Bo(1 atm) = {bo[0]:.4f}, gözlənilən 1.02–1.10"
+
+
+def test_oil_fvf_peaks_exactly_at_the_bubble_point():
+    """Bo doyma altında ARTIR, doyma üstündə AZALIR → maksimum məhz Pb-də."""
+    pressure = np.linspace(1.0, 400.0, 4001)
+    _, bo, _ = _branch(pressure)
+    assert abs(pressure[bo.argmax()] - _PB) <= 0.2, "Bo-nun piki Pb-də deyil"
+    below, above = pressure < _PB, pressure >= _PB
+    assert np.all(np.diff(bo[below]) > 0), "Bo doyma altında artmır"
+    assert np.all(np.diff(bo[above]) < 0), "Bo doyma üstündə azalmır"
+
+
+def test_oil_viscosity_bottoms_out_exactly_at_the_bubble_point():
+    """μo doyma altında AZALIR (qaz həll olur), üstündə ARTIR → minimum Pb-də."""
+    pressure = np.linspace(1.0, 400.0, 4001)
+    _, _, mu = _branch(pressure)
+    assert abs(pressure[mu.argmin()] - _PB) <= 0.2, "μo-nun minimumu Pb-də deyil"
+    below, above = pressure < _PB, pressure >= _PB
+    assert np.all(np.diff(mu[below]) < 0), "μo doyma altında azalmır"
+    assert np.all(np.diff(mu[above]) > 0), "μo doyma üstündə artmır"
+
+
+def test_oil_viscosity_approaches_dead_oil_value_at_atmospheric_pressure():
+    """μo(p → 1 atm) ≈ μod — qazsız (ölü) neftin lözlüyü, ~3.5–3.7 cP."""
+    mu_dead = C.beggs_robinson_dead_oil_viscosity(
+        _BRANCH_CASE["api"], _BRANCH_CASE["temperature_c"])
+    _, _, mu = _branch([1.01325])
+    assert 3.5 <= mu[0] <= 3.7, f"μo(1 atm) = {mu[0]:.4f} cP"
+    assert abs(mu[0] - mu_dead) / mu_dead < 0.05, "μo(1 atm) μod-dan uzaqdır"
+
+
+def test_oil_viscosity_never_approaches_zero():
+    """Köhnə səhv: μo = μob·(p/Pb)^m bütün diapazona tətbiq olunanda
+    p → 0 üçün μo → 0 verirdi — fiziki cəhətdən mümkünsüz."""
+    _, _, mu = _branch(np.linspace(1e-3, 400.0, 2001))
+    assert mu.min() > 0.5, f"μo minimumu {mu.min():.4f} cP — sıfıra yaxınlaşır"
+    assert _branch_table().oil_viscosity.min() > 0.5
+
+
+def test_branches_are_continuous_at_the_bubble_point():
+    """Hər iki qol EYNİ anchor-dan (Rs = Rsb) qurulduğu üçün Pb-də
+    kəsilməzlik maşın dəqiqliyi ilə olmalıdır."""
+    rs_lo, bo_lo, mu_lo = _branch([_PB - 1e-9])
+    rs_hi, bo_hi, mu_hi = _branch([_PB + 1e-9])
+    assert abs(bo_lo[0] - bo_hi[0]) < 1e-6, "Bo Pb-də sıçrayır"
+    assert abs(mu_lo[0] - mu_hi[0]) < 1e-6, "μo Pb-də sıçrayır"
+    assert abs(rs_lo[0] - rs_hi[0]) < 1e-6, "Rs Pb-də sıçrayır"
+
+
+def test_generated_table_reproduces_the_branch_shape():
+    """Şaxələnmə cədvəl qurularkən İTMİR (məhz bu itmişdi)."""
+    table = _branch_table()
+    below = table.pressure < _PB
+    above = table.pressure >= _PB
+    assert np.all(np.diff(table.oil_fvf[below]) > 0)
+    assert np.all(np.diff(table.oil_fvf[above]) < 0)
+    assert np.all(np.diff(table.oil_viscosity[below]) < 0)
+    assert np.all(np.diff(table.oil_viscosity[above]) > 0)
+    assert 1.02 <= table.oil_fvf[0] <= 1.10
 
 
 def test_heavier_oil_has_higher_viscosity():

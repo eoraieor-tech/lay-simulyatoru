@@ -145,17 +145,27 @@ def test_pvt_derivatives_are_zero_without_a_provider():
     assert np.allclose(provider.dmuo_dp(pressure), 0.0)
 
 
-def test_pvt_derivatives_have_expected_signs_below_bubble_point():
-    """TAPILAN SƏHV düzəldildikdən sonra (bax `test_pvt.py`-də
-    `test_oil_fvf_is_smooth_across_the_bubble_point`) Bo/μo Pb-nin HƏR
-    İKİ tərəfində EYNİ (doymamış maye) düsturu ilə hamar davam edir —
-    ona görə işarələr artıq Pb-dən aşağıda da YUXARIDAKI ilə eynidir
-    (əvvəllər tərs idi: Bo artırdı, μo azalırdı)."""
+def test_pvt_derivatives_have_expected_signs_on_both_sides_of_the_bubble_point():
+    """Bo/μo Pb-də ŞAXƏLƏNİR, ona görə törəmələrin İŞARƏSİ də şaxələnir.
+
+    p < Pb (DOYMUŞ): təzyiq artdıqca qaz nefte həll olur →
+        Bo ARTIR (dBo/dp > 0), μo AZALIR (dμo/dp < 0).
+    p ≥ Pb (DOYMAMIŞ): tək fazalı maye sadəcə sıxılır →
+        Bo AZALIR (dBo/dp < 0), μo ARTIR (dμo/dp > 0).
+
+    Bir müddət bu test HƏR İKİ tərəfdə doymamış işarələri gözləyirdi —
+    çünki `build_pvt_table` Bo/μo-nu bütün diapazona doymamış düsturla
+    hesablayırdı (reqressiya). Bax `test_pvt.py`-də
+    `test_generated_table_reproduces_the_branch_shape`.
+    """
     provider = DerivativeProvider(
         CoreyRelativePermeabilityAdapter(CoreyParameters()), pvt=_pvt())
-    pressure = np.array([150.0, 200.0])
-    assert np.all(provider.dbo_dp(pressure) < 0)      # Bo təzyiqlə azalır
-    assert np.all(provider.dmuo_dp(pressure) > 0)     # μo təzyiqlə artır
+    below = np.array([150.0, 200.0])          # Pb = 240 bar
+    above = np.array([260.0, 300.0])
+    assert np.all(provider.dbo_dp(below) > 0)
+    assert np.all(provider.dmuo_dp(below) < 0)
+    assert np.all(provider.dbo_dp(above) < 0)
+    assert np.all(provider.dmuo_dp(above) > 0)
 
 
 # ── Jakobianın strukturu ──────────────────────────────────────────────
