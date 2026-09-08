@@ -56,10 +56,18 @@ def test_cumulative_production_is_monotonic():
 
 
 def test_buckley_leverett_front_position():
-    """Ədədi cəbhə analitik cəbhə ilə 12 % daxilində üst-üstə düşməlidir.
+    """Ədədi cəbhə analitik cəbhə ilə 9 % daxilində üst-üstə düşməlidir.
 
     Tam üst-üstə düşmə gözlənilmir: upstream çəkilənmə ədədi diffuziya
     yaradır və cəbhəni yayır.
+
+    DİQQƏT — burada işlədilən metrika (Sw > Swc + 0.01 olan SON hüceyrə)
+    yayılmış cəbhənin ÖN KƏNARIDIR və sistematik olaraq ŞİŞİRDİR: ədədi
+    diffuziya cəbhənin qabağına həmişə nazik quyruq qoyur (ölçdüm: ön
+    kənar 7.33 %, qərəzsiz orta nöqtə metrikası 4.53 %). Ona görə buradakı
+    tolerantlıq geniş qalmalıdır. Etalonun ÖZÜNÜ dəqiq yoxlayan testlər
+    `tests/test_analytical_bl.py`-dədir; qərəzsiz metrika isə
+    `main_window.run_validation`-dadır.
     """
     scal = default_scal()
     rate, end_time = 60.0, 250.0
@@ -80,7 +88,7 @@ def test_buckley_leverett_front_position():
     numerical_front = x_cells[swept][-1]
 
     error = abs(numerical_front - analytical.front_position) / analytical.front_position
-    assert error < 0.12, (f"Cəbhə mövqeyi fərqi {error * 100:.1f} % "
+    assert error < 0.09, (f"Cəbhə mövqeyi fərqi {error * 100:.1f} % "
                           f"(analitik {analytical.front_position:.1f} m, "
                           f"ədədi {numerical_front:.1f} m)")
 

@@ -12,6 +12,13 @@ ona görə də qaz silinəndən sonra da bu etalonlar keçərli qalır.
     python tools/golden.py --case bl_1d --write   # tək keys
 
 Nəticələr: tests/golden/<keys>.json
+
+ƏHATƏ DAİRƏSİ — burada YALNIZ mühərrikin çıxışı qeyd olunur. Analitik
+Bakli-Leverett etalonu (`imex2d/simulation/analytical.py`) simulyasiya
+zəncirinin hissəsi DEYİL, ona görə bu keyslərə düşmür və onun səhvi
+buradan görünmür: A3-də düzəldilən 24.75 %-lik profil xətası bütün golden
+keysləri "UYĞUNDUR" saxlayaraq aylarla gizli qalmışdı. Həmin modulun
+doğruluğu `tests/test_analytical_bl.py`-dəki kütlə eyniliyi ilə qorunur.
 """
 
 from __future__ import annotations

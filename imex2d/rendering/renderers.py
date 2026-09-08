@@ -626,7 +626,11 @@ class ValidationRenderer:
         ax.step(x_numeric, sw_numeric, where="mid", color=PALETTE.water, lw=1.6,
                 label=f"Ədədi IMPES ({ncell} hüceyrə)")
         ax.axvline(analytical.front_position, color=PALETTE.text_dim, ls="--", lw=1)
-        ax.set_xlim(0, min(float(x_numeric[-1]), analytical.front_position * 2.2))
+        # Görünüş sərhədi modelin fiziki uzunluğuna bağlıdır — əvvəlki
+        # `front_position * 2.2` sabiti heç nədən gəlmirdi və cəbhə uzaqda
+        # olanda profilin quyruğunu kəsirdi.
+        limit = getattr(analytical, "length", 0.0) or float(x_numeric[-1])
+        ax.set_xlim(0, min(float(x_numeric[-1]), limit))
         style_axes(ax, f"1D sıxışdırma yoxlaması,  t = {time:.0f} gün",
                    "Məsafə, m", "Su doyumluluğu Sw")
         legend(ax, fontsize=9)

@@ -1928,6 +1928,7 @@ class MainWindow(QMainWindow):
             return
         base = self.reservoir_model
         nx, dx, dy, dz = 120, 8.0, 100.0, 10.0
+        length = nx * dx
         rate, end_time = 60.0, 250.0
         porosity = float(base.rock.porosity.values.mean())
         permeability = float(base.rock.permx.values.mean())
@@ -1944,8 +1945,17 @@ class MainWindow(QMainWindow):
         ]
         scal = base.scal_parameters
         from ..domain.initial import InitialConditions
+        from ..domain.properties import FluidProperties
+        # Bakli-Leverett SIXILMAZ nəzəriyyədir; `base.fluids` defoltu isə
+        # sıxılandır (bax `domain/properties.py`). Etalonla müqayisədə
+        # "kiçik naməlum fərq" qalmamalıdır — modeldən YALNIZ lözlükləri
+        # götürürük, sıxılmanı sıfırlayırıq.
+        fluids = FluidProperties(water_viscosity=base.fluids.water_viscosity,
+                                 oil_viscosity=base.fluids.oil_viscosity,
+                                 water_compressibility=0.0,
+                                 oil_compressibility=0.0)
         model = self.model_builder.build(
-            geology, wells, fluids=base.fluids, scal=scal,
+            geology, wells, fluids=fluids, scal=scal,
             initial=InitialConditions(datum_pressure=200.0,
                                       water_saturation=scal.swc),
             name="B-L validasiya modeli")
@@ -1955,23 +1965,74 @@ class MainWindow(QMainWindow):
             output=OutputConfig(snapshot_count=2))
         result = self.service.run(model, config)
 
-        analytical = buckley_leverett(scal, base.fluids.water_viscosity,
-                                      base.fluids.oil_viscosity, porosity,
-                                      rate, dy * dz, end_time)
+        # İnjektorun RATE hədəfi mühərrikdə birbaşa LAY ŞƏRAİTİNDƏ həcm
+        # kimi işlədilir (`impes_engine.py`: `net_water[cell] += q`), BL-in
+        # `total_rate`-i də lay həcmidir → uyğundur. Səth həcminə ÇEVİRMƏ.
+        analytical = buckley_leverett(scal, fluids.water_viscosity,
+                                      fluids.oil_viscosity, porosity,
+                                      rate, dy * dz, end_time, length=length)
         x_cells = (np.arange(nx) + 0.5) * dx
         sw_numeric = result.snapshots[-1].water_saturation.ravel()
         self.validation_renderer.draw(self.validation_ax, analytical, x_cells,
                                       sw_numeric, end_time, nx)
         self.validation_canvas.draw_idle()
 
-        mask = sw_numeric > scal.swc + 0.01
-        x_numeric = x_cells[mask][-1] if mask.any() else 0.0
-        error = abs(x_numeric - analytical.front_position) / max(analytical.front_position, 1e-9) * 100
+        if analytical.breakthrough:
+            self.validation_label.setText(
+                f"Cəbhə modeldən çıxıb (x_front = "
+                f"{analytical.front_position:.1f} m > {length:.0f} m) — "
+                "vaxt çox uzundur, müqayisə mənasızdır. Müddəti azaldın.")
+            self.show_tab("Validasiya (B-L)")
+            return
+
+        # ── (1) ƏSAS metrika: bütün profil üzrə RMS xəta.
+        # Yalnız bir nöqtəyə baxan metrika profilin formasını görmür.
+        sw_exact = np.interp(x_cells, analytical.distance,
+                             analytical.water_saturation)
+        rms = float(np.sqrt(np.mean((sw_numeric - sw_exact) ** 2)))
+
+        # ── (2) Cəbhə mövqeyi: ORTA NÖQTƏ keçidi.
+        # Köhnə metrika (Sw > Swc + 0.01 olan SON hüceyrə) yayılmış
+        # cəbhənin ÖN KƏNARIDIR: upstream sxemin ədədi diffuziyası cəbhənin
+        # qabağına həmişə nazik quyruq qoyur, ona görə o, sistematik olaraq
+        # şişirdir. Yayılma orta nöqtəyə görə simmetrik olduğundan
+        # Sw = (sw_shock + Swi)/2 səviyyəsinin keçidi qərəzsizdir.
+        level = 0.5 * (analytical.shock_saturation + scal.swc)
+        x_numeric = self._front_by_midpoint(x_cells, sw_numeric, level)
+        front_error = (abs(x_numeric - analytical.front_position)
+                       / max(analytical.front_position, 1e-9) * 100.0)
+
+        # ── (3) Mühərrikdən asılı olmayan yoxlama: xalis həcm balansı.
+        # BL nəzəriyyəsinə heç bir istinad yoxdur — mühərrikin özünü sınayır.
+        swept = float(np.trapezoid(sw_numeric - scal.swc, x_cells))
+        injected = rate * end_time / (porosity * dy * dz)
+        balance_error = abs(swept - injected) / max(injected, 1e-9) * 100.0
+
         self.validation_label.setText(
-            f"Analitik front {analytical.front_position:.1f} m  ·  "
-            f"ədədi front {x_numeric:.1f} m  ·  fərq {error:.1f} %  ·  "
-            f"shock Sw = {analytical.shock_saturation:.3f}")
+            f"RMS xəta {rms:.4f} Sw  ·  cəbhə (orta nöqtə) "
+            f"{x_numeric:.1f} m / analitik {analytical.front_position:.1f} m "
+            f"(fərq {front_error:.1f} %)  ·  həcm balansı {balance_error:.1f} % "
+            f"·  shock Sw = {analytical.shock_saturation:.3f}")
         self.show_tab("Validasiya (B-L)")
+
+    @staticmethod
+    def _front_by_midpoint(x_cells, saturation, level) -> float:
+        """`saturation` verilmiş səviyyəni keçdiyi `x` — xətti interpolyasiya.
+
+        Profil azalandır; səviyyədən yuxarı olan SON hüceyrə ilə ondan
+        sonrakı hüceyrə arasında keçid axtarılır.
+        """
+        above = np.nonzero(saturation >= level)[0]
+        if not above.size:
+            return 0.0
+        last = int(above[-1])
+        if last + 1 >= len(x_cells):
+            return float(x_cells[last])
+        s_hi, s_lo = float(saturation[last]), float(saturation[last + 1])
+        if s_hi == s_lo:
+            return float(x_cells[last])
+        weight = (s_hi - level) / (s_hi - s_lo)
+        return float(x_cells[last] + weight * (x_cells[last + 1] - x_cells[last]))
 
     # ═══════════════════════════════════════════════════════ müqayisə
     def finished_runs(self):

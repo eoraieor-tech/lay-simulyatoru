@@ -522,3 +522,123 @@ YENİ `tests/test_structural_grid.py` (45 test).
   testləri ilə örtülüb. 3D görüntüdə əyri layın GÖRÜNMƏSİ və
   interpolyasiyadan sonra quyu indeksləri dialoqu istifadəçi tərəfindən
   təsdiqlənməlidir.
+
+---
+
+# A3 — Bakli-Leverett analitik istinad əyrisinin düzəldilməsi
+
+Bu mərhələdə düzəldilən şey fizika mühərriki DEYİL, **onu ölçən etalondur**
+(`imex2d/simulation/analytical.py`). Sınıq etalon fizika səhvindən daha
+təhlükəlidir, çünki gələcək səhvləri maskalayır.
+
+## Səhv nə idi
+
+Profil yığılmasında (köhnə sətir 44-51) cəbhədən sonra cəmi İKİ nöqtə
+qalırdı — `(x_front, sw_shock)` və `(1.6·x_front, swi)`. `np.interp` və
+matplotlib onların arasını XƏTTİ birləşdirdiyi üçün şok sıçrayışı əvəzinə
+uzun mailli enən pillə çəkilirdi. Riyaziyyat (fraksion axın, Welge
+toxunanı, `x_front`) düzgün idi — səhv yalnız yığılmada idi.
+
+## Diaqnoz və qəbul meyarı: kütlə eyniliyi
+
+Bakli-Leverett həllində DƏQİQ ödənir:
+
+    ∫₀^∞ (Sw(x) − Swi) dx  =  q·t / (φ·A)  =  velocity · t
+
+| | ∫(Sw−Swi)dx | gözlənilən | xəta |
+|---|---|---|---|
+| düzəlişdən əvvəl | 93.5635 | 75.0 | **24.75 %** |
+| düzəlişdən sonra | 75.0000267 | 75.0 | **0.0000356 %** |
+
+## Nə DƏYİŞMƏDİ (ölçülüb təsdiqlənib)
+
+- `sw_shock = 0.5386941`, `x_front = 182.61886` — düzəlişdən əvvəl və sonra
+  **bit-bə-bit eyni**. Müstəqil yoxlama: testin içində `scipy.optimize.brentq`
+  ilə, ANALİTİK `df/ds` (zəncir qaydası, `np.gradient`-siz) üzərindən tapılan
+  Welge kökü ilə `rtol=1e-4` daxilində üst-üstə düşür.
+- Rarefaksiya yelpiyi və `np.gradient(f, s)` toxunulmadı.
+- Mühərrikin çıxışı dəyişmədi: `nx = 60/120/240` üçün ədədi profilin öz həcm
+  balansı düzəlişdən əvvəl və sonra eyni qaldı (71.137 / 72.968 / 73.950 m,
+  75.0-ə yaxınsayır — yəni mühərrik onsuz da düzgün idi).
+
+## Düzəliş
+
+1. Profil dörd hissədən, ARTIQ SIRALANMIŞ şəkildə qurulur: süpürülmüş
+   zona → rarefaksiya yelpiyi → şok → toxunulmamış zona.
+2. Şok `np.nextafter(x_front, np.inf)` ilə ŞAQULİdir — fiziki qalınlığı
+   sıfır, massiv isə ciddi artan. `x_front · 1.001` kimi süni ofset
+   İŞLƏDİLMƏDİ: o, qalınlığı olan saxta keçid zonası yaradıb problemi
+   kiçildər, aradan qaldırmazdı.
+3. `np.argsort` **silindi**. Defolt `quicksort` stabil deyil; düzəlişdən
+   sonra eyni `x`-də iki fərqli `sw` (`sw_shock` və `swi`) olacağı üçün bu,
+   gizli səhvdən aktiv səhvə çevrilərdi.
+4. `1.6` sehrli sabiti getdi → `length` parametri (verilməzsə `2·x_front`,
+   YALNIZ göstərmə üçün). Çağıran `length = nx · dx` ötürür.
+5. `breakthrough` bayrağı: `x_front ≥ length` olanda UI "cəbhə modeldən
+   çıxıb" deyir, səssizcə mənasız faiz göstərmir.
+6. `np.maximum.accumulate` saxlanıldı, amma düzəltdiyi nöqtələr SAYILIR və
+   `monotonicity_corrections` + `notes` kimi qaytarılır — səssiz düzəliş
+   qadağandır. Corey defoltlarında say sıfırdır.
+7. Giriş yoxlaması əlavə olundu (`time`, `total_rate`, `area`, `porosity`,
+   lözlüklər > 0; `swc ≤ Swi < 1 − sor`) — əvvəl heç bir yoxlama yox idi.
+
+## Ölçmə metrikası (`main_window.run_validation`)
+
+Köhnə metrika (`Sw > Swc + 0.01` olan SON hüceyrə) yayılmış cəbhənin ÖN
+KƏNARIDIR və sistematik olaraq şişirdir. İndi üç metrika göstərilir:
+
+1. **Əsas:** bütün profil üzrə RMS xəta (hüceyrə mərkəzlərində).
+2. **Cəbhə:** `Sw = (sw_shock + Swi)/2` səviyyəsinin keçidi — yayılma bu
+   nöqtəyə görə simmetrik olduğundan qərəzsizdir. Ölçdüm: ön kənar 7.33 %,
+   orta nöqtə 4.53 %.
+3. **Mühərrikdən asılı olmayan:** ədədi profilin `∫(Sw−Swi)dx` həcm balansı.
+
+Validasiya modeli artıq SIXILMAZ flüidlə qurulur (`base.fluids`-dən yalnız
+lözlüklər götürülür, `c = 0`) — BL sıxılmaz nəzəriyyədir və etalonda "kiçik
+naməlum fərq" qalmamalıdır.
+
+## ƏSL SÜBUT — grid yaxınsaması
+
+Eyni fiziki məsələ (`length = 960 m`, `t = 250 gün`), üç şəbəkə:
+
+| nx | RMS, düzəlişdən ƏVVƏL | RMS, SONRA |
+|---|---|---|
+| 60 | 0.0498 | 0.0397 |
+| 120 | 0.0564 | 0.0231 |
+| 240 | 0.0606 | 0.0163 |
+
+Əvvəl xəta şəbəkə xırdalandıqca **artırdı** — çünki ölçü cihazının özü səhv
+idi. İndi monoton azalır. `tests/test_analytical_bl.py::
+test_refining_the_grid_reduces_error_against_analytical` bunu qoruyur.
+
+## Yoxlama
+
+- `tests/test_analytical_bl.py` — 24 yeni test (kütlə eyniliyi, dəqiq
+  quyruq, ciddi artan məsafə, monotonluq, müstəqil Welge kökü, zaman
+  miqyası, breakthrough, giriş yoxlaması, grid yaxınsaması,
+  kapilyar/cazibə izolyasiyası). §8-ə uyğun olaraq kütlə eyniliyi və grid
+  yaxınsaması testləri düzəlişdən ƏVVƏL yazılıb və QIRMIZI olduqları
+  görülüb (16 uğursuz / 6 keçdi).
+- `tests/test_physics.py::test_buckley_leverett_front_position` silinmədi,
+  tolerantlığı 12 % → **9 %** sıxlaşdırıldı (faktiki ön-kənar xətası
+  7.33 %). Metrikanın qərəzli olduğu docstring-də açıq yazıldı.
+- `python tools/golden.py` → **ÜÇÜ DƏ UYĞUNDUR** (3.179645 / 8.411893 /
+  6.766724 — dəyişməyib). Gözlənildiyi kimi: bu modul simulyasiya
+  zəncirinin hissəsi deyil. Məhz buna görə səhv golden ilə tutulmamışdı —
+  bu qeyd `tools/golden.py` başlığına da yazıldı.
+- `python -m pytest -q` → **2058 keçdi, 1 buraxıldı, 1 uğursuz**. Uğursuz
+  olan `test_phase_b_production_integration.py::test_differential_phase_a_
+  vs_phase_b_permx_differ_and_why`-dır; A2 hesabatında artıq qeyd olunub və
+  `git stash` ilə TƏMİZ ağacda yenidən yoxlanılıb — eyni sətir, eyni səbəb
+  (`_cell_centres`-ə `geometry` yerinə `spec` ötürülür). A3 ilə əlaqəsi
+  yoxdur.
+- **Vizual yoxlama edilib** (`ValidationRenderer` başsız/offscreen
+  matplotlib ilə real ədədi nəticə üzərində PNG-yə çəkilərək): analitik
+  əyri indi cəbhədə ŞAQULİ düşür və sonra düz üfüqi `Swi = 0.20` xətti
+  kimi gedir; köhnə mailli enən xətt YOX OLUB. Ədədi əyri yelpik zonasında
+  demək olar üst-üstə düşür, yalnız cəbhə ətrafında yayılma qədər
+  fərqlənir.
+- `python app.py` → açılır, 12 tab qurulur, aralarında **Validasiya
+  (B-L)**. (A1/A2-dən fərqli olaraq bu dəfə mühit tətbiqi işə saldı.)
+  Tabın DAXİLİNDƏ düyməyə basıb rəqəmləri gözlə yoxlamaq isə interaktiv
+  seans tələb edir — istifadəçi tərəfindən təsdiqlənməlidir.
