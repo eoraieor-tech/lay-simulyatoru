@@ -1,0 +1,21 @@
+# Lay Simulyatoru — Python asılılıqları
+# Mühit: Python 3.12 (bax QARARLAR.md → Q-03)
+
+# --- Riyazi nüvə ---
+numpy>=1.26
+scipy>=1.11
+
+# --- Geostatistika və interpolyasiya ---
+PyKrige>=1.7          # Ordinary / Universal Kriging
+pandas>=2.1           # Quyu məlumatlarının cədvəl emalı
+
+# --- 3D mesh və vizualizasiya ---
+pyvista>=0.44         # VTK əsaslı 3D render
+vtk>=9.3
+
+# --- 2D qrafiklər / dashboard ---
+matplotlib>=3.8
+plotly>=5.20
+
+# --- Test ---
+pytest>=8.0
