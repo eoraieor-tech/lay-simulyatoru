@@ -1202,6 +1202,57 @@ testləri (143) və B1-in yeni testləridir (16).
 Qeyd: dəst 15 dəqiqədən 10 dəqiqəyə düşüb — səbəb ölçülməyib, ehtimal
 ki maşın yükü. Paralelləşdirmə (B7.4) hələ də faydalıdır.
 
+### Proqramın REAL işlədilməsi — B1 uc-uca təsdiqləndi
+
+Testlərdən sonra tətbiqin özü işə salındı və sürüldü (yalnız idxal
+yox — pəncərə quruldu, seçicilər dəyişdirildi, «MODELİ İŞƏ SAL»
+basıldı, ekran şəkilləri çəkildi).
+
+**Nəticə — 10×10, 300 gün, IMPLICIT + MPFA-O:**
+
+```
+converged = True · 22 addım · 4.9 san
+orta Δt = 13.6 gün · orta 3.2 Nyuton iterasiyası · 0 təkrar
+OOIP 61.2 min m³ · RF 49.59 % · Water cut 83.7 % · Su gəlişi 155 gün
+```
+
+**Nəticə — 12×12×4 (ÜÇÖLÇÜLÜ), 200 gün, IMPLICIT + MPFA-O:**
+
+```
+converged = True · 17 addım · 5.2 san · RF 33.05 %
+VTK səhnəsi: 1130×679 piksel, 14 aktyor, 10 416 fərqli rəng
+```
+
+Yəni B1 yalnız testdə deyil, **istifadəçinin gördüyü proqramda da**
+işləyir: combobox görünür, seçim mühərriyə çatır, MPFA-O ilə həqiqi
+3D simulyasiya yığılır.
+
+### İki mühit tapıntısı (gələcək iş üçün vacib)
+
+1. **GUI `QT_QPA_PLATFORM=offscreen` ilə ÇÖKÜR (segfault).**
+   Səbəb: VTK-nın Win32 OpenGL pəncərəsi offscreen platformada
+   "failed to get valid pixel format" verir və proses ölür.
+   `MainWindow` VTK widget-ini dərhal qurduğu üçün proqram
+   ümumiyyətlə açılmır.
+   **Nəticə:** GUI-ni sürmək üçün `QT_QPA_PLATFORM=windows` işlədilir.
+   Testlər bundan təsirlənmir — onlar `MainWindow` qurmur (AST təhlili
+   və ayrıca panellər).
+   ⏳ CI-də GUI sürmək lazım olsa, bu maneə həll edilməlidir.
+
+2. **`QWidget.grab()` VTK sahəsini TUTMUR** — 3D tabının şəklində
+   görüntü sahəsi QARA çıxır. Bu, proqramın səhvi DEYİL: native
+   OpenGL alt-pəncərəni Qt özü çəkmir.
+   **Düzgün üsul:** `vtkWindowToImageFilter` ilə birbaşa VTK
+   pəncərəsindən almaq — belə edildikdə şəkil tam düzgündür (grid,
+   Sw sahəsi, INJ-1/PROD-1 quyuları, oxlar, rəng şkalası).
+
+### Öz səhvimin qeydi
+
+İlk sürücü skriptində RF-i 4958.81 %, su kəsirini 8369.73 % kimi
+çap etdim. Proqram düzgün idi — **`TimeSeries.recovery_factor` və
+`water_cut` onsuz da FAİZDƏ saxlanılır**, mən üstünə 100 vurmuşdum.
+Doğru dəyərlər: RF 49.59 %, WCT 83.7 %. Kod dəyişdirilmədi.
+
 ### Buraxılan iş
 
 - B1 bitdi. Növbəti blok sahibkarın seçimindən asılıdır (plan sırası
