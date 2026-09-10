@@ -446,6 +446,9 @@ class FluidProperties:
     oil_compressibility: float = 1.4e-4
     water_density: float = 1010.0   # səth sıxlığı, kg/m3
     oil_density: float = 850.0      # səth sıxlığı, kg/m3
+    gas_density: float = 0.85       # səth sıxlığı, kg/m3 (A7 — havaya nisbətlə
+                                     # ~0.75 sıxlıqlı qaz üçün tipik dəyər;
+                                     # yalnız üç fazalı model işlədəndə tələb olunur)
 
     def validate(self) -> list:
         """Sərt fiziki xətalar (əvvəllər bu sinifdə HEÇ BİR yoxlama yox

@@ -21,6 +21,7 @@ class ControlMode(Enum):
 class Phase(Enum):
     WATER = "WATER"
     OIL = "OIL"
+    GAS = "GAS"
 
 
 @dataclass

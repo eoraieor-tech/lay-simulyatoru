@@ -54,8 +54,8 @@ class AdaptiveTimeStepConfig:
     (məs. quyunun öz BHP sərhədinə çox yaxın olması) "asılıb" qala
     bilər, halbuki qlobal nəticə fiziki cəhətdən etibarlıdır.
 
-    Defolt olaraq söndürülüb; qəbul edən mühərrik bunu özü
-    aktivləşdirir.
+    A7-nin üç fazalı mühərriki bunu aktivləşdirir — bax
+    `three_phase_engine.py`.
     """
     soft_failure_mb_tolerance: Optional[float] = None
     """`soft_failure_cnv_tolerance` ilə BİRLİKDƏ tələb olunur.
