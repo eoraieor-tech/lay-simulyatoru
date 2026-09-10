@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Redaktor
+.vscode/
+.idea/
+*.swp
+
+# Sistem
+.DS_Store
+Thumbs.db
+
+# Loglar və müvəqqəti fayllar
+*.log
+logs/
+tmp/
+temp/
+
+# Simulyasiya nəticələri (böyük binar fayllar)
+*.EGRID
+*.UNRST
+*.INIT
+*.SMSPEC
+*.UNSMRY
+out/
+results/
+
+# Şəxsi Claude Code parametrləri
+.claude/settings.local.json
