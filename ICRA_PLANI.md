@@ -17,8 +17,8 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 |---|---|---|
 | M1 | Kəşfiyyat quyusu faylı → 3D heterogen lay modeli, ekranda | ✅ |
 | M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
-| M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | 🟡 2 fazalı ✅ |
-| M4 | P < Psat → qazın ayrılması, GOR artımı | 🟡 kod ✅, qoşulmayıb |
+| M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | ✅ **B2-də bağlandı** |
+| M4 | P < Psat → qazın ayrılması, GOR artımı | 🟡 **qoşuldu**, amma ilkin Rs sahəsi yoxdur + B3 bloklayır |
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 BHP ✅, THP ❌ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
@@ -92,9 +92,25 @@ keçir), amma `ModelAwareSimulationService.create_engine()`
 
 ---
 
-## B2 — A7 qaz fazasının servis və UI-yə qaytarılması
+## B2 — A7 qaz fazasının servis və UI-yə qaytarılması ✅ BİTDİ
 
-**Həcm:** orta (~2-3 seans) · **Risk:** orta
+**Həcm:** orta · **Risk:** orta · **Bitdi:** 10 sentyabr 2026
+
+> **İcra qeydi — planın bir fərziyyəsi SƏHV idi.** Plan 4b-ni "ən çətin,
+> ona görə birinci" sayırdı. Ölçüldü: `standard_well.py` və
+> `coupled_newton.py` YALNIZ testlərdən çağırılır — heç bir mühərrik
+> onları idxal etmir. 4b heç nəyi bloklamırdı; əsl iş addım 2 və 1 idi
+> (~120 semantik sətir). Sıra dəyişdirildi: 2 → 1 → 3 → 4a/4b → 001cc12.
+>
+> Bərpa zamanı ÜÇ səhv tapılıb düzəldildi (faza sayından asılı kütlə
+> balansı, ACTNUM-un dəyişən sayı, `self.reservoir` atributu) — heç biri
+> statik köçürmə ilə görünməzdi.
+>
+> ⚠️ **Qalan iki məhdudiyyət:** (1) GOC verilməyəndə neft "ölü" başlayır
+> (Rs=0) — domain-də ilkin Rs sahəsi YOXDUR, ayrıca iş lazımdır;
+> (2) Pb > BHP rejimində üç fazalı mühərrik də yığılmır — **B3**.
+>
+> Təfərrüat: `ISH_HESABATI.md` → Seans 6.
 
 ### Ölçülmüş vəziyyət — gözləniləndən KİÇİKDİR
 
@@ -252,6 +268,31 @@ debitlərə görə BHP hesablanır və Nyutona **sabit BHP kimi** verilir
 
 ---
 
+## B4b — İlkin Rs sahəsi (B2-də aşkarlandı, YENİ)
+
+**Həcm:** kiçik-orta · **Risk:** aşağı · **Meyar:** M4
+
+Domain modelində "ilkin həll olmuş qaz (Rs)" sahəsi YOXDUR. Ona görə
+qaz papağı (GOC) verilmədikdə üç fazalı mühərrik nefti "ölü" kimi
+başladır (Rs = 0) və **P < Pb olsa belə qaz ayrıla bilmir** — ayrılacaq
+həll olmuş qaz yoxdur. OGIP = 0 çıxır.
+
+Bu, v69-un sildiyi bir şey DEYİL — heç vaxt olmayıb (A7-nin açıq
+sənədləşdirilmiş mühafizəkar defoltu).
+
+**Addımlar:**
+1. `domain/initial.py` → `InitialConditions.solution_gor` (və ya
+   "doyma təzyiqindən hesabla" bayrağı).
+2. `three_phase_engine._initial_state()` → GOC yoxdursa Rs-i
+   `Rs(min(P, Pb))` ilə doldurmaq.
+3. UI (PVT və ya Ədədi parametrlər tabı) + `.imx` açarı.
+4. Testlər: OGIP > 0; P < Pb-də Sg artır; GOR yüksəlir.
+
+**Bitmə şərti:** GOC OLMADAN da, sadəcə təzyiq Pb-dən aşağı düşəndə
+qaz ayrılır və GOR əyrisi qalxır (M4-ün əsl tələbi).
+
+---
+
 ## B5 — Kiçik boşluqlar: Pcog və CSV/JSON ixracı
 
 **Həcm:** kiçik (~1 seans) · **Risk:** aşağı
@@ -327,7 +368,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | Blok | Həcm | Risk | Hansı meyarı bağlayır |
 |---|---|---|---|
 | ~~B1 MPFA seçimi~~ ✅ **BİTDİ** | kiçik | aşağı | **M2 bağlandı** |
-| B2 A7 qaytarılması | orta | orta | **M3, M4** |
+| ~~B2 A7 qaytarılması~~ ✅ **BİTDİ** | orta | orta | **M3 ✅ · M4 qismən** |
 | B3 Nyuton möhkəmliyi | orta-böyük | **yüksək** | M3 + **PVT səhvi (Seans 5)** |
 | B4 THP/VFP | orta | aşağı | **M5** |
 | B5 Pcog + CSV | kiçik | aşağı | **M8** |

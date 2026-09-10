@@ -28,6 +28,7 @@ FEATURES = [
     ("C5 · Tarixçə uyğunluğu", "müşahidə CSV, NRMSE ölçüsü, çarpaz qrafik"),
     ("B3 · Fault transmissivliyi", "I/J/K müstəvisi, çarpan, sealing, CSV/Eclipse FAULTS, 3D-də görünən"),
     ("B6 · PDF hesabat", "çoxsəhifəli hesabat: model, xəritə, SCAL, PVT, nəticələr"),
+    ("A7 · Qaz fazası (sınaq statusunda)", "PVT tabında aktivləşdirilir — GOC, qaz-neft SCAL, təhlükəsiz uğursuzluqla"),
     ("OPM Flow idxalı", "OPM Flow nəticələrini öz 3D görüntümüzlə göstər — .EGRID+.UNRST"),
     ("VTK 3D motoru", "ResInsight tipli — quyular, faultlar, ölçü oxları, istiqamət oxu"),
     ("Diaqnostika", "xəta/xəbərdarlıq səviyyələri, quyu rejimi yoxlamaları"),

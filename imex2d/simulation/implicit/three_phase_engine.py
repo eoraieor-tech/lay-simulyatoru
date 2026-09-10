@@ -44,7 +44,8 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
                 linear_solver=None, capillary=None,
                 initialization: Optional[IInitializationProvider] = None,
                 newton_config: Optional[NewtonConfig] = None,
-                time_step_config: Optional[AdaptiveTimeStepConfig] = None):
+                time_step_config: Optional[AdaptiveTimeStepConfig] = None,
+                flux_discretization=None):
         """`linear_solver`, `capillary` — A6-dakı mühərriklərlə eyni
         çağırış imzasını qorumaq üçün qəbul edilir
         (`SimulationService.create_engine()` bütün mühərrikləri eyni
@@ -61,6 +62,19 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             raise ValueError(
                 "ThreePhaseSimulationEngine yalnız qaz xassələri olan PVT "
                 "cədvəli ilə işləyir (build_pvt_table(..., include_gas=True)).")
+        # B1 (MPFA-O seçimi) `SimulationService.create_engine()`-ə
+        # `flux_discretization` açar sözü əlavə etdi və bütün mühərriklər
+        # onu EYNİ imza ilə alır. Üç fazalı qalıq/Jakobian hələ YALNIZ
+        # TPFA üçün yazılıb (çoxnöqtəli stensil üç fazalı Jakobiana
+        # qoşulmayıb), ona görə burada AÇIQ RƏDD edilir — səssizcə
+        # TPFA-ya keçmək istifadəçinin seçdiyindən BAŞQA bir hesab
+        # aparmaq olardı.
+        if flux_discretization is not None and getattr(
+                flux_discretization, "supports_multipoint_stencil",
+                lambda: False)():
+            raise NotImplementedError(
+                "Üç fazalı (qazlı) mühərrik çoxnöqtəli diskretizasiya "
+                "(MPFA-O) ilə HƏLƏ İŞLƏMİR — TPFA seçin.")
         self.model = model
         self.config = config
         self.relperm = relperm
@@ -252,6 +266,19 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
                     break
 
         result.steps = steps
+        # Uğurla bitəndə YEKUN MESAJ — iki fazalı mühərriklə eyni format
+        # (`implicit/engine.py`). Bərpa olunan A7 kodunda bu blok yox idi:
+        # qaz aktiv olanda istifadəçi status sətrində və jurnalda BOŞ
+        # mesaj görürdü (ölçülüb, B2). Fizika DƏYİŞMİR.
+        if not result.message:
+            statistics = self.time_stepper.summary()
+            result.message = (
+                f"Tamamlandı (3 fazalı): {steps} addım, t = {time:.1f} gün "
+                f"(orta Δt = {statistics.get('orta Δt', 0.0):.1f} gün, "
+                f"orta {statistics.get('orta iterasiya', 0.0):.1f} Nyuton "
+                f"iterasiyası, {statistics.get('təkrar', 0)} təkrar).")
+        LOG.info("%s  RF = %.2f %%", result.message,
+                 result.final_recovery_factor)
         return result
 
     def _record_snapshot(self, result: SimulationResult, time: float) -> None:

@@ -39,7 +39,8 @@ from ..io.scal_io import ScalFormatError, read_scal_csv, read_swof
 from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
 from ..domain.properties import FluidProperties
-from ..domain.scal import (CapillaryParameters, CoreyParameters)
+from ..domain.scal import (CapillaryParameters, CoreyParameters,
+                           GasCoreyParameters)
 from ..domain.unit_conversions import convert, to_engine_units
 from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation
 from ..rendering.theme import PALETTE
@@ -1360,6 +1361,55 @@ class ScalPanel(QWidget):
         note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         form.addRow(note)
 
+        # ── Qaz-neft SCAL (A7) ──────────────────────────────────────
+        self.gas_enabled = QCheckBox("Qaz-neft əyriləri")
+        self.gas_enabled.setChecked(False)
+        self.gas_enabled.stateChanged.connect(self._on_gas_toggled)
+        self.gas_enabled.stateChanged.connect(self.changed)
+        form.addRow(self.gas_enabled)
+
+        self.sgc = _spin(0.05, 0.0, 0.4, 3, 0.01)
+        self.sorg = _spin(0.10, 0.0, 0.4, 3, 0.01)
+        self.krg_end = _spin(0.80, 0.01, 1.0, 3, 0.05)
+        self.ng = _spin(2.0, 1.0, 6.0, 2, 0.1)
+        self.nog = _spin(2.0, 1.0, 6.0, 2, 0.1)
+        self._gas_rows = [("Sgc (bağlı qaz)", self.sgc),
+                          ("Sorg (qaza qarşı qalıq neft)", self.sorg),
+                          ("krg @ 1-Swc-Sorg", self.krg_end),
+                          ("Corey ng", self.ng), ("Corey nog", self.nog)]
+        for label, widget in self._gas_rows:
+            form.addRow(label, widget)
+            widget.valueChanged.connect(self.changed)
+
+        gas_note = QLabel(
+            "Bu parametrlər simulyasiyaya TƏTBİQ OLUNUR — PVT tabında "
+            "\"Qaz fazasını aktivləşdir\" işarələnibsə. SINAQ STATUSU: "
+            "quyu öz BHP hədəfinə çox yaxınlaşan hallarda simulyasiya "
+            "vaxtından əvvəl dayana bilər (bax PVT tabındakı qeyd) — "
+            "proqram çökmür, son yığılmış nöqtəyə qədər nəticələr qalır.")
+        gas_note.setWordWrap(True)
+        gas_note.setStyleSheet(f"color:{PALETTE.oil};font-size:11px")
+        form.addRow(gas_note)
+        self._on_gas_toggled()
+
+    def _on_gas_toggled(self):
+        active = self.gas_enabled.isChecked()
+        for _, widget in self._gas_rows:
+            widget.setEnabled(active)
+
+    def gas_values(self) -> Optional[GasCoreyParameters]:
+        """`None` — söndürülübsə (defolt).
+
+        PVT tabında qaz aktivdirsə, bu dəyərlər mühərrikə ötürülür.
+        Söndürülübsə, mühərrik (qaz aktiv olduğu halda) defolt Corey
+        parametrlərinə keçir — bax `MainWindow.rebuild_model()`.
+        """
+        if not self.gas_enabled.isChecked():
+            return None
+        return GasCoreyParameters(self.sgc.value(), self.sorg.value(),
+                                  self.krg_end.value(), self.ng.value(),
+                                  self.nog.value())
+
     def values(self) -> CoreyParameters:
         return CoreyParameters(self.swc.value(), self.sor.value(),
                                self.krw_end.value(), self.kro_end.value(),
@@ -1403,6 +1453,11 @@ class PvtPanel(QWidget):
         self.pressure_max = _spin(400.0, 20.0, 1200.0, 1, 20.0, "bar")
         self.points = _ispin(40, 5, 200)
 
+        self.gas_phase_enabled = QCheckBox(
+            "Qaz fazasını aktivləşdir (A7 — sınaq statusunda)")
+        self.gas_phase_enabled.setChecked(False)
+        self.gas_phase_enabled.stateChanged.connect(self.changed)
+
         rows = [("Neftin sıxlığı (API)", self.api),
                 ("Qaz sıxlığı γg", self.gas_gravity),
                 ("Lay temperaturu", self.temperature),
@@ -1422,6 +1477,16 @@ class PvtPanel(QWidget):
         note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
         form.addRow(note)
 
+        form.addRow(self.gas_phase_enabled)
+        gas_note = QLabel(
+            "Üç fazalı mühərrik istifadə olunur. SINAQ STATUSU: quyu öz "
+            "BHP hədəfinə çox yaxınlaşan hallarda simulyasiya vaxtından "
+            "əvvəl (yığılmadan) dayana bilər — bu halda son yığılmış "
+            "nöqtəyə qədər olan nəticələr göstərilir, proqram çökmür.")
+        gas_note.setWordWrap(True)
+        gas_note.setStyleSheet(f"color:{PALETTE.oil};font-size:11px")
+        form.addRow(gas_note)
+
     def is_enabled(self) -> bool:
         return self.enabled.isChecked()
 
@@ -1439,7 +1504,11 @@ class PvtPanel(QWidget):
             pressure_max=max(self.pressure_max.value(),
                              self.pressure_min.value() + 10.0),
             n_points=self.points.value(),
-            bubble_point_bar=self.bubble_point.value())
+            bubble_point_bar=self.bubble_point.value(),
+            include_gas=self.gas_phase_enabled.isChecked())
+
+    def gas_phase_active(self) -> bool:
+        return self.enabled.isChecked() and self.gas_phase_enabled.isChecked()
 
 
 class WellPanel(QWidget):
@@ -1742,6 +1811,9 @@ class NumericalPanel(QWidget):
             f"color:{PALETTE.text_dim};font-size:11px")
         self.datum_depth = _spin(2000.0, 0.0, 8000.0, 1, 50.0, "m")
         self.owc = _spin(2050.0, 0.0, 8000.0, 1, 10.0, "m")
+        self.use_goc = QCheckBox(
+            "Qaz papağı (GOC) — yalnız qaz fazası aktivdirsə təsir edir")
+        self.goc = _spin(2010.0, 0.0, 8000.0, 1, 10.0, "m")
         form.addRow(self.use_equilibration)
         form.addRow(self.use_saturation_map)
         form.addRow(self.saturation_map_info)
@@ -1757,6 +1829,10 @@ class NumericalPanel(QWidget):
             form.addRow(label, widget)
             sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
             sig.connect(self.changed)
+        form.addRow(self.use_goc)
+        form.addRow("Qaz-neft kontaktı (GOC)", self.goc)
+        self.use_goc.stateChanged.connect(self.changed)
+        self.goc.valueChanged.connect(self.changed)
         self.use_equilibration.stateChanged.connect(self.changed)
         self.use_saturation_map.stateChanged.connect(self._saturation_source_changed)
         self.set_saturation_map(None)
@@ -1802,6 +1878,11 @@ class NumericalPanel(QWidget):
             datum_pressure=pressure_bar,
             water_saturation=self.initial_sw.value(),
             oil_water_contact=self.owc.value() if equilibrate else None,
+            # GOC yalnız equilibration açıq olanda mənalıdır — hidrostatik
+            # tarazlıq qurulmadan kontakt dərinliyinin təsiri yoxdur.
+            gas_oil_contact=(self.goc.value()
+                             if equilibrate and self.use_goc.isChecked()
+                             else None),
             use_equilibration=equilibrate,
             use_saturation_map=self.use_saturation_map.isChecked())
 

@@ -155,11 +155,17 @@ class AdaptiveTimeStepper:
                 mb_tolerance = config.soft_failure_mb_tolerance
                 history = getattr(result, "cnv_history", None)
                 last_cnv = history[-1] if history else float("inf")
-                mb_water, mb_oil = getattr(
-                    result, "material_balance", (float("inf"), float("inf")))
+                # FAZA SAYINDAN ASILI OLMAYAN oxunuş: iki fazalı Nyuton
+                # (su, neft) 2 dəyər, üç fazalı (su, neft, qaz) 3 dəyər
+                # verir. Əvvəl burada dəqiq İKİ dəyər açılırdı — üç
+                # fazalı mühərrik minimal Δt-yə çatanda bu, `ValueError`
+                # atırdı və mühərrikin qoruyucu bloku onu səssizcə
+                # "yığılmadı" nəticəsinə çevirirdi (B2-də ölçüldü).
+                balances = getattr(result, "material_balance", None)
+                worst_mb = max(balances) if balances else float("inf")
                 soft_ok = (soft_tolerance is not None and mb_tolerance is not None
                           and history and last_cnv < soft_tolerance
-                          and max(mb_water, mb_oil) < mb_tolerance
+                          and worst_mb < mb_tolerance
                           and (self._consecutive_soft_failures
                                < config.max_consecutive_soft_failures))
                 if soft_ok:
@@ -168,7 +174,7 @@ class AdaptiveTimeStepper:
                         "t = %.2f gün: minimal Δt-də tam yığılmadı, lakin "
                         "CNV=%.2e və MB=%.2e yumşaq hədlərin altındadır — "
                         "XƏBƏRDARLIQLA qəbul edilir (%d/%d ardıcıl).", time,
-                        last_cnv, max(mb_water, mb_oil),
+                        last_cnv, worst_mb,
                         self._consecutive_soft_failures,
                         config.max_consecutive_soft_failures)
                     self.history.append(TimeStepRecord(

@@ -1347,3 +1347,156 @@ MÜMKÜN OLMADI — B1-dən sonra jurnalda bu boşluq yaranmışdı.
 
 - Səhv TAPILDI və təcrid olundu, **düzəldilmədi** — düzəlişi B3-ün
   işidir və sahibkarın prioritet qərarını gözləyir.
+
+---
+
+## 10 sentyabr 2026 — Seans 6: B2 icra olundu (A7 qaz fazası servisə və UI-yə qaytarıldı)
+
+### Planın bir fərziyyəsi SƏHV çıxdı
+
+`ICRA_PLANI.md` → B2 deyirdi: "4b ən çətin addımdır (443 sətir) — əvvəl
+edilir ki, qalanı üstünə otursun."
+
+**Ölçüldü: `standard_well.py` və `coupled_newton.py` YALNIZ
+`tests/test_standard_well.py`-dan çağırılır.** Nə iki fazalı
+`FullyImplicitEngine`, nə də üç fazalı `ThreePhaseSimulationEngine`
+onları idxal etmir — bu, hələ mühərriyə qoşulmamış, PARALEL bir quyu
+modeli yoludur (OPM tipli, BHP naməlum dəyişən kimi).
+
+**Nəticə:** 4b heç nəyi bloklamırdı. Qazı proqrama qaytaran əsl iş
+addım 2 (application) və 1 (UI) idi — cəmi ~120 semantik sətir.
+Sıra dəyişdirildi: 2 → 1 → 3 → 4a/4b → 001cc12.
+
+### Görülən iş
+
+| Addım | Fayl | Nə edildi |
+|---|---|---|
+| 2 | `application/simulation_service.py` | qaz budağı: PVT-də qaz varsa `ThreePhaseSimulationEngine` |
+| 2 | `application/model_builder.py` | `gas_scal` parametri |
+| 2 | `application/serialization.py` | `.imx`-ə `gas_oil_contact` |
+| 1 | `ui/panels.py` | PVT: "Qaz fazasını aktivləşdir" · SCAL: qaz-neft əyriləri · Ədədi: qaz papağı (GOC) |
+| 1 | `ui/main_window.py` | `gas_scal` ötürülməsi, SCAL tabında 3-cü ox, müqayisədə `gas_saturation` |
+| 3 | `rendering/renderers.py` | `draw_gas` (Stone II önizləməsi) |
+| 4a/4b | `standard_well.py`, `well_state.py`, `coupled_newton.py` | üç fazalı formaya qaytarıldı |
+| — | `tests/test_gas_ui_wiring.py` | `berpa/`-dan qaytarıldı — **8 test keçir** |
+| 001cc12 | `domain/reservoir_model.py`, `version.py` | qaz-agah diaqnostika + FEATURES sətri |
+
+### Bərpa zamanı TAPILAN VƏ DÜZƏLDİLƏN ÜÇ SƏHV
+
+Bunlar bərpanın "mexaniki köçürmə" olmadığını göstərir:
+
+1. **`time_stepping.py` üç fazalı kütlə balansını AÇA BİLMİRDİ.**
+   `mb_water, mb_oil = getattr(result, "material_balance", ...)` dəqiq
+   İKİ dəyər açırdı; üç fazalı Nyuton isə ÜÇ verir (su, neft, qaz).
+   Bu kod v69-dan SONRA yazılıb, ona görə qazı heç vaxt görməmişdi.
+   Nəticə: üç fazalı mühərrik minimal Δt-yə çatanda `ValueError` atırdı,
+   mühərrikin qoruyucu bloku isə onu səssizcə "yığılmadı"ya çevirirdi.
+   **Düzəliş:** faza sayından asılı olmayan `max(balances)`.
+
+2. **ACTNUM daraltması üç fazalıda yanlış ölçü verirdi.**
+   `ActiveDofReduction`-un defolt `variables_per_cell` dəyəri İKİ
+   fazalıdır (=2); üç fazalıda 3 olmalıdır. Defoltla buraxılsaydı Nyuton
+   "xətti həlledici uğursuz" verərdi. **Düzəliş:** açıq ötürülür.
+
+3. **`self.reservoir` atributu üç fazalı sinifdə YOXDUR** (`self.model`
+   var). ACTNUM kodu iki fazalı versiyadan gəldiyi üçün belə yazılmışdı.
+
+Üçü də ancaq **testləri işlədəndə** üzə çıxdı — statik köçürmə ilə
+tapılmazdı.
+
+### B1 ilə toqquşma — həll olundu
+
+B1 `create_engine()`-ə `flux_discretization` açar sözü əlavə etmişdi və
+bütün mühərriklər onu eyni imza ilə alır. `ThreePhaseSimulationEngine`
+belə parametr tanımırdı → `TypeError`. Üç fazalı qalıq/Jakobian yalnız
+TPFA üçün yazılıb, ona görə:
+- mühərrik parametri qəbul edir, çoxnöqtəli olanda **AÇIQ rədd edir**;
+- servis daha əvvəl, aydın mesajla dayandırır ("MPFA-O hələ üç fazalı
+  mühərriklə işləmir — TPFA seçin").
+
+Səssizcə TPFA-ya keçmək istifadəçinin seçdiyindən BAŞQA bir hesab
+aparmaq olardı — qadağandır.
+
+### Orijinal koda nisbətən İKİ QƏSDƏN FƏRQ
+
+1. **`engine_factory` daimi dəyişdirilmir.** Orijinal kod
+   `self.engine_factory = ThreePhaseSimulationEngine` yazırdı. Servis
+   təkrar işlədiləndə (history matching, həssaslıq) qaz söndürülsə belə
+   üç fazalı mühərrik seçili qalır və `ValueError` verirdi. İndi seçim
+   yalnız həmin çağırışa aiddir (`try/finally`). Test yazıldı.
+2. **Üç fazalı mühərrik uğurla bitəndə YEKUN MESAJ yazır.** Bərpa
+   olunan kodda bu blok yox idi: qaz aktiv olanda istifadəçi status
+   sətrində BOŞ mesaj görürdü. İki fazalı ilə eyni format verildi.
+
+### Davranış dəyişikliyi (qəsdən, testi ilə birlikdə)
+
+`test_producer_below_bubble_point_warns_even_with_gas_in_the_pvt_table`
+→ `test_producer_below_bubble_point_is_not_warned_when_gas_is_modelled`.
+
+Xəbərdarlığın mətni "qaz fazası MODELLƏŞDİRİLMİR" deyir. v69 qaz
+mühərrikini sildiyi üçün bu HƏMİŞƏ doğru idi. B2 mühərriki qaytardı —
+PVT-də qaz varsa qaz REAL modelləşdirilir, yəni mətn FAKTİKİ OLARAQ
+YANLIŞDIR. Şərt (`not has_gas_phase`) və test birlikdə dəyişdirildi.
+Qaz sütunu olmayan cədvəl üçün xəbərdarlıq dəyişməz qalır.
+
+### Ölçülmüş nəticə — qaz yolu işləyir
+
+| Yoxlama | Nəticə |
+|---|---|
+| PVT-də qaz yox → mühərrik | `FullyImplicitEngine` ✅ |
+| PVT-də qaz var → mühərrik | `ThreePhaseSimulationEngine` ✅ |
+| qaz + `gas_scal` → relperm | `StoneRelativePermeabilityProvider` ✅ |
+| qaz → sonra qazsız (eyni servis) | yenidən `FullyImplicitEngine` ✅ (yapışqan deyil) |
+| qaz + MPFA-O | aydın `ModelValidationError` ✅ |
+| uc-uca 8×8, 400 gün, Pb=100 | `converged=True`, **RF 62.72 %** |
+| müqayisə: eyni model, 2 fazalı | RF 62.86 % |
+
+**Sərbəst qaz olmayan halda üç fazalı model iki fazalı ilə demək olar
+eyni cavabı verir (62.72 ↔ 62.86 %)** — bu, fizikanın sağlamlıq
+yoxlamasıdır.
+
+### AÇIQ QALAN İKİ MƏHDUDİYYƏT (uydurulmur, açıq yazılır)
+
+1. **Qaz papağı (GOC) verilmədikdə neft "ölü" başlayır (Rs = 0).**
+   Bu, A7-nin QƏSDƏN seçilmiş mühafizəkar defoltudur və kodda belə
+   sənədləşib: "Domain modelində ayrıca 'ilkin Rs' sahəsi yoxdur; bu,
+   ən mühafizəkar seçimdir — xəyali qaz yaratmır."
+   **Praktiki nəticə:** GOC seçilməyibsə OGIP = 0 və qaz heç vaxt
+   ayrılmır — çünki ayrılacaq həll olmuş qaz YOXDUR. Sahibkarın M4
+   meyarı (P < Psat → qazın ayrılması) bunun üçün domain-də **ilkin Rs
+   sahəsi** tələb edir. ⏳ Bu, B2-nin əhatəsində DEYİL (v69 onu
+   silməmişdi — heç vaxt olmayıb); ayrıca iş kimi qeyd olunur.
+2. **Doyma təzyiqi istismarçının BHP-sindən yuxarı olanda ÜÇ FAZALI
+   mühərrik də yığılmır** — eynilə iki fazalı kimi (Seans 5 tapıntısı).
+   Ölçüldü: Pb=240, BHP=150 → hər iki mühərrik t=0-da dayanır.
+   Yəni **qazın görünəcəyi rejim məhz B3-ün bloklayıcı olduğu
+   rejimdir.** B2 bağlantını qurdu, faydalı olması B3-dən asılıdır.
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **`001cc12`-dən versiya geri qaytarılması ALINMADI** (69 → 67).
+   Səbəb: irəli gedirik; yalnız məntiqi düzəliş və FEATURES sətri
+   götürüldü.
+2. **ACTNUM daraltması (v69-dan sonrakı iş) SAXLANILDI** və üç fazalı
+   formaya uyğunlaşdırıldı — bərpa sonrakı təkmilləşdirməni İTİRMƏDİ.
+3. **`test_standard_well.py` və `test_well_state.py` üç fazalı
+   versiyaya qaytarıldı**, çünki mənbə faylları da qaytarıldı — ikisi
+   ayrılmazdır.
+
+### Yoxlama — bütöv dəst
+
+```
+2 235 keçdi, 1 ötürüldü, 1 xfail, 0 UĞURSUZ  —  729.7 san (12:09)
+```
+
+Seans 4-də (B1-dən sonra) 2 225 idi; fərq bərpa olunan
+`test_gas_ui_wiring.py` (8) və üç fazalı quyu testlərinin artımıdır.
+
+**Ən vacib qoruma yenə keçdi:** `test_regression.py` — 2 fazalı 5-spot
+etalonu **dəyişmədi**.
+
+### Buraxılan iş
+
+- Domain-də **ilkin Rs sahəsi** yoxdur → GOC-suz qaz ayrılması mümkün
+  deyil (yuxarıda §1). `ICRA_PLANI.md`-yə **B4b** kimi əlavə olundu.
+- Pb > BHP rejimində yığılmama qalır → **B3**.

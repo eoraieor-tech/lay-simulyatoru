@@ -94,16 +94,25 @@ def test_producer_below_bubble_point_warns():
     assert any("doyma" in w.message for w in model.diagnose().warnings)
 
 
-def test_producer_below_bubble_point_warns_even_with_gas_in_the_pvt_table():
-    """v69: üç fazalı mühərrik silindi — PVT cədvəlində qaz sütunları
-    olsa da (Eclipse importu, köhnə .imx) qaz MODELLƏŞDİRİLMİR, ona görə
-    xəbərdarlıq HƏMİŞƏ verilməlidir. A7 dövründə əks davranış doğru idi;
-    mühərrik gedəndən sonra o şərt xəbərdarlığı səhvən susdururdu."""
+def test_producer_below_bubble_point_is_not_warned_when_gas_is_modelled():
+    """B2 (A7 bərpası) — DAVRANIŞ QƏSDƏN DƏYİŞDİRİLDİ.
+
+    Xəbərdarlığın mətni budur: "quyudibində qaz ayrılacaq — qaz fazası
+    MODELLƏŞDİRİLMİR, nəticələr nikbin ola bilər".
+
+    v69 qaz mühərrikini sildiyi üçün bu mətn HƏMİŞƏ doğru idi və test
+    xəbərdarlığın verilməsini tələb edirdi. B2 üç fazalı mühərriki geri
+    qaytardı: PVT-də qaz xassələri varsa, servis
+    `ThreePhaseSimulationEngine` seçir və qaz REAL modelləşdirilir —
+    yəni mətn faktiki olaraq YANLIŞ olur.
+
+    Ona görə indi əks tələb yoxlanılır. Qaz sütunları OLMAYAN cədvəl
+    üçün xəbərdarlıq dəyişməz qalır — bax yuxarıdakı test."""
     model = _model()
     model.pvt_table = build_pvt_table(bubble_point_bar=240.0, include_gas=True)
     _producer(model).control.target = 150.0
-    assert any("qaz ayrılacaq" in w.message
-               for w in model.diagnose().warnings)
+    assert not any("qaz ayrılacaq" in w.message
+                   for w in model.diagnose().warnings)
 
 
 def test_rate_controlled_wells_are_not_checked_for_pressure():

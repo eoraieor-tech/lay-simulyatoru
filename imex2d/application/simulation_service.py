@@ -203,7 +203,66 @@ class ModelAwareSimulationService(SimulationService):
         self.initialization_provider = self._initialization(
             model, self.pvt_provider, self.capillary_provider)
 
+        if self._gas_phase_requested():
+            return self._create_three_phase_engine(model, config)
         return super().create_engine(model, config)
+
+    def _gas_phase_requested(self) -> bool:
+        return (self.pvt_provider is not None
+                and self.pvt_provider.has_gas_phase())
+
+    def _create_three_phase_engine(self, model, config):
+        """A7 — PVT-də qaz xassələri varsa ÜÇ FAZALI mühərrik.
+
+        İstifadəçi "Qaz fazasını aktivləşdir" qutusunu işarələyibsə,
+        IMPES/IMPLICIT seçimindən ASILI OLMAYARAQ üç fazalı mühərrik
+        işlədilir — hər ikisi qazı dəstəkləmir.
+
+        Bax `A7_PLAN.md`: nüvə doğrulanıb, lakin quyu öz BHP hədəfinə
+        çox yaxınlaşan hallarda simulyasiya vaxtından əvvəl (yığılmadan)
+        dayana bilər. Bu, xəta kimi ATILMIR —
+        `SimulationResult.converged=False` və aydın mesajla qaytarılır,
+        son yığılmış nöqtəyə qədərki nəticələr saxlanılır.
+
+        İKİ FƏRQ (v69-dan əvvəlki orijinal koda nisbətən):
+
+        1. `engine_factory` DAİMİ dəyişdirilmir. Orijinal kod
+           `self.engine_factory = ThreePhaseSimulationEngine` yazırdı —
+           bu, servis TƏKRAR işlədiləndə (history matching, həssaslıq)
+           qaz söndürülsə belə üç fazalı mühərriki seçili saxlayardı və
+           `ValueError` verərdi. Burada seçim yalnız BU çağırışa aiddir.
+        2. `flux_discretization` ötürülmür — üç fazalı mühərrik B1-dən
+           sonra əlavə olunan bu açar sözü qəbul edir, lakin yalnız
+           TPFA-nı dəstəkləyir (bax aşağıdakı yoxlama).
+        """
+        if config.uses_multipoint_flux:
+            raise ModelValidationError([
+                "MPFA-O hələ üç fazalı (qazlı) mühərriklə işləmir. "
+                "Ya PVT-də qaz fazasını söndürün, ya da Ədədi "
+                "parametrlər tabında diskretizasiyanı TPFA seçin."])
+
+        from ..simulation.implicit.three_phase_engine import (
+            ThreePhaseSimulationEngine)
+        from ..simulation.stone_relperm import StoneRelativePermeabilityProvider
+
+        gas_scal = getattr(model, "gas_scal_parameters", None)
+        if gas_scal is None:
+            # PVT-də qaz aktiv, SCAL-da qaz əyriləri seçilməyib —
+            # mühərrik Stone relperm gözləyir, yalnız Corey alsaydı
+            # ÇÖKƏRDİ (A7_PLAN-da qeyd olunmuş səhv). Defolt işlədilir.
+            from ..domain.scal import GasCoreyParameters
+            gas_scal = GasCoreyParameters()
+            LOG.info("Qaz-neft SCAL verilməyib — defolt "
+                     "GasCoreyParameters() işlədilir.")
+        self.relperm_provider = StoneRelativePermeabilityProvider.from_corey(
+            model.scal_parameters, gas_scal)
+
+        previous_factory = self.engine_factory
+        self.engine_factory = ThreePhaseSimulationEngine
+        try:
+            return super().create_engine(model, config)
+        finally:
+            self.engine_factory = previous_factory
 
     @staticmethod
     def _initialization(model, pvt_provider=None, capillary_provider=None):

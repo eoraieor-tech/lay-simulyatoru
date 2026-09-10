@@ -364,8 +364,9 @@ class MainWindow(QMainWindow):
 
         # SCAL
         page = QWidget(); layout = QVBoxLayout(page)
-        self.scal_fig, self.scal_canvas, scal_axes = _figure(1, 2)
+        self.scal_fig, self.scal_canvas, scal_axes = _figure(1, 3)
         self.scal_axes = scal_axes[:2]
+        self.scal_gas_ax = scal_axes[2]
         layout.addWidget(self.scal_canvas)
         self.tabs.addTab(page, "Nisbi keçiricilik")
 
@@ -1365,6 +1366,15 @@ class MainWindow(QMainWindow):
         try:
             geology = self._build_geological_model()
             self.project.add_geological_model(geology)
+            gas_active = self.pvt_panel.gas_phase_active()
+            gas_scal = self.scal_panel.gas_values() if gas_active else None
+            if gas_active and gas_scal is None:
+                # PVT-də qaz aktivdir, amma SCAL panelinin öz "Qaz-neft
+                # əyriləri" qutusu işarələnməyib — mühərrik Stone
+                # relperm-ə ehtiyac duyur, defolt parametrlərlə davam
+                # edirik (çökmə əvəzinə).
+                from ..domain.scal import GasCoreyParameters
+                gas_scal = GasCoreyParameters()
             # Panel `SW` xəritəsinin mövcudluğunu MODELDƏN ÖYRƏNİR və bu,
             # `initial_conditions()` OXUNMAZDAN ƏVVƏL baş verməlidir —
             # əks halda seçim bir addım köhnə vəziyyəti daşıyardı.
@@ -1375,6 +1385,7 @@ class MainWindow(QMainWindow):
                 wells=self.well_panel.values(),
                 fluids=self.rock_panel.fluids(),
                 scal=self.scal_panel.values(),
+                gas_scal=gas_scal,
                 capillary=self.scal_panel.capillary_values(),
                 initial=self.numerical_panel.initial_conditions(),
                 pvt_table=self.pvt_panel.values(),
@@ -1886,6 +1897,9 @@ class MainWindow(QMainWindow):
         self.scal_renderer.draw(self.scal_axes, self.reservoir_model.scal_parameters,
                                 fluids.water_viscosity, fluids.oil_viscosity,
                                 capillary)
+        self.scal_renderer.draw_gas(self.scal_gas_ax,
+                                    self.reservoir_model.scal_parameters,
+                                    self.scal_panel.gas_values())
         self.scal_canvas.draw_idle()
 
     def update_pvt_plot(self):
@@ -2393,7 +2407,8 @@ class MainWindow(QMainWindow):
             model_name=self.reservoir_model.name,
             grid_shape=self.reservoir_model.grid.shape,
             snapshots=[Snapshot(time=s.time, pressure=s.pressure,
-                               water_saturation=s.water_saturation)
+                               water_saturation=s.water_saturation,
+                               gas_saturation=s.gas_saturation)
                       for s in case.snapshots])
         self.volume_time.setMaximum(max(len(case.snapshots) - 1, 0))
         self.volume_time.setValue(len(case.snapshots) - 1)

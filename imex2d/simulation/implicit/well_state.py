@@ -45,7 +45,7 @@ from typing import List, Optional, Sequence
 
 import numpy as np
 
-from .state import VARIABLES_PER_CELL, ReservoirState
+from .three_phase_state import VARIABLES_PER_CELL, ThreePhaseState
 
 
 @dataclass
@@ -116,10 +116,10 @@ class CoupledState:
     """Rezervuar + quyu naməlumları BİRLİKDƏ.
 
     Nyuton bu birləşmiş vektor üzərində işləyəcək (mərhələ 4).
-    Rezervuar hissəsi mövcud `ReservoirState`-dir — heç nə
+    Rezervuar hissəsi mövcud `ThreePhaseState`-dir — heç nə
     dəyişmir, yalnız yanına quyu naməlumları əlavə olunur.
     """
-    reservoir: ReservoirState
+    reservoir: ThreePhaseState
     wells: WellUnknowns
 
     @property
@@ -139,7 +139,7 @@ class CoupledState:
     def water_saturation(self) -> np.ndarray:
         """`AdaptiveTimeStepper._saturation_change()` üçün — o, ümumi
         (generic) dizayn edilib və `state.water_saturation`-ı birbaşa
-        oxuyur (bax `time_stepping.py`). Bu, ReservoirState-in özünə
+        oxuyur (bax `time_stepping.py`). Bu, ThreePhaseState-in özünə
         BƏRABƏR davranışdır — CoupledState-i ondan fərqləndirməmək
         üçün əlavə olunub."""
         return self.reservoir.water_saturation
@@ -155,7 +155,7 @@ class CoupledState:
         return vector
 
     @classmethod
-    def from_vector(cls, vector: np.ndarray,
+    def from_vector(cls, vector: np.ndarray, is_saturated: np.ndarray,
                     well_names: List[str]) -> "CoupledState":
         vector = np.asarray(vector, float)
         well_count = len(well_names)
@@ -163,8 +163,8 @@ class CoupledState:
         if offset % VARIABLES_PER_CELL != 0:
             raise ValueError(
                 "vektorun uzunluğu uyğun deyil: rezervuar hissəsi "
-                f"({offset}) 2-ə bölünmür")
-        reservoir = ReservoirState.from_vector(vector[:offset])
+                f"({offset}) 3-ə bölünmür")
+        reservoir = ThreePhaseState.from_vector(vector[:offset], is_saturated)
         wells = WellUnknowns(list(well_names), vector[offset:].copy())
         return cls(reservoir, wells)
 
@@ -174,7 +174,7 @@ class CoupledState:
                max_bhp_change: Optional[float] = None) -> "CoupledState":
         """Nyuton addımını tətbiq edir — rezervuar VƏ quyular.
 
-        Rezervuar hissəsi mövcud `ReservoirState.updated()`-ə ötürülür
+        Rezervuar hissəsi mövcud `ThreePhaseState.updated()`-ə ötürülür
         (Appleyard kəsməsi orada, dəyişməyib). Quyu BHP-si üçün ayrıca
         hədd var: quyu təzyiqi bir iterasiyada həddindən çox sıçrasa,
         perforasiya debitləri qeyri-real dəyərlərə gedər.
