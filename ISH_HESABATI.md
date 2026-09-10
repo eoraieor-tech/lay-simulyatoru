@@ -910,3 +910,139 @@ tamamlanandan sonra icazə verilir. Bax `QARARLAR.md` → Q-07.
 |---|---|
 | 1 | OneDrive-dakı `LAY-SIMULYATIR-MODELI-` qovluğu silinsinmi? |
 | 2 | GitHub-da repo adı dəyişdirilsinmi? (`gh` yoxdur, sahibkar özü etməlidir) |
+
+---
+
+## 10 sentyabr 2026 — Seans 3: Sahibkarın planının kodla tutuşdurulması
+
+### Tapşırıq
+
+Sahibkar 3D 3-fazalı MPFA-O simulyatoru üçün tam plan verdi (texnologiya
+stəki, fayl strukturu, 6 mərhələ) və soruşdu: **"bu plan bizim layihədə nə
+yerindədir, nə yerində deyil — hamısını araşdır."**
+
+Metod: sənədə deyil, **koda və işlədilən testlərə** əsaslanmaq.
+
+### Ölçülmüş vəziyyət
+
+| Göstərici | Dəyər |
+|---|---|
+| `imex2d/` mənbə kodu | 38 324 sətir (129 fayl) |
+| `tests/` | 30 562 sətir (100 fayl) |
+| Toplanan test | 2 210 |
+| Python | 3.14.7 · VTK 9.7.0 işləyir |
+
+### ƏSAS TAPINTI — öz sənədimiz səhv idi
+
+`ROADMAP.md`, `AUDIT §8.1` və `ISH_HESABATI` (Seans 2) deyirdi:
+**"MPFA-O yazılıb, amma mühərriyə qoşulmayıb."**
+
+**Bu doğru deyil.** Kod sübutları:
+
+- `implicit/jacobian.py` — "PHASE 5B-2" analitik ÇOXNÖQTƏLİ Jakobian
+  (`_flux_multipoint`, `_build_pattern_diag_only`) MÖVCUDDUR
+- `implicit/residual.py:89` — `_multipoint` yolu işlək
+- `tests/test_phase_d_mpfa_integration.py` — 21 test, o cümlədən
+  `test_end_to_end_...mpfa_pressure_solve`,
+  `test_tpfa_path_is_never_reached_when_mpfa_selected`,
+  `test_mpfa_analytic_jacobian_matches_finite_difference`
+
+**İşlədildi (bu seansda):** `test_mpfa_o.py` + `test_mpfa_o_global_assembly.py`
++ `test_phase_d_mpfa_integration.py` → **145 test keçdi, 29.5 san.**
+
+**Səhvin kökü tapıldı:** `simulation/discretization.py` sənəd sətri hələ də
+*"Future MPFA-O (HƏLƏ YOXDUR)"* və *"jacobian.py BU FAZADA DƏYİŞMİR"*
+yazırdı — Phase 5B-2-dən sonra köhnəlmiş şərh. Audit bu şərhi oxuyub
+yanlış nəticəyə gəlmişdi.
+
+**Düzəldildi:** `simulation/discretization.py` sənəd bloku yenidən yazıldı
+(tarixi qeyd saxlanıldı) və `jacobian.py`-dəki mövcud olmayan
+`tests/test_mpfa_jacobian.py` istinadı real fayl adı ilə əvəzləndi.
+
+**Real qalan boşluq daha kiçikdir:** MPFA-O FIM-ə qoşulub, amma
+`ModelAwareSimulationService.create_engine()` `flux_discretization`
+ötürmür → istifadəçi UI-dən MPFA-nı SEÇƏ BİLMİR.
+
+### A7 qaz fazası — cari vəziyyət ölçüldü
+
+HEAD (`f2f5c74`) v69 addım 5b-ni geri qaytarıb: üç fazalı modullar +
+qaz PVT/SCAL/provider/equilibrium kod bazasındadır.
+
+**İşlədildi:** `test_three_phase*.py`, `test_stone_relperm.py`,
+`test_gas_pvt.py`, `test_variable_switching.py` → **143 test keçdi.**
+
+Qalan: v69 addım 1–4b (UI, application, rendering, well_state,
+standard_well/coupled_newton) hələ geri qaytarılmayıb. Ölçüldü —
+`application/` və `ui/` qatında üç fazalı mühərrikə HEÇ BİR istinad yoxdur
+(`create_engine()`-də qaz budağı yoxdur), `tests/test_gas_ui_wiring.py`
+hələ `berpa/`-dadır.
+
+### Planın texnologiya bəndləri — hökm
+
+| Planda | Bizdə | Hökm |
+|---|---|---|
+| Python 3.11 | 3.14.7 | ❌ geriyə addım |
+| RBFInterpolator | öz kriginq + SGS + fasiya | ❌ RBF zəifdir (variance vermir) |
+| PyKrige | öz kriginqimiz | ❌ artıq asılılıq |
+| `spsolve`/SuperLU/AMG | CG+ILU + CPR | ❌ bizimki güclüdür |
+| PyVista | birbaşa VTK 9.7 (895 sətir, 49 test) | ⚠️ eyni VTK-nın örtüyü — köçürmə xərci var, qazanc yalnız hazır slice/volume API |
+| Plotly | matplotlib + PyQt5 masaüstü | ❌ Plotly veb üçündür |
+| pytest, NumPy/SciPy | ✅ | ✅ uyğun |
+
+**Fayl strukturu:** plandakı düz `src/{geostats,grid,numerical,...}` yığını
+bizim heksaqonal (onion) arxitekturamızdan geridir. Modul ADLARI isə
+bire-bir uyğun gəlir — yalnız yerləri fərqlidir.
+
+### Planın GÖRMƏDİYİ — bizdə olan, itirilməməli işlər
+
+Fault modeli və transmissivlik çarpanları · GRDECL/Eclipse `.DATA`
+giriş-çıxışı və OPM idxalı · history matching + həssaslıq (tornado) ·
+fasiya modelləşdirməsi, SIS, SGS ansamblı, cross-validation · tam vahid
+sistemi və vahid-invariantlıq testləri · `.imx` layihə faylı · PDF
+hesabat · 12 tablı PyQt5 UI.
+
+### Həqiqətən görüləsi iş (prioritetlə)
+
+| # | İş | Planda | Həcm |
+|---|---|---|---|
+| 1 | **THP / VFP modulu** | ✅ 3.8 | orta, sıfırdan |
+| 2 | A7-nin servis + UI-yə qaytarılması (v69 addım 1–4b geri) | dolayı | orta |
+| 3 | Qaz Nyuton rəqsi (trust-region / per-cell line search) | ❌ | orta-böyük |
+| 4 | MPFA-nın UI-dən seçilə bilməsi (`create_engine`) | dolayı | **kiçik** |
+| 5 | Slice plane + cəbhə animasiyası + GIF ixracı | ✅ 6.2–6.3 | orta |
+| 6 | Pcog (qaz-neft kapilyar təzyiqi) | ✅ 2.7 | kiçik |
+| 7 | Zaman sıralarının CSV/JSON ixracı | ✅ 5.6 | kiçik |
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Köhnəlmiş kod şərhləri düzəldildi** — `discretization.py` və
+   `jacobian.py`. Səbəb: məhz bu şərh bir dəfə auditi yanlış nəticəyə
+   apardı; düzəltməmək eyni səhvin təkrarına imkan verərdi. Kodun
+   davranışı DƏYİŞMƏDİ, yalnız sənəd sətirləri.
+2. **`ROADMAP.md` statusları real ölçmə ilə dolduruldu** — `Modul`
+   sütununda plandakı fərzi adlar (`grid/`, `numerical/`) REAL fayl
+   yolları ilə əvəzləndi.
+3. **Köhnə hesabat bölmələrinə toxunulmadı** (layihə qaydası). Auditdəki
+   §8.1 mətni saxlanıldı, üstünə düzəliş qeydi əlavə olundu.
+
+### Yoxlama
+
+```
+tests/test_mpfa_o.py + test_mpfa_o_global_assembly.py
+  + test_phase_d_mpfa_integration.py   →  145 keçdi   (29.5 san)
+
+tests/test_three_phase*.py + test_stone_relperm.py
+  + test_gas_pvt.py + test_variable_switching.py  →  143 keçdi  (2.9 san)
+```
+
+⏳ **Bütöv dəst bu seansda YENİDƏN İŞLƏDİLMƏDİ** — son tam icra Seans 2-dədir
+(2 042 keçdi, 14 dəq 42 san), qaz testləri bərpa olunandan sonra toplanan
+say 2 210-dur.
+
+### Açıq suallar
+
+| # | Sual |
+|---|---|
+| 1 | PyVista-ya keçmək, yoxsa mövcud VTK kodunu saxlamaq? (tövsiyəm: saxlamaq) |
+| 2 | Növbəti iş hansıdır — THP/VFP, yoxsa A7-nin UI-yə qaytarılması? |
+| 3 | MPFA-nın UI-dən seçilməsi (kiçik iş) indi edilsinmi? |

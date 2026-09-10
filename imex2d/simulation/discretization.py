@@ -1,4 +1,4 @@
-"""Axın diskretizasiyası — TPFA (indiki) + gələcək MPFA-O üçün ARXİTEKTURA.
+"""Axın diskretizasiyası — TPFA (defolt) və MPFA-O üçün ORTAQ ARXİTEKTURA.
 
 Qat diaqramı (bax `ARCHITECTURE.md` — "Flow Solver" bölməsi):
 
@@ -8,7 +8,7 @@ Qat diaqramı (bax `ARCHITECTURE.md` — "Flow Solver" bölməsi):
         ↓  yalnız `grid.connections` / `grid.pore_volume` / `grid.compute_flux()`-a güvənir
     Flux Discretization Interface (`interfaces/discretization.py::IFluxDiscretization`)
         ↓                                              ↓
-    TPFA (`TwoPointFluxDiscretization`, İNDİKİ)   Future MPFA-O (HƏLƏ YOXDUR)
+    TPFA (`TwoPointFluxDiscretization`, DEFOLT)   MPFA-O (`discretization/mpfa_o.py`, MÖVCUD)
 
 `ResidualAssembler` VƏ `JacobianAssembler` HANSI SİNİFDƏN `DiscretizedGrid`
 gəldiyini BİLMİR — yalnız bu faylın müqaviləsinə (`connections`,
@@ -18,20 +18,22 @@ riyaziyyatını DƏYİŞMİR — mövcud nüvədən köçürülüb (harmonik ort
 `transmissibility`-ni BİRBAŞA "T · ΔΦ" kimi işlətməsin (bax
 `ResidualAssembler.face_fluxes`).
 
-**Jacobian inteqrasiya nöqtəsi (MPFA-O üçün, HƏLƏ DƏYİŞDİRİLMƏYİB)** — bax
+**Jacobian inteqrasiya nöqtəsi — ARTIQ TAMAMLANIB (Phase 5B-2)** — bax
 `implicit/jacobian.py::JacobianAssembler`:
-  - `_build_pattern()` (sətir ~62-114) HƏR üz üçün DƏQİQ 2 hüceyrəli
-    blok (`cell_a`↔`cell_a`, `cell_a`↔`cell_b`, və s.) fərz edir — MPFA-O
-    interaction-region stensili BİR ÜZDƏ 2-dən ÇOX hüceyrəni bağlayacaq,
-    ona görə bu metod GƏLƏCƏKDƏ ümumiləşdirilməli olacaq (2-hüceyrəli
-    "block()" çağırışları N-hüceyrəli stensil siyahısına çevrilməli).
-  - `_flux()` (sətir ~163-218) `self.R.transmissibility`-ni BİRBAŞA oxuyur
-    və ∂ΔΦ/∂p_a=+1, ∂ΔΦ/∂p_b=−1 TƏK-CÜT fərziyyəsi ilə törəmə qurur —
-    MPFA-O gələndə bu, `grid.compute_flux()`-un öz JACOBIAN-ını (çoxnöqtəli
-    stensilin hər üzvünə görə qismən törəmə) qaytaran YENİ bir metodla
-    (məs. `compute_flux_jacobian(d_phi)`) əvəz olunmalıdır.
-  - Bu fayl bu iki nöqtəni SADƏCƏ SƏNƏDLƏŞDİRİR — `jacobian.py`-in özü
-    BU FAZADA DƏYİŞMİR (tapşırıq: "Do not rewrite the entire Jacobian").
+  - `_build_pattern()` / `_flux()` (TPFA yolu) DƏYİŞMƏDİ — hər üz üçün
+    dəqiq 2 hüceyrəli blok və ∂ΔΦ/∂p_a=+1, ∂ΔΦ/∂p_b=−1 fərziyyəsi ilə.
+  - MPFA-O seçiləndə (`ResidualAssembler._multipoint=True`) ƏVƏZİNƏ
+    `_flux_multipoint()` / `_build_pattern_diag_only()` işə düşür —
+    N-hüceyrəli stensil, `MPFAGlobalOperator`-un dövlətdən ASILI OLMAYAN
+    `T_conn` matrisi üzərində ANALİTİK törəmə (sonlu-fərq qısayolu yox).
+  - Doğrulama: `tests/test_phase_d_mpfa_integration.py` (21 test) —
+    analitik Jakobian ↔ sonlu fərq, iki-nöqtəli hədd ↔ TPFA, uc-uca
+    qeyri-xətti işləmə, kütlə balansı.
+
+  ⚠️ TARİXİ QEYD: bu bölmə əvvəllər "HƏLƏ DƏYİŞDİRİLMƏYİB / GƏLƏCƏKDƏ
+  ümumiləşdirilməli" yazırdı. Phase 5B-2-dən sonra köhnəlmişdi və
+  10 sentyabr 2026 auditini yanlış nəticəyə apardı ("MPFA-O mühərriyə
+  qoşulmayıb"). Düzəldilib.
 
 Konservasiya müqaviləsi (bax audit tapşırığı §8): istənilən
 `IFluxDiscretization` implementasiyası üçün, hər hüceyrədə

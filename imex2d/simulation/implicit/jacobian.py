@@ -57,7 +57,7 @@ Birinci həd (BAZA, `T·M`) — bütün stensil sütunlarına; ikinci həd
 YALNIZ `u(f)` sütununa. İkiqat oxşarlıq (`D_R[a,f]=+1,D_R[b,f]=−1`
 işarəsi ilə) İKİ-NÖQTƏLİ HƏDDƏ (`T_conn[f,a]=T,T_conn[f,b]=−T`) qoyulanda
 TPFA-nın mövcud `_flux()` düsturunu BİRƏBİR (4 element: aa/ab/ba/bb)
-bərpa edir — `tests/test_mpfa_jacobian.py::test_two_point_limit_matches_tpfa_jacobian_exactly`.
+bərpa edir — `tests/test_phase_d_mpfa_integration.py::test_two_point_limit_matches_tpfa_jacobian_exactly`.
 """
 
 from __future__ import annotations

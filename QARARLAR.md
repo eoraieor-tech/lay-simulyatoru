@@ -188,3 +188,34 @@ müvəqqəti blok yenidən görünə bilər; bu, gözlənilən davranışdır.
 
 **Dərs:** mühit problemi diaqnoz edəndə "daimi maneə" nəticəsinə tələsik
 gəlmək olmaz — ölçmə təkrarlanmalıdır.
+
+
+---
+
+## Q-08 — Sahibkarın plan stəkinin qiymətləndirilməsi
+
+**Tarix:** 10 sentyabr 2026
+**Vəziyyət:** ⏳ **Təklif — sahibkarın təsdiqi gözlənilir**
+
+**Kontekst:** Sahibkarın verdiyi 3D 3-fazalı plan konkret texnologiyalar
+adlandırır. Plan sətir-sətir kod bazası ilə tutuşduruldu (Seans 3).
+
+**Təklif olunan qərarlar:**
+
+| Planda | Təklif | Səbəb (ölçülmüş) |
+|---|---|---|
+| Python **3.11** | ❌ **qəbul edilməsin** | 3.14.7 işləyir, hər şey (VTK daxil) keçir; enmək geriyə addımdır |
+| **RBFInterpolator** | ❌ **qəbul edilməsin** | öz kriginqimiz var (`geology/`, 8 253 sətir) və qiymətləndirmə **variance**-ı da verir — RBF vermir |
+| **PyKrige** | ❌ **qəbul edilməsin** | kriginq öz içimizdə yazılıb; artıq xarici asılılıq SAC riski deməkdir |
+| **`spsolve` / SuperLU / AMG** | ❌ **qəbul edilməsin** | bizdə CG+ILU və **CPR ön-şərtçisi** var; birbaşa həll böyük modeldə dayanır |
+| **PyVista** | ⚠️ **saxlanılsın: mövcud VTK** | PyVista elə eyni VTK-nın örtüyüdür; `vtk_volume.py` (895 sətir, 49 test) işləyir. Yeganə qazanc — hazır slice/volume API; onu VTK ilə də yazmaq olar |
+| **Plotly** | ❌ **qəbul edilməsin** | Plotly veb üçündür, bizim proqram masaüstü PyQt5 tətbiqidir (bax Q-07) |
+| **Plandakı `src/` fayl strukturu** | ❌ **qəbul edilməsin** | düz modul yığınıdır; bizdə heksaqonal (onion) arxitektura var — modul ADLARI onsuz da uyğun gəlir |
+| **THP / VFP modulu** | ✅ **qəbul edilsin** | kodda ümumiyyətlə yoxdur; planın ən dəyərli bəndi |
+| Slice plane · animasiya · GIF · Pcog · CSV ixracı | ✅ **qəbul edilsin** | real boşluqlardır |
+
+**Nəticələr:** Plan **yol xəritəsi kimi deyil, boşluq siyahısı kimi**
+işlədilir. `ROADMAP.md`-dəki mərhələ cədvəlləri buna görə real fayl
+yolları və ölçülmüş statuslarla dolduruldu.
+
+⏳ *Sahibkar bu təklifi təsdiqləyənə qədər qərar qüvvəyə minmir.*
