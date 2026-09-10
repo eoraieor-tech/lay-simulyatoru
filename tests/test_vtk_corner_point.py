@@ -37,7 +37,15 @@ from imex2d.rendering import vtk_volume
 from test_local_cell_metrics import (DX, DY, DZ, NX, NY, NZ, TOP, _coord, _cpg,
                                      _grid, _zcorn)
 
-vtk = pytest.importorskip("vtk", reason="VTK quraşdırılmayıb")
+# QEYD: `pytest.importorskip` BURADA İŞLƏMİR. O, yalnız
+# `ModuleNotFoundError`-da ötürür (pytest 8.2+). VTK quraşdırılıb, amma
+# Windows Smart App Control onun imzasız DLL-lərini bloklaya bilər —
+# bu isə `ImportError`-dur və ötürülmək əvəzinə BÜTÜN test dəstini
+# toplama mərhələsində dayandırırdı (bax AUDIT_2026-09-10.md §8.3).
+try:
+    import vtk
+except ImportError as exc:                                   # pragma: no cover
+    pytest.skip(f"VTK əlçatan deyil: {exc}", allow_module_level=True)
 
 
 # ══════════════════════════════════════════════════ köməkçilər ══════════

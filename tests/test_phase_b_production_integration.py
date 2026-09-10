@@ -343,7 +343,7 @@ def test_differential_phase_a_vs_phase_b_permx_differ_and_why():
     # kəsməsi (0.01, 1e5) və `geology_service.py`-nin ƏVVƏLKİ log_transform
     # bayrağı ilə — strategiyanın öz `output_bounds` (1e-6, None) və
     # `apply_output_bounds`/QC-dən FƏRQLİ olaraq.
-    targets = WellBasedGeologicalModelBuilder._cell_centres(model_b.grid, spec)
+    targets = WellBasedGeologicalModelBuilder._cell_centres(model_b.grid, model_b.geometry)
     permx_samples = [s for s in dataset.samples if "PERMX" in s.values]
     points = np.array([[s.x, s.y] for s in permx_samples])
     values = np.array([s.values["PERMX"] for s in permx_samples])
