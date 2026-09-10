@@ -23,6 +23,9 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > **Həqiqətən qalan iş:** THP/VFP · qaz mühərrikinin servisə qaytarılması ·
 > qaz Nyuton rəqsi · MPFA-nın UI-dən seçilməsi · animasiya/slice ·
 > Pcog · CSV ixracı.
+>
+> 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
+> (B1–B7 blokları, qəbul meyarları M1–M8).
 
 ---
 

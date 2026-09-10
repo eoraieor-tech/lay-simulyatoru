@@ -1046,3 +1046,66 @@ say 2 210-dur.
 | 1 | PyVista-ya keçmək, yoxsa mövcud VTK kodunu saxlamaq? (tövsiyəm: saxlamaq) |
 | 2 | Növbəti iş hansıdır — THP/VFP, yoxsa A7-nin UI-yə qaytarılması? |
 | 3 | MPFA-nın UI-dən seçilməsi (kiçik iş) indi edilsinmi? |
+
+---
+
+## 10 sentyabr 2026 — Seans 3 (davamı): İcra planı
+
+### Tapşırıq
+
+Sahibkar üç problemi qəbul etdi və **hədəf proqrama çatmaq üçün icra
+planı** istədi.
+
+### Görülən iş
+
+[ICRA_PLANI.md](ICRA_PLANI.md) yazıldı: M1–M8 qəbul meyarları və
+B1–B7 iş blokları (hər biri müstəqil commit-lənə bilən, testlə bitən).
+
+### Planlaşdırma zamanı ölçülən YENİ fakt — B2 gözləniləndən KİÇİKDİR
+
+v69 silmə commit-lərinin diff-ləri nəhəng görünürdü (məs. `main_window.py`
+4 077 sətir). **Səbəb tapıldı:** silmə `tools/patch_*.py` skriptləri ilə
+edilib və həmin skriptlər faylların **sətir sonluğunu (CRLF↔LF)
+dəyişib**. `git diff --ignore-cr-at-eol` ilə real ölçü:
+
+| v69 addımı | Görünən | Real semantik |
+|---|---|---|
+| 1 — UI | 3 306 | **97** |
+| 2 — application | 785 | **20** (+133 test faylı) |
+| 3 — rendering | 547 | **20** |
+| 4a — `well_state` | 556 | **16** |
+| 4b — `standard_well` + `coupled_newton` | 443 | **443** |
+| `001cc12` | 34 | **34** |
+
+Yəni A7-nin qaytarılmasında **yeganə real böyük addım 4b-dir**.
+
+Əlavə ölçmə: `standard_well.py` və `well_state.py` v69-dan **sonra heç
+dəyişməyib** → toqquşmasız götürülə bilər. `panels.py` isə 8 dəfə
+dəyişib — orada əl ilə birləşdirmə lazımdır.
+
+Yoxlanıldı: altı v69 commit-inin **heç biri** düz `git revert` ilə
+tətbiq olunmur (`git apply -R --check` hamısında xəta verir) — bu,
+Seans 2-dəki gözləntini təsdiqləyir.
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Blok sırası B1 → B2 → B3, paralel B4/B5/B6, sonda B7** — səbəbi
+   plan sənədində yazılıb. Sahibkar sıranı dəyişə bilər.
+2. **GIF ixracı üçün yeni asılılıq götürülmür** — Pillow 12.3.0 artıq
+   quraşdırılıb və animasiyalı GIF yaza bilir (`imageio`/`ffmpeg` lazım
+   deyil). Səbəb: SAC mühitində hər yeni imzasız paket risk deməkdir
+   (bax Q-06/Q-07).
+3. **VFP-nin I versiyasında slip modelləşdirilmir** (no-slip qarışıq
+   sıxlığı) — Hagedorn-Brown/Beggs-Brill II versiyaya qalır və sənəddə
+   ⏳ ilə açıq göstərilir. Səbəb: layihə qaydası — uydurma məzmun
+   yazılmır, natamamlıq açıq işarələnir.
+4. **Hər blokda dəyişməz qoruma:** 2 fazalı 5-spot etalonu
+   (`test_regression.py`) pozulmamalıdır.
+
+### Açıq suallar
+
+| # | Sual |
+|---|---|
+| 1 | Blok sırası təsdiqlənirmi? (xüsusən B1-in birinci olması) |
+| 2 | Q-08 texnologiya qərarları təsdiqlənirmi? |
+| 3 | B7-dəki SPE1 benchmark-ı əhatəyə daxil edirikmi? |
