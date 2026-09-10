@@ -197,8 +197,7 @@ class ModelAwareSimulationService(SimulationService):
 
     def create_engine(self, model, config):
         self.relperm_provider = self._relative_permeability(model)
-        self.pvt_provider = (BlackOilPVTProvider(model.pvt_table)
-                             if model.pvt_table is not None else None)
+        self.pvt_provider = self._build_pvt_provider(model)
         self.capillary_provider = self._capillary(model)
         self.initialization_provider = self._initialization(
             model, self.pvt_provider, self.capillary_provider)
@@ -263,6 +262,29 @@ class ModelAwareSimulationService(SimulationService):
             return super().create_engine(model, config)
         finally:
             self.engine_factory = previous_factory
+
+    @staticmethod
+    def _build_pvt_provider(model):
+        """PVT provider — qaz modelləşdirilmirsə ölü-neft düzəlişi ilə.
+
+        `dead_oil_below_bubble_point=True` HƏMİŞƏ verilir, çünki
+        provider onu YALNIZ qaz sütunları OLMAYAN cədvələ tətbiq edir
+        (bax `BlackOilPVTProvider._dead_oil_fvf`). Yəni:
+
+          * qaz sütunlu cədvəl → üç fazalı mühərrik → cədvəl
+            TOXUNULMUR (doymuş budaq orada DÜZGÜNDÜR);
+          * qaz sütunsuz cədvəl → iki fazalı mühərrik → doyma
+            təzyiqindən aşağı Bo ölü-neft budağı ilə əvəz olunur,
+            əks halda Jakobian təkləşir və Nyuton donur (B3-A).
+
+        Bu seçim QƏSDƏN burada, `application` qatındadır: "qaz
+        modelləşdirilirmi" sualı iş axınının qərarıdır, cədvəl
+        interpolyasiyasının deyil.
+        """
+        if model.pvt_table is None:
+            return None
+        return BlackOilPVTProvider(model.pvt_table,
+                                   dead_oil_below_bubble_point=True)
 
     @staticmethod
     def _initialization(model, pvt_provider=None, capillary_provider=None):

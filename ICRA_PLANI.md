@@ -169,10 +169,47 @@ etmək**, sonra testlə təsdiqləmək.
 
 ---
 
-## B3 — Qaz mühərrikinin Nyuton möhkəmliyi
+## B3 — Nyuton möhkəmliyi
 
-**Həcm:** orta-böyük (~2-3 seans) · **Risk:** yüksək (yeganə açıq
-riyazi problem)
+**Həcm:** orta-böyük · **Risk:** yüksək
+
+### B3-A — iki fazalı degenerasiya ✅ BİTDİ (10 sentyabr 2026)
+
+> **KÖK SƏBƏB TAPILDI və planda yazılanla ÜST-ÜSTƏ DÜŞMÜR.**
+>
+> Nyuton rəqs etmirdi — **DONURDU**, çünki Jakobian təkləşirdi.
+> Neft tənliyinin təzyiq diaqonalı `−So·B'o/Bo²`-yə mütənasibdir;
+> korrelyasiya cədvəlində Bo doyma təzyiqində zirvə etdiyi üçün
+> `dBo/dp` işarə dəyişir və SIFIRDAN keçir. Lay məhz o nöqtədə
+> otursa, diaqonal ≈ 0 → tam Nyuton addımı 656 bar istəyir
+> (lay isə 176–299 bar) → qoruyucular kəsir → iterat donur.
+>
+> Rədd edilən fərziyyələr: "quyu BHP həddində rəqs" (ən pis qalıq
+> quyuda deyil), "Δt böyükdür" (1000 dəfə azaldıldı — təsirsiz),
+> "cədvəl kobuddur" (20 → 200 nöqtə — təsirsiz).
+>
+> **Düzəliş:** qaz sütunsuz cədvəldə Pb-dən aşağı Bo ölü-neft budağı
+> ilə əvəz olunur (`BlackOilPVTProvider`, seçimi application qatı
+> verir). Nəticə: Pb = 220/240/300 — hamısı yığılır; Pb = 150 BİTƏ-BİT
+> dəyişmir. **Sahibkarın RUN-002-si düzəldi** (t=0-da dayanırdı →
+> 89 addımda yığılır).
+>
+> 11 yeni test: `tests/test_dead_oil_below_bubble_point.py`.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 7.
+
+### B3-B — üç fazalı yol ⏳ B4b-dən SONRA ölçüləcək
+
+Üç fazalı mühərrik ilkin Rs = 0 olduğu üçün faktiki olaraq iki
+fazalıdır və EYNİ degenerasiyanı miras alır. B4b (ilkin Rs) qaz
+tənliyini işə salandan sonra iki sual ölçülməlidir:
+
+1. Pb-dən aşağı rejim qazla düzgün işləyirmi?
+2. A7_PLAN-dakı "quyu BHP həddində Nyuton rəqsi" AYRICA problem idi,
+   yoxsa elə bu degenerasiyanın özü? (ölçülməyib)
+
+Aşağıdakı ilkin plan tarixi qeyd kimi saxlanılır.
+
+**Köhnə plan mətni:**
 
 > ## ❗ YENİLƏNDİ (Seans 5) — B3 ARTIQ B2-ni GÖZLƏMİR
 >
@@ -369,7 +406,8 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 |---|---|---|---|
 | ~~B1 MPFA seçimi~~ ✅ **BİTDİ** | kiçik | aşağı | **M2 bağlandı** |
 | ~~B2 A7 qaytarılması~~ ✅ **BİTDİ** | orta | orta | **M3 ✅ · M4 qismən** |
-| B3 Nyuton möhkəmliyi | orta-böyük | **yüksək** | M3 + **PVT səhvi (Seans 5)** |
+| B3-A iki fazalı degenerasiya ✅ **BİTDİ** | orta | yüksək | **PVT səhvi (RUN-002) bağlandı** |
+| B3-B üç fazalı yol ⏳ | ? | ? | B4b-dən sonra ölçüləcək |
 | B4 THP/VFP | orta | aşağı | **M5** |
 | B5 Pcog + CSV | kiçik | aşağı | **M8** |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |

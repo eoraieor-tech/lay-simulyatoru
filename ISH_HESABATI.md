@@ -1500,3 +1500,147 @@ etalonu **dəyişmədi**.
 - Domain-də **ilkin Rs sahəsi** yoxdur → GOC-suz qaz ayrılması mümkün
   deyil (yuxarıda §1). `ICRA_PLANI.md`-yə **B4b** kimi əlavə olundu.
 - Pb > BHP rejimində yığılmama qalır → **B3**.
+
+---
+
+## 10 sentyabr 2026 — Seans 7: B3-A — kök səbəb tapıldı və düzəldildi
+
+### Tapşırıq
+
+Sahibkar: "B3 başla." Planın öz sırası ilə əvvəlcə ÖLÇMƏ aparıldı —
+sərhədin harada olduğunu bilmirdik.
+
+### Ölçmə 1 — sərhəd kəskindir
+
+11×11, ilkin təzyiq 250 bar, istismarçı BHP 150 bar, tam implicit:
+
+| Pb | Nəticə |
+|---|---|
+| ≤ 200 bar | ✅ yığılır (25–31 addım, 0.1 san) |
+| 220 bar | ❌ 28 addımdan sonra ilişir |
+| 240 bar | ❌ t = 0-da |
+
+### Ölçmə 2 — üç fərziyyə RƏDD edildi
+
+| Fərziyyə | Yoxlama | Nəticə |
+|---|---|---|
+| "Quyu BHP həddində rəqs" (A7_PLAN) | ən pis qalıq quyuda deyil, VURUCUDA və Pb-yə yaxın hüceyrələrdə | ❌ |
+| "Zaman addımı böyükdür" | Δt 1000 dəfə azaldıldı (1.0 → 0.001) | ❌ eyni yerdə donur |
+| "Cədvəl kobuddur" | nöqtə sayı 20 → 200 | ❌ heç bir fərq yoxdur |
+
+### Ölçmə 3 — Nyuton RƏQS ETMİR, DONUR
+
+Line search izlənildi. Pb=200-də klassik kvadratik yığılma:
+`2.16 → 1.12 → 9.7e-2 → 6.7e-3 → 2.9e-5 → 4.6e-10`.
+
+Pb=240-da isə 4-cü iterasiyadan sonra:
+
+```
+it   norm         |dP| qəbul edilən   TAM Nyuton addımı
+ 4   6.847e-03    0.81 bar            413 bar
+ 5   6.837e-03    0.62 bar            639 bar
+ 6   6.835e-03    0.64 bar            656 bar
+```
+
+**Tam Nyuton addımı 656 bar dəyişim istəyir — halbuki bütün lay
+176–299 bar aralığındadır.** Qoruyucular (Appleyard chopping + line
+search) onu düzgün olaraq 0.6 bara kəsir, ona görə hər iterasiyada
+qalıq cəmi 0.05 % azalır. Yəni qoruyucular İŞLƏYİR; problem
+Jakobiandadır.
+
+### KÖK SƏBƏB
+
+Neft tənliyinin təzyiq üzrə diaqonalı `−So·B'o/Bo²`-yə mütənasibdir.
+Korrelyasiya cədvəlində Bo doyma təzyiqinə qədər ARTIR (qaz həll olur,
+neft şişir), ondan yuxarı AZALIR (sıxılma) — yəni `dBo/dp` işarə
+dəyişir və **yolda SIFIRDAN keçir**:
+
+| Pb | Sıfırdan keçid | İlkin lay təzyiqi |
+|---|---|---|
+| 200 bar | 205–210 bar | 250 bar → uzaqdır ✅ |
+| 240 bar | **245–250 bar** | 250 bar → **düz üstündə** ❌ |
+
+Pb=240 halında bütün lay t=0-da məhz həmin sıfır nöqtəsində oturur →
+diaqonal ≈ 0 → Jakobian təkləşir → kiçik qalıq nəhəng addıma çevrilir.
+
+**Bu, hər müşahidəni izah edir:** niyə t=0-da sınır, niyə Δt kömək
+etmir (təkləşmə zaman həddində deyil), niyə YALNIZ neft tənliyi pisdir
+(su qalığı 7e-03, neft 1e+01), niyə Pb=220 sonradan sınır (lay boşalıb
+həmin təzyiqə çatanda), niyə cədvəl həlledicilik dərəcəsi təsirsizdir.
+
+### Bu, ədədi qüsur DEYİL — model natamamlığıdır
+
+Doymuş budaq məhz **ayrılan qazı** təsvir edir. İki fazalı model o qazı
+modelləşdirmir, ona görə tənliklərdə "mənfi neft sıxılması" kimi
+görünür. Üç fazalı mühərrikdə qaz tənliyi bunu kompensasiya edir və
+doymuş budaq DÜZGÜNDÜR.
+
+Bu, üç fazalı mühərrikin niyə eyni yerdə sındığını da izah edir:
+**ilkin Rs = 0 olduğu üçün o da faktiki olaraq iki fazalıdır.**
+
+### Düzəliş
+
+Qaz sütunları OLMAYAN cədvəldə doyma təzyiqindən aşağı Bo **ölü-neft
+budağı** ilə əvəz olunur: undersaturated meyl aşağı uzadılır, yəni
+"neftdən qaz ayrılmır, tərkib sabit qalır". Belədə `dBo/dp < 0` hər
+yerdə qalır, sıxılma müsbətdir, Jakobian təkləşmir.
+
+**Yerləşmə — QƏSDƏN application qatında.** `BlackOilPVTProvider`
+defolt olaraq TƏMİZ interpolyatordur (mövcud müqavilə və testlər
+dəyişmir); `dead_oil_below_bubble_point=True` bayrağını
+`ModelAwareSimulationService._build_pvt_provider()` verir. Səbəb: "qaz
+modelləşdirilirmi" sualı iş axınının qərarıdır, cədvəl
+interpolyasiyasının deyil. Bayraq qaz sütunlu cədvəldə TƏSİRSİZDİR.
+
+### Ölçülmüş nəticə
+
+| Pb | xam cədvəl | düzəlişlə |
+|---|---|---|
+| 150 | ✅ 28 addım, RF 59.75 % | ✅ **eyni** (28, 59.75) |
+| 200 | ✅ 31, 61.94 % | ✅ 31, 62.04 % |
+| 220 | ❌ yığılmır | ✅ 32, **62.66 %** |
+| 240 | ❌ yığılmır | ✅ 34, **63.21 %** |
+| 300 | ❌ yığılmır | ✅ 36, **64.36 %** |
+
+**Sahibkarın RUN-002-si (41×41, Pb=240, tam implicit):**
+
+```
+əvvəl : t = 0.0 gündə yığılmadı, RF = 0.00 %
+indi  : converged=True, 89 addım, 3.8 san
+```
+
+Heç bir hüceyrə Pb-dən aşağı düşmürsə nəticə BİTƏ-BİT eynidir
+(Pb=150 sətri) — bu, ayrıca testlə kilidləndi.
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Yalnız Bo düzəldilir, özlülük TOXUNULMUR.** Ölçüldü: özlülüyü də
+   ölü-neft budağına keçirmək yığılmaya TƏSİR ETMİR, yalnız nəticəni
+   dəyişir (Pb=300: RF 62.92 % → 64.36 %). Minimal müdaxilə prinsipi.
+   ⏳ Sahibkar istəsə özlülük də keçirilə bilər — açıq sual kimi
+   koda yazıldı.
+2. **Düzəliş provider-in defoltu DEYİL, açıq seçimdir.** İlk yazdığım
+   variant provider-i defolt olaraq dəyişirdi və `test_pvt.py`-ın iki
+   testini sındırdı. Həmin testlər HAQLI idi — provider təmiz
+   interpolyator kimi sənədləşib. Seçim application qatına köçürüldü.
+3. **Log mesajı əlavə olundu** — düzəliş tətbiq olunanda istifadəçi
+   jurnalda görür; səssiz məlumat dəyişikliyi olmur.
+
+### Yoxlama
+
+```
+tests/test_dead_oil_below_bubble_point.py   11 keçdi (YENİ)
+Bütöv dəst: 2 246 keçdi, 1 ötürüldü, 1 xfail, 0 UĞURSUZ (12:25)
+```
+
+Seans 6-da 2 235 idi; fərq 11 yeni testdir. `test_regression.py`
+(2 fazalı 5-spot etalonu) yenə **dəyişmədi**.
+
+### B3-dən NƏ QALIR
+
+B3-A bitdi. Qalan iki sual yalnız B4b-dən sonra ölçülə bilər:
+
+1. Üç fazalı mühərrik ilkin Rs verilən kimi Pb-dən aşağı düzgün
+   işləyəcəkmi? (nəzəri olaraq bəli — qaz tənliyi kompensasiya edir)
+2. A7_PLAN-dakı "quyu BHP həddində Nyuton rəqsi" ayrıca problem idi,
+   yoxsa elə BU degenerasiyanın özü? Ölçülməyib.
