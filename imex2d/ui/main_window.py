@@ -1367,6 +1367,10 @@ class MainWindow(QMainWindow):
             geology = self._build_geological_model()
             self.project.add_geological_model(geology)
             gas_active = self.pvt_panel.gas_phase_active()
+            # İlkin Rs PVT tabında verilir, `InitialConditions`-a isə
+            # Ədədi parametrlər paneli yığır — ötürücü budur (B4b).
+            self.numerical_panel.set_solution_gor(
+                self.pvt_panel.initial_solution_gor() if gas_active else None)
             gas_scal = self.scal_panel.gas_values() if gas_active else None
             if gas_active and gas_scal is None:
                 # PVT-də qaz aktivdir, amma SCAL panelinin öz "Qaz-neft

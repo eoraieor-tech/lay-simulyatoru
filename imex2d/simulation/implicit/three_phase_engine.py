@@ -122,23 +122,60 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             if initial.has_gas:
                 gas = np.asarray(initial.gas_saturation, float)
                 is_saturated = gas > 1e-9
-                third = np.where(is_saturated, gas, 0.0)
+                # Qaz papağının ALTINDA sərbəst qaz yoxdur, amma neft
+                # ÖLÜ DEYİL — orada da həll olmuş qaz var (B4b).
+                third = np.where(is_saturated, gas,
+                                 self._initial_solution_gor(pressure, ic))
             else:
-                # GOC verilməyib — heç bir hüceyrədə sərbəst qaz yoxdur.
-                # Həll olmuş qaz üçün ehtiyatlı defolt: Rs = 0 (ölü neft).
-                # Domain modelində ayrıca "ilkin Rs" sahəsi yoxdur; bu,
-                # ən mühafizəkar seçimdir — xəyali qaz yaratmır.
                 is_saturated = np.zeros(n, dtype=bool)
-                third = np.zeros(n)
+                third = self._initial_solution_gor(pressure, ic)
         else:
             pressure = np.full(n, ic.datum_pressure)
             water = np.full(n, ic.water_saturation)
             is_saturated = np.zeros(n, dtype=bool)
-            third = np.zeros(n)
+            third = self._initial_solution_gor(pressure, ic)
 
         sw_min, sw_max = self.relperm.saturation_limits()
         water = np.clip(water, sw_min, sw_max)
         return ThreePhaseState(pressure, water, third, is_saturated)
+
+    def _initial_solution_gor(self, pressure: np.ndarray,
+                              ic) -> np.ndarray:
+        """İLKİN HƏLL OLMUŞ QAZ (Rs) — doymamış hüceyrələr üçün (B4b).
+
+        ƏVVƏL BURADA NƏ VAR İDİ: `np.zeros(n)`, yəni Rs = 0 — "ölü
+        neft". Şərh belə əsaslandırırdı: "domain modelində ayrıca ilkin
+        Rs sahəsi yoxdur; bu, ən mühafizəkar seçimdir — xəyali qaz
+        yaratmır."
+
+        NİYƏ DƏYİŞDİ. Ölçüldü (bax `ISH_HESABATI.md` → Seans 6):
+        Rs = 0 olanda OGIP = 0 çıxır və təzyiq doyma təzyiqindən aşağı
+        düşsə BELƏ qaz ayrılmır — ayrılacaq həll olmuş qaz YOXDUR.
+        Yəni üç fazalı mühərrik faktiki olaraq iki fazalı işləyirdi və
+        sahibkarın "P < Psat olduqda qazın ayrılması" tələbi (M4)
+        ÖDƏNMİRDİ.
+
+        İNDİ: `InitialConditions.solution_gor` sahəsi əlavə olundu.
+        `None` (defolt) olanda dəyər PVT cədvəlindən çıxarılır:
+
+            Rs = Rs_sat(min(P_hüceyrə, Pb))
+
+        Cədvəldə Rs onsuz da Pb-dən yuxarı SABİTDİR (korrelyasiya belə
+        qurur), ona görə `pvt.solution_gor(P)` düz həmin dəyəri verir —
+        ayrıca `min()` lazım deyil, lakin AÇIQ yazılır ki, qeyri-standart
+        (məs. Eclipse-dən idxal olunmuş) cədvəldə də düzgün işləsin.
+
+        Bu, sənaye standartıdır: neft öz doyma təzyiqinə uyğun qədər
+        qaz saxlayır (Eclipse `EQUIL`/`RSVD` ilə eyni məntiq).
+        """
+        override = getattr(ic, "solution_gor", None)
+        if override is not None:
+            return np.full(pressure.size, float(override))
+
+        bubble_point = getattr(self.model.pvt_table, "bubble_point", 0.0) or 0.0
+        reference = (np.minimum(pressure, bubble_point) if bubble_point > 0.0
+                     else pressure)
+        return np.asarray(self.pvt.solution_gor(reference), float).copy()
 
     def original_oil_in_place(self) -> float:
         fluid = self.newton.build_fluid(self.state)

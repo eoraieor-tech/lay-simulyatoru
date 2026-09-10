@@ -1644,3 +1644,89 @@ B3-A bitdi. Qalan iki sual yalnız B4b-dən sonra ölçülə bilər:
    işləyəcəkmi? (nəzəri olaraq bəli — qaz tənliyi kompensasiya edir)
 2. A7_PLAN-dakı "quyu BHP həddində Nyuton rəqsi" ayrıca problem idi,
    yoxsa elə BU degenerasiyanın özü? Ölçülməyib.
+
+---
+
+## 10 sentyabr 2026 — Seans 8: B4b — ilkin həll olmuş qaz (Rs)
+
+### Problem
+
+Üç fazalı mühərrik qaz papağı (GOC) verilmədikdə nefti "ölü"
+başladırdı: `third_variable = np.zeros(n)`, yəni Rs = 0. Koddakı şərh
+bunu belə əsaslandırırdı: *"domain modelində ayrıca ilkin Rs sahəsi
+yoxdur; bu, ən mühafizəkar seçimdir — xəyali qaz yaratmır."*
+
+Nəticə zəncirvari idi: OGIP = 0 → təzyiq doyma təzyiqindən aşağı düşsə
+BELƏ qaz ayrılmırdı (ayrılacaq həll olmuş qaz yox idi) → GOR = 0.
+Yəni üç fazalı mühərrik **faktiki olaraq iki fazalı işləyirdi** və
+sahibkarın M4 meyarı ("P < Psat olduqda qazın ayrılması") ödənmirdi.
+
+### Həll
+
+`InitialConditions.solution_gor` sahəsi əlavə olundu:
+
+- `None` (defolt) — PVT cədvəlindən çıxarılır: `Rs = Rs_sat(min(P, Pb))`.
+  Cədvəldə Rs onsuz da Pb-dən yuxarı sabitdir, lakin `min()` AÇIQ
+  yazıldı ki, qeyri-standart (Eclipse idxalı) cədvəldə də düzgün işləsin.
+  Sənaye standartı — Eclipse `EQUIL`/`RSVD` ilə eyni məntiq.
+- Ədəd verilsə, bütün hüceyrələrdə həmin sabit Rs (laboratoriya ölçməsi).
+
+Toxunulan fayllar: `domain/initial.py`, `implicit/three_phase_engine.py`
+(`_initial_solution_gor`), `application/serialization.py`,
+`ui/panels.py` (PVT tabında "İlkin Rs-i əl ilə ver"), `ui/main_window.py`.
+
+**Qaz papağı halı da düzəldildi:** əvvəl GOC verilsə də, papağın
+ALTINDAKI hüceyrələrdə Rs = 0 qalırdı. İndi orada da həll olmuş qaz var.
+
+### Ölçülmüş nəticə — M4 ARTIQ İŞLƏYİR
+
+8×8, 400 gün, istismarçı BHP 150 bar:
+
+| Pb | yığıldı | OGIP | ilkin Rs | maks Sg | GOR (son) |
+|---|---|---|---|---|---|
+| 100 | ✅ | 2 070 955 | 52.8 | 0.0000 | 52.8 |
+| 150 | ✅ | 3 098 350 | 86.1 | 0.0000 | 86.1 |
+| **200** | ✅ | 4 038 447 | 121.9 | **0.0807** | **124.9** |
+| 240 | ❌ | 4 721 237 | 152.1 | — | — |
+| 300 | ❌ | 4 936 519 | 161.6 | — | — |
+
+- **OGIP artıq müsbətdir** (əvvəl 0 idi).
+- **Pb = 200-də qaz HƏQİQƏTƏN ayrılır:** sərbəst qaz doyumluluğu 0.081-ə
+  çatır, GOR 121.9-dan 124.9-a qalxır. Bu, M4-ün tam olaraq tələb etdiyi
+  davranışdır.
+- **Pb = 100/150-də qaz ayrılmır** — və bu DÜZGÜNDÜR: ən aşağı təzyiq
+  ~150 bar, heç bir hüceyrə doyma təzyiqinə çatmır. Fiziki nəzarət kimi
+  ayrıca test yazıldı.
+
+### B3-B ölçüldü — problem QALIR
+
+Pb = 240 və 300-də üç fazalı mühərrik hələ də yığılmır.
+
+Yəni B4b **M4-ü bağladı, lakin B3-B-ni bağlamadı.** Qaz tənliyi
+indi işləyir, amma yüksək doyma təzyiqi rejimində yığılma hələ də
+alınmır. Bu, B3-A-dakı Bo degenerasiyasının üç fazalı analoqu ola
+bilər (orada cədvəl QƏSDƏN düzəldilmir, çünki qaz tənliyi kompensasiya
+etməlidir) — **lakin bu, hələ ölçülməyib**, iddia etmirəm.
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Defolt "PVT-dən çıxar" seçildi**, "sıfır" yox. Səbəb: istifadəçi
+   qaz xassələri olan PVT cədvəli veribsə, Rs = 0 heç vaxt onun
+   istədiyi deyil. Köhnə `.imx` faylları da bu yolla açılır — orada
+   nəticə onsuz da OGIP = 0 idi, yəni itirilən mənalı bir şey yoxdur.
+2. **UI-da defolt AVTOMATİKDİR**, əl ilə vermək isteğe bağlıdır. Səbəb:
+   düzgün dəyər cədvəldən çıxır; istifadəçini məcbur etmək səhv riski
+   yaradar.
+3. **`min(P, Pb)` açıq yazıldı**, sadəcə `pvt.solution_gor(P)` yox.
+   Korrelyasiya cədvəlində fərq yoxdur, amma idxal olunan cədvəldə ola
+   bilər.
+
+### Yoxlama
+
+```
+tests/test_initial_solution_gor.py   13 keçdi (YENİ)
+Bütöv dəst: 2 259 keçdi, 1 ötürüldü, 1 xfail, 0 UĞURSUZ (10:42)
+```
+
+Seans 7-də 2 246 idi; fərq 13 yeni testdir. `test_regression.py`
+(2 fazalı 5-spot etalonu) yenə **dəyişmədi**.

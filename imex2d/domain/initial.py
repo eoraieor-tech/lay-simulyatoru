@@ -42,3 +42,20 @@ class InitialConditions:
     equilibration_region: int = 1
     use_equilibration: bool = False
     use_saturation_map: bool = False
+    #: İLKİN HƏLL OLMUŞ QAZ (Rs), sm³/sm³ — YALNIZ üç fazalı mühərrik
+    #: üçün (bax `implicit/three_phase_engine.py::_initial_state`).
+    #:
+    #: `None` (defolt) — PVT cədvəlindən ÇIXARILIR:
+    #:     Rs = Rs_sat(min(P_hüceyrə, Pb))
+    #: Yəni neft öz doyma təzyiqinə uyğun qədər qaz saxlayır. Cədvəldə
+    #: Rs onsuz da Pb-dən yuxarı sabitdir, ona görə praktikada bu,
+    #: `pvt.solution_gor(P)` deməkdir.
+    #:
+    #: Ədəd verilsə, bütün hüceyrələrdə həmin sabit Rs işlədilir
+    #: (məs. laboratoriya ölçməsi ilə).
+    #:
+    #: NİYƏ LAZIMDIR: bu sahə YOX İKƏN mühərrik nefti "ölü" (Rs = 0)
+    #: başladırdı — OGIP = 0 çıxırdı və təzyiq doyma təzyiqindən aşağı
+    #: düşsə belə QAZ AYRILA BİLMİRDİ, çünki ayrılacaq həll olmuş qaz
+    #: yox idi (ölçüldü, bax `ISH_HESABATI.md` → Seans 6/8).
+    solution_gor: Optional[float] = None

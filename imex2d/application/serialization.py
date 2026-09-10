@@ -507,7 +507,7 @@ class ProjectSerializer:
             "initial_conditions": _dataclass_to_dict(model.initial_conditions, [
                 "datum_depth", "datum_pressure", "water_saturation",
                 "oil_water_contact", "gas_oil_contact", "equilibration_region",
-                "use_equilibration", "use_saturation_map"]),
+                "use_equilibration", "use_saturation_map", "solution_gor"]),
             "scal": _dataclass_to_dict(model.scal_parameters, [
                 "swc", "sor", "krw_end", "kro_end", "nw", "no"]),
             "capillary": _dataclass_to_dict(model.capillary_parameters, [

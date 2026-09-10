@@ -1458,6 +1458,14 @@ class PvtPanel(QWidget):
         self.gas_phase_enabled.setChecked(False)
         self.gas_phase_enabled.stateChanged.connect(self.changed)
 
+        # ── İlkin həll olmuş qaz (B4b) ──────────────────────────────
+        self.manual_rs = QCheckBox("İlkin Rs-i əl ilə ver")
+        self.manual_rs.setChecked(False)
+        self.solution_gor = _spin(120.0, 0.0, 600.0, 1, 5.0, "sm³/sm³")
+        self.manual_rs.stateChanged.connect(self._on_manual_rs_toggled)
+        self.manual_rs.stateChanged.connect(self.changed)
+        self.solution_gor.valueChanged.connect(self.changed)
+
         rows = [("Neftin sıxlığı (API)", self.api),
                 ("Qaz sıxlığı γg", self.gas_gravity),
                 ("Lay temperaturu", self.temperature),
@@ -1478,6 +1486,19 @@ class PvtPanel(QWidget):
         form.addRow(note)
 
         form.addRow(self.gas_phase_enabled)
+        form.addRow(self.manual_rs)
+        form.addRow("İlkin Rs", self.solution_gor)
+        rs_note = QLabel(
+            "Söndürülübsə (tövsiyə olunan), ilkin həll olmuş qaz PVT "
+            "cədvəlindən çıxarılır: Rs = Rs_sat(min(P, Pb)) — yəni neft "
+            "öz doyma təzyiqinə uyğun qədər qaz saxlayır. Bu dəyər "
+            "olmadan neft «ölü» başlayır və təzyiq doyma təzyiqindən "
+            "aşağı düşsə belə qaz ayrılmır.")
+        rs_note.setWordWrap(True)
+        rs_note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
+        form.addRow(rs_note)
+        self._on_manual_rs_toggled()
+
         gas_note = QLabel(
             "Üç fazalı mühərrik istifadə olunur. SINAQ STATUSU: quyu öz "
             "BHP hədəfinə çox yaxınlaşan hallarda simulyasiya vaxtından "
@@ -1509,6 +1530,15 @@ class PvtPanel(QWidget):
 
     def gas_phase_active(self) -> bool:
         return self.enabled.isChecked() and self.gas_phase_enabled.isChecked()
+
+    def _on_manual_rs_toggled(self):
+        self.solution_gor.setEnabled(self.manual_rs.isChecked())
+
+    def initial_solution_gor(self):
+        """`None` — PVT cədvəlindən çıxarılsın (defolt)."""
+        if not self.manual_rs.isChecked():
+            return None
+        return self.solution_gor.value()
 
 
 class WellPanel(QWidget):
@@ -1883,6 +1913,7 @@ class NumericalPanel(QWidget):
             gas_oil_contact=(self.goc.value()
                              if equilibrate and self.use_goc.isChecked()
                              else None),
+            solution_gor=getattr(self, "_solution_gor", None),
             use_equilibration=equilibrate,
             use_saturation_map=self.use_saturation_map.isChecked())
 
@@ -1891,6 +1922,14 @@ class NumericalPanel(QWidget):
 
     def flux_scheme_choice(self) -> str:
         return self.flux_scheme.currentData()
+
+    def set_solution_gor(self, value) -> None:
+        """PVT panelindən gələn ilkin Rs (B4b) — `None` = PVT-dən çıxar.
+
+        Dəyər `InitialConditions`-a burada qoşulur, çünki `initial_conditions()`
+        məhz bu paneldədir; mənbəyi isə PVT panelidir (`MainWindow` ötürür).
+        """
+        self._solution_gor = value
 
     def set_flux_scheme(self, scheme: str) -> None:
         """`.imx` faylından və ya proqramlı olaraq sxemi seçir.

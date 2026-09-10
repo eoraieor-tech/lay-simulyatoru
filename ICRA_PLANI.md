@@ -18,7 +18,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M1 | Kəşfiyyat quyusu faylı → 3D heterogen lay modeli, ekranda | ✅ |
 | M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
 | M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | ✅ **B2-də bağlandı** |
-| M4 | P < Psat → qazın ayrılması, GOR artımı | 🟡 **qoşuldu**, amma ilkin Rs sahəsi yoxdur + B3 bloklayır |
+| M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b-də bağlandı** (Pb ≤ 200 rejimində ölçülüb) |
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 BHP ✅, THP ❌ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
@@ -305,9 +305,17 @@ debitlərə görə BHP hesablanır və Nyutona **sabit BHP kimi** verilir
 
 ---
 
-## B4b — İlkin Rs sahəsi (B2-də aşkarlandı, YENİ)
+## B4b — İlkin Rs sahəsi ✅ BİTDİ (10 sentyabr 2026)
 
 **Həcm:** kiçik-orta · **Risk:** aşağı · **Meyar:** M4
+
+> **Nəticə:** `InitialConditions.solution_gor` əlavə olundu, defolt
+> PVT-dən çıxarılır (`Rs = Rs_sat(min(P, Pb))`). Ölçüldü: OGIP artıq
+> müsbətdir və **Pb = 200-də qaz həqiqətən ayrılır** (maks Sg = 0.081,
+> GOR 121.9 → 124.9). 13 yeni test.
+>
+> ⚠️ Pb = 240/300-də üç fazalı mühərrik HƏLƏ yığılmır — **B3-B qalır**.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 8.
 
 Domain modelində "ilkin həll olmuş qaz (Rs)" sahəsi YOXDUR. Ona görə
 qaz papağı (GOC) verilmədikdə üç fazalı mühərrik nefti "ölü" kimi
