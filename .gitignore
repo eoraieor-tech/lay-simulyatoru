@@ -22,3 +22,11 @@ graphify-out/
 
 # personal Claude Code overrides (permissions etc.) — not team config
 .claude/settings.local.json
+
+# --- LAY-SIMULYATIR-MODELI- repodan birleshdirildi ---
+.DS_Store
+Thumbs.db
+*.swp
+logs/
+out/
+results/
