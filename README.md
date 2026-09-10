@@ -14,9 +14,33 @@
 Lay Simulyatoru — neft-qaz yataqlarında lay (rezervuar) proseslərinin
 riyazi modelləşdirilməsi və simulyasiyası üçün proqram təminatıdır.
 
-**Məqsəd:** ⏳ *Dəqiqləşdirilir — sahibkarın verdiyi tələblərə əsasən doldurulacaq.*
+**Məqsəd:** kəşfiyyat quyularının 3D koordinat və geoloji məlumatlarından
+(məsaməlik, keçiricilik tenzoru) başlayaraq 3D heterogen lay modelini quran,
+5-spot quyu şəbəkəsində su ilə sıxışdırma və qazın neftdən ayrılmasını (Rs)
+günbəgün simulyasiya edən, RF / THP / BHP / lay təzyiqini hesablayan və
+nəticələri interaktiv 3D-də göstərən platforma.
 
-**Əhatə dairəsi (scope):** ⏳ *Doldurulacaq*
+**Əsas texniki fərq:** klassik TPFA əvəzinə **MPFA-O** (Multi-Point Flux
+Approximation, O-sxemi) — anizotrop keçiricilik tenzorlarında və
+qeyri-ortoqonal / corner-point gridlərdə axın dəqiqliyini qorumaq üçün.
+
+**Əhatə dairəsi (scope):**
+
+| Var | Yoxdur |
+|---|---|
+| 3D corner-point grid | Kompozisiya (EOS) modeli |
+| 3 faza: neft, su, qaz (black-oil) | Termal (buxar) proseslər |
+| MPFA-O diskretizasiyası | Qeyri-struktur (PEBI) grid |
+| Geostatistik interpolyasiya (Kriging, SGS) | Paralel / GPU hesablama |
+| IMPES + tam implicit (FIM) həlledici | |
+| Peaceman quyuları, BHP/THP, VFP | |
+| 3D vizualizasiya və dashboard | |
+
+> ⚠️ **10 sentyabr 2026:** audit göstərdi ki, bu işin böyük hissəsi
+> sahibkarın əvvəlki `lay-simulyatoru` layihəsində (65 175 sətir,
+> 1 993 keçən test) **artıq mövcuddur**. Layihə sıfırdan yazılmır.
+> Bax: [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md) və
+> [QARARLAR.md](QARARLAR.md) → Q-04.
 
 ---
 
@@ -32,6 +56,8 @@ başlanğıc nöqtəsi budur:
 | [ROADMAP.md](ROADMAP.md) | Mərhələlər (fazalar), nə bitib / nə qalıb |
 | [ISH_HESABATI.md](ISH_HESABATI.md) | İş jurnalı — hər addım, hər dəyişiklik, tarixlə |
 | [QARARLAR.md](QARARLAR.md) | Texniki qərarlar və **niyə** məhz belə seçildi |
+| [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md) | Mövcud `lay-simulyatoru` kod bazasının tam auditi |
+| [berpa/](berpa/) | Git tarixçəsindən bərpa edilmiş kod (A7 qaz fazası) |
 | [docs/](docs/) | Dərin mövzular: fizika, riyaziyyat, formatlar, alqoritmlər |
 
 ---
