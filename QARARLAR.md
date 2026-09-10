@@ -152,3 +152,39 @@ və ya WSL2 (SAC tətbiq olunmur, **geri qaytarıla bilir**).
 işləmir. Vizualizasiya qatı üçün ayrıca qərar lazımdır.
 
 ⏳ *Yekun vizualizasiya qərarı hələ verilməyib.*
+
+---
+
+## Q-07 — VTK bloku öz-özünə həll oldu; Q-06 doğrulandı
+
+**Tarix:** 10 sentyabr 2026
+**Vəziyyət:** Qəbul olunub
+
+**Kontekst:** Q-06-da Smart App Control-un söndürülməməsi qərara
+alınmışdı. Həmin gün, bir neçə saat sonra VTK bloku **öz-özünə aradan
+qalxdı**.
+
+**Ölçülmüş:**
+
+| Mühit | Əvvəl | Sonra |
+|---|---|---|
+| Sistem Python 3.14 — SciPy | ✅ | ✅ |
+| Sistem Python 3.14 — **VTK** | ❌ bloklanırdı | ✅ **işləyir** |
+| venv 3.12 — SciPy, PyKrige | ❌ | ✅ |
+| venv 3.12 — VTK, PyVista | ❌ | ❌ |
+| SAC siyasəti | `= 1` | `= 1` (**dəyişməyib**) |
+
+Test dəsti: **2 042 keçdi** (əvvəl 1 993) — fərq məhz 49 VTK testidir.
+
+**Qərar:** Vizualizasiya qatı olduğu kimi qalır — VTK + PyQt5.
+Plotly-yə keçid, WSL2 və SAC-ın söndürülməsi variantları **ləğv edilir**.
+
+**Səbəb:** SAC imzasız faylların reputasiyasını buludda yoxlayır; sorğu
+tamamlanana qədər bloklayır. Problem daimi deyilmiş.
+
+**Nəticələr:** Q-06 (SAC söndürülməsin) doğru çıxdı — geri qaytarılmayan
+qərar verilsəydi, heç bir faydası olmayacaqdı. Yeni paket quraşdıranda
+müvəqqəti blok yenidən görünə bilər; bu, gözlənilən davranışdır.
+
+**Dərs:** mühit problemi diaqnoz edəndə "daimi maneə" nəticəsinə tələsik
+gəlmək olmaz — ölçmə təkrarlanmalıdır.

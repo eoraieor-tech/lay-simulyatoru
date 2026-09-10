@@ -821,3 +821,92 @@ qalıq tənlikləri, analitik Jakobian, Nyuton döngəsi, dəyişən keçidi.
 | 4 | VTK bloku: Plotly/matplotlib, WSL2, yoxsa SAC söndürülsün |
 
 Tam audit: [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md)
+
+
+---
+
+## 10 sentyabr 2026 — Seans 2 (davamı): Birləşdirmə, düzəlişlər, bərpa
+
+### Sahibkarın strateji qərarları
+
+1. **Öz fizikamız** — A7 (qaz fazası) bərpa edilib bitiriləcək.
+   v69-un OPM Flow-a keçid qərarı ləğv olunur.
+2. **İki repo birləşdirilir** — `lay-simulyatoru`-nun tarixçəsi
+   saxlanılır, `LAY-SIMULYATIR-MODELI-`-nin sənədləri ora köçürülür.
+
+### Görülən iş
+
+#### 1. Repolar birləşdirildi
+
+`git merge --allow-unrelated-histories` ilə **hər iki tarixçə qorundu**.
+İş qovluğu: `C:\Dev\LSM`. Commit sayı: 52 → 58.
+
+Yoxlanıldı — hər iki əsas commit əlçatandır:
+`66deca8` (A7 mənbəyi) və `6ae83d7` (sənəd reposunun ilki).
+
+Toqquşmaların həlli:
+
+| Fayl | Qərar |
+|---|---|
+| `ARCHITECTURE.md` | köhnə saxlanıldı (51 KB real sənəd) |
+| `requirements.txt` | köhnə saxlanıldı (real pinned siyahı) |
+| `CLAUDE.md` | **birləşdirildi** — iş qaydaları + `graphify` |
+| `ISH_HESABATI.md` | köhnə 644 sətir **toxunulmadı**, yenisi sonuna əlavə |
+| `.gitignore` | birləşdirildi |
+
+`src/` və `tests/__init__.py` çıxarıldı: birincisi `imex2d/` ilə
+üst-üstə düşürdü, ikincisi köhnə repoda yox idi və pytest-in idxal
+semantikasını dəyişə bilərdi. Hər ikisi `0315ae7`-də qalır.
+
+#### 2. Auditdə tapılan iki səhv düzəldildi
+
+- **§8.3** — `pytest.importorskip("vtk")` → `try/except ImportError` +
+  `pytest.skip(allow_module_level=True)`. İki faylda.
+- **§8.4** — `_cell_centres(model_b.grid, spec)` → `model_b.geometry`.
+
+#### 3. A7 bərpası tamamlandı — 13 fayl, 4 323 sətir
+
+**Öz səhvimin düzəlişi:** ilk bərpada 12 fayl / 4 118 sətir demişdim.
+`tests/test_variable_switching.py` (205 sətir) buraxılmışdı — axtarış
+açar sözlərim (`three_phase`, `stone`, `gas`) onun adına uyğun gəlmirdi.
+v69 commit-lərinin diffi ilə tutuşdurma bunu üzə çıxardı.
+
+Tamlıq yoxlandı: `66deca8`→`HEAD` arasında silinən fayl siyahısı (13) ilə
+`berpa/A7_qaz_fazasi/` (13) **hərfi-hərfinə** üst-üstə düşür.
+
+#### 4. Bərpa yolu tapıldı
+
+Silmə mərhələli və adlandırılmış commit-lərlə aparılıb — bu, geri
+qaytarmanı xeyli asanlaşdırır:
+
+`f1037a5` (UI) → `b4ea22a` (application) → `36cf0db` (rendering) →
+`01e95a6` + `8cb9c86` (well/newton) → `001cc12` → `00833db` (modullar) →
+`ba59eb9` (qalıqlar)
+
+#### 5. VTK bloku öz-özünə həll oldu
+
+VTK indi sistem Python 3.14-də problemsiz işləyir (`9.7.0`), SAC isə
+hələ də işlək (`= 1`). Səbəb: reputasiya buludda yoxlanılır və sorğu
+tamamlanandan sonra icazə verilir. Bax `QARARLAR.md` → Q-07.
+
+### Testlərin nəticəsi — birləşdirmədən SONRA
+
+```
+2 042 keçdi, 2 ötürüldü, 1 xfail  —  14 dəq 42 san  (exit 0)
+```
+
+Əvvəl 1 993 keçirdi; fərq (49) məhz açılan VTK testləridir.
+**Uğursuz test yoxdur.**
+
+### Buraxılan iş
+
+- A7 hələ əsas kod bazasına qaytarılmayıb — yalnız `berpa/`-da saxlanılır
+- MPFA-O hələ mühərriyə qoşulmayıb
+- THP/VFP modulu yazılmayıb
+
+### Açıq suallar
+
+| # | Sual |
+|---|---|
+| 1 | OneDrive-dakı `LAY-SIMULYATIR-MODELI-` qovluğu silinsinmi? |
+| 2 | GitHub-da repo adı dəyişdirilsinmi? (`gh` yoxdur, sahibkar özü etməlidir) |
