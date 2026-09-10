@@ -16,7 +16,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | # | Meyar | İndi |
 |---|---|---|
 | M1 | Kəşfiyyat quyusu faylı → 3D heterogen lay modeli, ekranda | ✅ |
-| M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | 🟡 kod ✅, seçim ❌ |
+| M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
 | M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | 🟡 2 fazalı ✅ |
 | M4 | P < Psat → qazın ayrılması, GOR artımı | 🟡 kod ✅, qoşulmayıb |
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 BHP ✅, THP ❌ |
@@ -52,9 +52,17 @@ B6 (3D animasiya + slice) ──────────────────
 
 ---
 
-## B1 — MPFA-O-nun istifadəçiyə açılması
+## B1 — MPFA-O-nun istifadəçiyə açılması ✅ BİTDİ
 
-**Həcm:** kiçik (~1 seans) · **Risk:** aşağı
+**Həcm:** kiçik (~1 seans) · **Risk:** aşağı · **Bitdi:** 10 sentyabr 2026 · 16 yeni test
+
+> **İcra qeydi:** planlaşdırılan 5 addımın hamısı edildi. Planda
+> nəzərdə tutulmayan, icra zamanı üzə çıxan bir məsələ:
+> `MPFAODiscretization()`-un DEFOLT sərhəd bağlanışı
+> (`DIRICHLET`) qalıq qatı tərəfindən hələ dəstəklənmir, ona
+> görə servis onu `NEUMANN_ZERO` ilə qurur — bu, simulyatorun
+> onsuz da tətbiq etdiyi axınsız sərhəddir, fizika DƏYİŞMİR.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 4.
 
 MPFA-O artıq `FullyImplicitEngine`-ə qoşulub (Phase 5B-2, 145 test
 keçir), amma `ModelAwareSimulationService.create_engine()`
@@ -295,7 +303,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 
 | Blok | Həcm | Risk | Hansı meyarı bağlayır |
 |---|---|---|---|
-| B1 MPFA seçimi | kiçik | aşağı | **M2** |
+| ~~B1 MPFA seçimi~~ ✅ **BİTDİ** | kiçik | aşağı | **M2 bağlandı** |
 | B2 A7 qaytarılması | orta | orta | **M3, M4** |
 | B3 Nyuton möhkəmliyi | orta-böyük | **yüksək** | M3 (böyük gridd) |
 | B4 THP/VFP | orta | aşağı | **M5** |

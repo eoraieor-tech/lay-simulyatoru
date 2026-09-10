@@ -45,6 +45,19 @@ class OutputConfig:
     progress_every_n_steps: int = 5
 
 
+#: Axın diskretizasiya sxemləri — `SimulationConfig.flux_scheme`.
+#:
+#: `TPFA`   — iki-nöqtəli (defolt, bütün köhnə nəticələrlə eynidir)
+#: `MPFA-O` — çoxnöqtəli, tam keçiricilik tenzoru ilə; anizotrop və
+#:            qeyri-ortoqonal (corner-point) gridd axını düzgün verir.
+#:
+#: Defolt DƏYİŞMİR (bax `simulation/discretization.py::
+#: default_flux_discretization`) — MPFA-O AÇIQ seçim tələb edir.
+TPFA = "TPFA"
+MPFA_O = "MPFA-O"
+FLUX_SCHEMES = (TPFA, MPFA_O)
+
+
 @dataclass
 class SimulationConfig:
     """Bir simulyasiya işə salınmasının tam konfiqurasiyası."""
@@ -52,6 +65,13 @@ class SimulationConfig:
     time_stepping: TimeSteppingConfig = field(default_factory=TimeSteppingConfig)
     linear_solver: LinearSolverConfig = field(default_factory=LinearSolverConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    #: Axın diskretizasiyası — bax `FLUX_SCHEMES`. Defolt TPFA:
+    #: mövcud modellərin və `.imx` fayllarının nəticəsi dəyişmir.
+    flux_scheme: str = TPFA
+
+    @property
+    def uses_multipoint_flux(self) -> bool:
+        return self.flux_scheme == MPFA_O
 
     def validate(self) -> list:
         issues = []
@@ -62,4 +82,8 @@ class SimulationConfig:
             issues.append("CFL əmsalı (0, 1] intervalında olmalıdır.")
         if ts.max_dt <= ts.min_dt:
             issues.append("Maksimal Δt minimaldan böyük olmalıdır.")
+        if self.flux_scheme not in FLUX_SCHEMES:
+            issues.append(
+                f"Naməlum axın diskretizasiyası: {self.flux_scheme!r}. "
+                f"Mümkün dəyərlər: {', '.join(FLUX_SCHEMES)}.")
         return issues

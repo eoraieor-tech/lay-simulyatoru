@@ -2157,6 +2157,12 @@ class MainWindow(QMainWindow):
             # olub faylda quyusu olmayanlar da sətir kimi görünsün).
             self._sync_geology_geometry()
         latest = project.latest_run()
+        if latest is not None and latest.config is not None:
+            # Axın diskretizasiyası modelin deyil, İŞƏ SALINMANIN
+            # xassəsidir (`SimulationConfig`) — ona görə paneldəki seçim
+            # sonuncu işə salınmadan bərpa olunur. Köhnə `.imx`
+            # fayllarında açar yoxdur → TPFA (bax `_config_from_dict`).
+            self.numerical_panel.set_flux_scheme(latest.config.flux_scheme)
         self.result = latest.result if latest else None
         if self.result and self.result.snapshots:
             self.slider.setEnabled(True)

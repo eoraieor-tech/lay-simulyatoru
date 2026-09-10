@@ -33,7 +33,7 @@ from ..simulation.scal_adapter import CoreyRelativePermeabilityAdapter
 from ..simulation.scal_tables_provider import (
     TableCapillaryPressureProvider, TableRelativePermeabilityProvider)
 from ..simulation.results import SimulationResult
-from .config import SimulationConfig
+from .config import MPFA_O, SimulationConfig
 from .project import Project, SimulationRun
 
 
@@ -79,15 +79,74 @@ class SimulationService:
                  config.end_time)
         solver = self.linear_solver or ScipyCgIluSolver(config.linear_solver)
         solver.reset()
-        return self.engine_factory(
-            model=model,
-            config=config,
-            relperm=self.relperm_provider,
-            linear_solver=solver,
-            pvt=self.pvt_provider,
-            capillary=self.capillary_provider,
-            initialization=self.initialization_provider,
-        )
+        self._reject_incompatible_engine(config)
+        try:
+            return self.engine_factory(
+                model=model,
+                config=config,
+                relperm=self.relperm_provider,
+                linear_solver=solver,
+                pvt=self.pvt_provider,
+                capillary=self.capillary_provider,
+                initialization=self.initialization_provider,
+                flux_discretization=self._flux_discretization(config),
+            )
+        except NotImplementedError as exc:
+            # MPFA-O-nun HƏLƏ dəstəkləmədiyi model xüsusiyyəti (fay, NNC,
+            # qeyri-aktiv hüceyrə — bax `residual.py::_reject_unsupported`).
+            # Mesaj ORİJİNAL SAXLANILIR: orada məhz hansı xüsusiyyətin
+            # maneə olduğu yazılıb, onu öz sözümüzlə əvəz etsək
+            # istifadəçi səbəbi İTİRƏRDİ. Yalnız çevrilir ki, proqram
+            # çökməsin (UI `ModelValidationError` gözləyir).
+            LOG.error("Diskretizasiya modeli dəstəkləmir: %s", exc)
+            raise ModelValidationError([str(exc)]) from exc
+
+    def _reject_incompatible_engine(self, config: SimulationConfig) -> None:
+        """IMPES + MPFA-O — İSTİFADƏÇİ DİLİNDƏ imtina.
+
+        `impes_engine.py::_reject_multipoint_impes()` bunu onsuz da
+        rədd edir, amma `NotImplementedError` texniki mesajdır. Burada
+        seçim mühərrik qurulmazdan ƏVVƏL yoxlanılır ki, istifadəçi nə
+        etməli olduğunu göstərən mesaj alsın.
+        """
+        if not config.uses_multipoint_flux:
+            return
+        if self.engine_factory is not ImpesEngine:
+            return
+        raise ModelValidationError([
+            "MPFA-O yalnız tam implicit (Nyuton) mühərriklə işləyir. "
+            "Ədədi parametrlər tabında ya hesablama sxemini "
+            "«Fully implicit» edin, ya da diskretizasiyanı TPFA seçin."])
+
+    @staticmethod
+    def _flux_discretization(config: SimulationConfig):
+        """Konfiqurasiyadan axın diskretizasiyası.
+
+        MPFA-O nüvəsi (`imex2d/discretization/`) və onun tam implicit
+        mühərrikə qoşulması (Phase 5B-2) ARTIQ mövcud idi — çatışmayan
+        yeganə halqa məhz bu seçim idi: servis `flux_discretization`
+        ötürmədiyi üçün istifadəçi MPFA-O-nu heç cür işə sala bilmirdi
+        (bax `ISH_HESABATI.md` → Seans 3, `ICRA_PLANI.md` → B1).
+
+        SƏRHƏD BAĞLANIŞI — `NEUMANN_ZERO`, defolt `DIRICHLET` DEYİL.
+        Səbəb ikiqatdır:
+          1. Simulyatorun özü onsuz da AXINSIZ (no-flow) xarici sərhəd
+             tətbiq edir — TPFA yolunda da belədir, yəni bu seçim
+             fizikanı DƏYİŞMİR, mövcud şərti təkrarlayır.
+          2. Qalıq qatı Dirichlet üçün sərhəd π dəyərlərini hələ
+             ötürmür (Phase 5B-2 məhdudiyyəti, `residual.py`) — defolt
+             ilə qurulsaydı, hər MPFA-O seçimi dərhal xəta verərdi.
+        Eyni seçim doğrulama testlərində də işlədilir
+        (`tests/test_phase_d_mpfa_integration.py::NEUMANN`).
+
+        İdxal QƏSDƏN funksiyanın içindədir: TPFA yolu MPFA-O modulunu
+        ümumiyyətlə yükləmir, yəni köhnə davranışın başlanğıc xərci
+        dəyişmir.
+        """
+        if config.flux_scheme != MPFA_O:
+            return None            # → mühərrik `default_flux_discretization()` işlədir
+        from ..discretization import MPFAOBoundaryClosure, MPFAODiscretization
+        return MPFAODiscretization(closure=MPFAOBoundaryClosure.NEUMANN_ZERO)
 
     def with_engine(self, engine_factory) -> "SimulationService":
         """Eyni provider-lərlə, başqa mühərriklə yeni servis."""

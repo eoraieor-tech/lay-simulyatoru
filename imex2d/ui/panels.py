@@ -17,8 +17,9 @@ from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
                              QPushButton, QSpinBox, QTableWidget,
                              QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
-from ..application.config import (LinearSolverConfig, OutputConfig,
-                                  SimulationConfig, TimeSteppingConfig)
+from ..application.config import (MPFA_O, TPFA, LinearSolverConfig,
+                                  OutputConfig, SimulationConfig,
+                                  TimeSteppingConfig)
 import os
 
 from ..application.scenarios import WELL_PATTERNS
@@ -1721,6 +1722,19 @@ class NumericalPanel(QWidget):
         self.engine.addItem("Fully implicit (Nyuton)", "IMPLICIT")
         self.engine.currentIndexChanged.connect(self.changed)
         form.addRow("Hesablama sxemi", self.engine)
+        self.flux_scheme = QComboBox()
+        self.flux_scheme.addItem("TPFA (iki-nöqtəli)", TPFA)
+        self.flux_scheme.addItem("MPFA-O (çoxnöqtəli, tam tenzor)", MPFA_O)
+        self.flux_scheme.currentIndexChanged.connect(self.changed)
+        form.addRow("Axın diskretizasiyası", self.flux_scheme)
+        flux_note = QLabel(
+            "TPFA — defolt, ortoqonal gridd və diaqonal keçiricilikdə "
+            "kifayətdir. MPFA-O — anizotrop tenzor (Kxy≠0) və "
+            "qeyri-ortoqonal corner-point gridd axını düzgün verir; "
+            "YALNIZ «Fully implicit» mühərriklə işləyir.")
+        flux_note.setWordWrap(True)
+        flux_note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
+        form.addRow(flux_note)
         self.use_equilibration = QCheckBox("Equilibration (dərinlikdən asılı ilkin şərtlər)")
         self.use_saturation_map = QCheckBox("İlkin Sw geologiya xəritəsindən (SW)")
         self.saturation_map_info = QLabel()
@@ -1794,6 +1808,19 @@ class NumericalPanel(QWidget):
     def engine_choice(self) -> str:
         return self.engine.currentData()
 
+    def flux_scheme_choice(self) -> str:
+        return self.flux_scheme.currentData()
+
+    def set_flux_scheme(self, scheme: str) -> None:
+        """`.imx` faylından və ya proqramlı olaraq sxemi seçir.
+
+        Naməlum dəyər gələndə TPFA-ya qayıdır — köhnə fayl açanda
+        istifadəçi qarşısına xəta çıxmasın (dəyər onsuz da
+        `SimulationConfig.validate()`-də yoxlanılır).
+        """
+        index = self.flux_scheme.findData(scheme)
+        self.flux_scheme.setCurrentIndex(index if index >= 0 else 0)
+
     def simulation_config(self) -> SimulationConfig:
         return SimulationConfig(
             end_time=self.end_time.value(),
@@ -1801,4 +1828,5 @@ class NumericalPanel(QWidget):
                                              cfl_factor=self.cfl.value()),
             linear_solver=LinearSolverConfig(),
             output=OutputConfig(snapshot_count=self.snapshots.value()),
+            flux_scheme=self.flux_scheme_choice(),
         )

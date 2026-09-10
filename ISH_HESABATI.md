@@ -1109,3 +1109,100 @@ Seans 2-dəki gözləntini təsdiqləyir.
 | 1 | Blok sırası təsdiqlənirmi? (xüsusən B1-in birinci olması) |
 | 2 | Q-08 texnologiya qərarları təsdiqlənirmi? |
 | 3 | B7-dəki SPE1 benchmark-ı əhatəyə daxil edirikmi? |
+
+---
+
+## 10 sentyabr 2026 — Seans 4: B1 icra olundu (MPFA-O istifadəçiyə açıldı)
+
+### Tapşırıq
+
+Sahibkar: "icra planını başla." Plandakı sıraya uyğun olaraq **B1**
+götürüldü — ən kiçik iş, amma layihənin əsas texniki fərqini
+istifadəçiyə açan halqa.
+
+### Problem
+
+MPFA-O nüvəsi (1 699 sətir) və onun tam implicit mühərrikə qoşulması
+(Phase 5B-2) ARTIQ mövcud idi və testlərlə doğrulanmışdı. Lakin
+`ModelAwareSimulationService.create_engine()` mühərrikə
+`flux_discretization` ÜMUMİYYƏTLƏ ötürmürdü — nəticədə istifadəçi
+MPFA-O-nu heç bir yolla işə sala bilmirdi. Yəni layihənin reklam
+etdiyi əsas üstünlük **istifadəçi üçün mövcud deyildi**.
+
+### Görülən iş
+
+| Fayl | Dəyişiklik |
+|---|---|
+| `application/config.py` | `TPFA`/`MPFA_O`/`FLUX_SCHEMES` sabitləri, `SimulationConfig.flux_scheme` (defolt TPFA), `uses_multipoint_flux`, `validate()`-də yoxlama |
+| `application/simulation_service.py` | `_flux_discretization()` + `_reject_incompatible_engine()`; mühərrikə diskretizasiya ötürülür |
+| `application/serialization.py` | `.imx`-ə `flux_scheme` açarı, oxunuşda `data.get(..., TPFA)` |
+| `ui/panels.py` | `NumericalPanel`-ə "Axın diskretizasiyası" combobox-u + izah etiketi, `flux_scheme_choice()`, `set_flux_scheme()` |
+| `ui/main_window.py` | Layihə açılanda sxem sonuncu işə salınmadan bərpa olunur |
+| `tests/test_flux_scheme_selection.py` | **YENİ — 16 test** |
+
+### İcra zamanı üzə çıxan, planda OLMAYAN məsələ
+
+`MPFAODiscretization()`-un **defolt sərhəd bağlanışı `DIRICHLET`-dir**,
+qalıq qatı isə onu hələ dəstəkləmir (Phase 5B-2 məhdudiyyəti — sərhəd
+π dəyərləri ötürülmür). Defolt konstruktorla qurulsaydı, hər MPFA-O
+seçimi dərhal xəta verərdi.
+
+**Həll:** servis MPFA-O-nu `NEUMANN_ZERO` bağlanışı ilə qurur.
+
+**Niyə bu düzgün seçimdir, "susdurma" deyil:** simulyator onsuz da
+AXINSIZ (no-flow) xarici sərhəd tətbiq edir — TPFA yolunda da belədir.
+Yəni seçim fizikanı DƏYİŞMİR, mövcud şərti təkrarlayır. Doğrulama
+testləri (`test_phase_d_mpfa_integration.py::NEUMANN`) də məhz bunu
+işlədir. Səbəb kodun içində sənədləşdirildi.
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Xəta emalı ikiyə bölündü.** İlk yazdığım variant hər
+   `NotImplementedError`-u "MPFA-O yalnız implicit mühərriklə işləyir"
+   mesajına çevirirdi — bu, YANILDICI idi: yuxarıdakı sərhəd problemi
+   də həmin mesajı verirdi. İndi:
+   - IMPES + MPFA-O → mühərrik qurulmazdan ƏVVƏL, dəqiq mesajla rədd;
+   - digər hallar → `residual.py`-in ORİJİNAL mesajı saxlanılır (orada
+     məhz hansı xüsusiyyətin maneə olduğu yazılıb; öz sözümüzlə əvəz
+     etsək istifadəçi səbəbi itirərdi).
+2. **`flux_scheme` `SimulationConfig`-də saxlanılır**, modeldə yox.
+   Səbəb: diskretizasiya modelin xassəsi deyil, İŞƏ SALINMANIN
+   xassəsidir — eyni model həm TPFA, həm MPFA-O ilə hesablana bilər.
+3. **Defolt TPFA olaraq qalır** (`default_flux_discretization()`
+   dəyişmədi) — köhnə modellərin və `.imx` fayllarının nəticəsi
+   dəyişməməlidir.
+4. **Layihə açılanda sxem sonuncu işə salınmadan bərpa olunur.**
+   Mühərrik seçimi (IMPES/IMPLICIT) belə bərpa olunmur, amma orada
+   nəticəyə yazılan bir dəyər yoxdur; burada isə var.
+
+### Yoxlama — ölçülmüş
+
+```
+tests/test_flux_scheme_selection.py                       16 keçdi
+test_regression.py + config + serialization + ui +
+  phase_d_mpfa + initial_saturation_map + implicit_engine  131 keçdi (45.9 san)
+```
+
+**Ən vacib qoruma keçdi:** `test_regression.py` — 2 fazalı 5-spot
+etalonu **dəyişmədi**.
+
+Uc-uca test (`test_choosing_mpfa_changes_results_under_anisotropy_end_to_end`)
+göstərir ki, seçim ƏDƏDLƏRƏ çatır: 30°-fırladılmış tenzorda TPFA və
+MPFA-O fərqli kumulyativ neft verir.
+
+**Bütöv dəst (B1-dən sonra):**
+
+```
+2 225 keçdi, 1 ötürüldü, 1 xfail, 0 UĞURSUZ  —  634.9 san (10:35)
+```
+
+Əvvəlki tam icra (Seans 2) 2 042 keçmişdi; fərq bərpa olunan qaz
+testləri (143) və B1-in yeni testləridir (16).
+
+Qeyd: dəst 15 dəqiqədən 10 dəqiqəyə düşüb — səbəb ölçülməyib, ehtimal
+ki maşın yükü. Paralelləşdirmə (B7.4) hələ də faydalıdır.
+
+### Buraxılan iş
+
+- B1 bitdi. Növbəti blok sahibkarın seçimindən asılıdır (plan sırası
+  ilə **B2** — A7 qaz fazasının servis və UI-yə qaytarılması).

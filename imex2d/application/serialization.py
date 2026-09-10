@@ -38,7 +38,7 @@ from ..geology.facies import FaciesVariogramParams
 from ..geology.sgs import (DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL, FaciesPropertyConfig,
                            PropertyVariogramParams)
 from ..simulation.results import SimulationResult, Snapshot, TimeSeries
-from .config import (LinearSolverConfig, OutputConfig, SimulationConfig,
+from .config import (TPFA, LinearSolverConfig, OutputConfig, SimulationConfig,
                      TimeSteppingConfig)
 from .geology_service import ContinuousSGSConfig, FaciesBuildConfig
 from .project import Project, SimulationRun
@@ -644,6 +644,7 @@ class ProjectSerializer:
                 "ilu_drop_tolerance", "ilu_fill_factor", "fallback_to_direct"]),
             "output": _dataclass_to_dict(config.output, [
                 "snapshot_count", "record_well_rates", "progress_every_n_steps"]),
+            "flux_scheme": config.flux_scheme,
         }
 
     @staticmethod
@@ -652,7 +653,10 @@ class ProjectSerializer:
             end_time=data["end_time"],
             time_stepping=TimeSteppingConfig(**data["time_stepping"]),
             linear_solver=LinearSolverConfig(**data["linear_solver"]),
-            output=OutputConfig(**data["output"]))
+            output=OutputConfig(**data["output"]),
+            # GERİYƏ UYĞUNLUQ: açar B1-dən əvvəlki `.imx` fayllarında
+            # yoxdur — onlar TPFA ilə hesablanıb, TPFA ilə də açılır.
+            flux_scheme=data.get("flux_scheme", TPFA))
 
     @staticmethod
     def _result_to_dict(result: SimulationResult, include_snapshots=True) -> dict:

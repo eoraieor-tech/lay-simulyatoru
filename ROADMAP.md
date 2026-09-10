@@ -55,7 +55,7 @@ Aşağıdakı mərhələ cədvəllərini oxumazdan əvvəl bunu nəzərə alın:
 | Komponent | Vəziyyət |
 |---|---|
 | 3D corner-point grid (COORD/ZCORN) | ✅ hazır |
-| **MPFA-O** (1 699 sətir) | ✅ **FIM mühərrikinə QOŞULUB** (Phase 5B-2) — application/UI-dən seçilə bilmir · bax Seans 3 |
+| **MPFA-O** (1 699 sətir) | ✅ **tam işlək** — FIM-ə qoşulub (Phase 5B-2) və UI-dən seçilir (B1) |
 | Kriging + variogram + SGS + fasiya | ✅ hazır (RBF-dən güclü) |
 | Peaceman quyu indeksi | ✅ hazır |
 | IMPES + FIM (Nyuton, analitik Jakobian, CPR) | ✅ hazır |
@@ -122,6 +122,7 @@ fiziki cəhətdən düzgün qaytarılır, testlərlə təsdiqlənir.
 | 3.2 | Yerli lokal sistem | `discretization/mpfa_o_local_system.py` | ✅ |
 | 3.3 | MPFA-O transmissibilite əmsalları | `discretization/mpfa_o.py` | ✅ |
 | 3.4 | Qlobal `scipy.sparse` matrisinin yığılması | `discretization/mpfa_global.py` | ✅ |
+| 3.4b | **MPFA-O-nun konfiqurasiya/UI-dən seçilməsi (B1)** | `application/`, `ui/panels.py` | ✅ |
 | 3.5 | Doğrulama: TPFA ilə müqayisə | `tests/` | ✅ |
 | 3.6 | Doğrulama: anizotrop tenzorda | `tests/` | ✅ |
 | 3.7 | Peaceman 3D quyu indeksi (WI), anizotrop r_e | `simulation/well_model.py` | ✅ |
