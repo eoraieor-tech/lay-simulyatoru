@@ -1257,3 +1257,93 @@ Doğru dəyərlər: RF 49.59 %, WCT 83.7 %. Kod dəyişdirilmədi.
 
 - B1 bitdi. Növbəti blok sahibkarın seçimindən asılıdır (plan sırası
   ilə **B2** — A7 qaz fazasının servis və UI-yə qaytarılması).
+
+---
+
+## 10 sentyabr 2026 — Seans 5: Proqram açıldı, REAL SƏHV tapıldı (PVT + FIM)
+
+### Necə tapıldı
+
+Sahibkar "proqramı aç" dedi. Proqram açıldı (PID 23280, 12 tab, 402 MB)
+və sahibkar özü iki simulyasiya işə saldı. Jurnal göstərdi ki, ikincisi
+**yığılmayıb**. Bu, testlərin tutmadığı, yalnız real istifadədə üzə
+çıxan səhvdir.
+
+Jurnaldan (`logs/imex2d.log`):
+
+```
+18:09:14  RUN-001  pvt: statik (PVT yoxdur)
+          Tamamlandı: 81 addım, t = 1500 gün, RF = 16.65 %
+
+18:10:21  [XƏBƏRDARLIQ] PROD-1: BHP (150 bar) doyma təzyiqindən
+          (240 bar) aşağıdır — quyudibində qaz ayrılacaq.
+
+18:10:46  RUN-002  pvt: correlation(API=32, γg=0.75, T=70°C)
+          t = 0.0 gün: zaman addımı minimal həddə də yığılmadı.
+          RF = 0.00 %
+```
+
+Proqram Python istisnası ilə çökmədi (jurnalda `Traceback` yoxdur) —
+pəncərə bağlandı.
+
+### Təkrarlandı və TƏCRİD OLUNDU — ölçülmüş
+
+Sahibkarın ayarları ilə eynilə təkrarlandı:
+
+| Model | Nəticə |
+|---|---|
+| 41×41, **PVT YOX**, FIM | ✅ yığıldı, 81 addım, 2.1 san |
+| 41×41, **PVT VAR**, FIM | ❌ **t=0-da yığılmadı** |
+| 21×21, PVT VAR, FIM | ❌ yığılmadı |
+| 11×11, PVT VAR, FIM | ❌ yığılmadı (0.4 san) |
+
+**Grid ölçüsündən ASILI DEYİL.** Sxem TPFA idi — yəni B1-in MPFA
+işi ilə ƏLAQƏSİ YOXDUR.
+
+Doyma təzyiqi dəyişdirilərək səbəb təcrid olundu
+(ilkin təzyiq 250 bar, istismarçı BHP 150 bar, 11×11):
+
+| Doyma təzyiqi Pb | FIM nəticəsi |
+|---|---|
+| **240 bar** (panelin DEFOLTU, BHP-dən yuxarı) | ❌ **yığılmır** |
+| 140 bar (BHP-yə yaxın) | ✅ 27 addım |
+| 100 bar (BHP-dən aşağı) | ✅ 25 addım |
+| 50 bar | ✅ 22 addım |
+| **240 bar, amma IMPES mühərriki** | ✅ 2 499 addım |
+
+### Diaqnoz
+
+Tam implicit (Nyuton) mühərriki **doyma təzyiqindən AŞAĞI bölgə
+yaranan kimi** yığılmır. IMPES eyni halda işləyir.
+
+Bu, A7-dəki qaz Nyuton problemi ilə **eyni ailədəndir** (Pb-dən aşağı
+qeyri-xəttilik), lakin burada **qaz fazası ümumiyyətlə yoxdur** — yəni
+səbəb üç fazalı koddan asılı deyil.
+
+**Praktiki nəticə:** "PVT modelini işlət" seçimi panelin ÖZ DEFOLT
+dəyərləri ilə (Pb=240, ilkin təzyiq 250, BHP 150) tövsiyə olunan
+mühərriklə İŞLƏMİR.
+
+### Niyə 2 225 test bunu tutmadı
+
+Testlər PVT-ni ya başqa parametrlərlə, ya da IMPES ilə işlədir. Panelin
+defolt kombinasiyası (Pb yuxarı + FIM) heç bir testdə yoxdur. Bu boşluq
+B3-də bağlanmalıdır.
+
+### Plan üçün nə dəyişir — B3 XEYLİ ASANLAŞDI
+
+Əvvəl B3-ün (Nyuton möhkəmliyi) təkrarlanması üçün A7 qaz mühərriki
+lazım idi (B2-dən sonra). **İndi 2 fazalı, 0.4 saniyəlik təkrarlanma
+halı var** — B3 artıq B2-ni GÖZLƏMİR və hər cəhd saniyələrlə ölçülür.
+`ICRA_PLANI.md` → B3 buna uyğun yeniləndi.
+
+### Yol boyu edilən kiçik düzəliş
+
+`create_engine()` jurnalı artıq axın sxemini də yazır. Səbəb: RUN-002-ni
+diaqnoz edərkən jurnaldan hansı sxemin işlədildiyini müəyyən etmək
+MÜMKÜN OLMADI — B1-dən sonra jurnalda bu boşluq yaranmışdı.
+
+### Buraxılan iş
+
+- Səhv TAPILDI və təcrid olundu, **düzəldilmədi** — düzəlişi B3-ün
+  işidir və sahibkarın prioritet qərarını gözləyir.

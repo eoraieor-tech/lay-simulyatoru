@@ -158,6 +158,27 @@ etmək**, sonra testlə təsdiqləmək.
 **Həcm:** orta-böyük (~2-3 seans) · **Risk:** yüksək (yeganə açıq
 riyazi problem)
 
+> ## ❗ YENİLƏNDİ (Seans 5) — B3 ARTIQ B2-ni GÖZLƏMİR
+>
+> Real istifadədə tapıldı ki, tam implicit mühərrik **2 fazalı** halda
+> da, qaz fazası olmadan da yığılmır — kifayətdir ki, doyma təzyiqi
+> istismarçının BHP-sindən yuxarı olsun (panelin DEFOLT dəyərləri:
+> Pb=240 bar, ilkin 250 bar, BHP 150 bar).
+>
+> **Təkrarlanma 11×11 gridd 0.4 saniyə çəkir** — əvvəl bunun üçün A7
+> qaz mühərriki (B2) lazım idi.
+>
+> | Pb | FIM | IMPES |
+> |---|---|---|
+> | 240 bar (defolt) | ❌ yığılmır | ✅ işləyir |
+> | 140 / 100 / 50 bar | ✅ işləyir | ✅ |
+>
+> **Nəticə:** B3 indi B1-dən dərhal sonra görülə bilər və hər cəhd
+> saniyələrlə ölçülür. Üstəlik bu, istifadəçinin FAKTİKİ qarşılaşdığı
+> səhvdir — "PVT modelini işlət" defolt ayarlarla işləmir.
+>
+> Təfərrüat və ölçmələr: `ISH_HESABATI.md` → Seans 5.
+
 **Məlum diaqnoz** (A7_PLAN, dəqiq ölçülüb): quyu öz BHP həddinə
 yaxınlaşanda (P≈8 bar), istismarçının BİLAVASİTƏ QONŞUSU olan hüceyrədə
 neft qalığı DÖVR-2 rəqs edir (8·10⁻⁴ ↔ 4.5·10⁻³). 41×41 defolt gridd
@@ -179,8 +200,10 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
    dayandırmaq.
 
 **Bitmə şərti:**
-- 5×5 gridd t≈6.7 gündəki rəqs halı **reqressiya testi** kimi yazılır və
-  keçir
+- **2 fazalı hal (Seans 5):** 11×11, PVT korrelyasiyası, Pb=240 bar,
+  FIM → `converged=True`. Reqressiya testi kimi yazılır.
+- 5×5 gridd t≈6.7 gündəki qaz rəqs halı **reqressiya testi** kimi
+  yazılır və keçir (B2-dən sonra)
 - 41×41 defolt gridd 5-spot **`converged=True`** ilə sona çatır
 - 2 fazalı nəticələr dəyişmir (yenə etalon testi)
 
@@ -305,7 +328,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 |---|---|---|---|
 | ~~B1 MPFA seçimi~~ ✅ **BİTDİ** | kiçik | aşağı | **M2 bağlandı** |
 | B2 A7 qaytarılması | orta | orta | **M3, M4** |
-| B3 Nyuton möhkəmliyi | orta-böyük | **yüksək** | M3 (böyük gridd) |
+| B3 Nyuton möhkəmliyi | orta-böyük | **yüksək** | M3 + **PVT səhvi (Seans 5)** |
 | B4 THP/VFP | orta | aşağı | **M5** |
 | B5 Pcog + CSV | kiçik | aşağı | **M8** |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |

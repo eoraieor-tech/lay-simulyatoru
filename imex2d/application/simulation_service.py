@@ -74,9 +74,13 @@ class SimulationService:
         if issues:
             LOG.error("Model yoxlamadan keçmədi: %s", "; ".join(issues))
             raise ModelValidationError(issues)
-        LOG.info("Mühərrik qurulur: %s | %d hüceyrə | %d quyu | %.0f gün",
+        # Axın sxemi də jurnala yazılır: eyni model iki sxemlə fərqli
+        # nəticə verir, ona görə jurnal onsuz OXUNMAZ olur (B1-dən sonra
+        # aşkarlandı — RUN-002 diaqnozunda hansı sxemin işlədildiyi
+        # bilinmirdi).
+        LOG.info("Mühərrik qurulur: %s | %d hüceyrə | %d quyu | %.0f gün | %s",
                  model.name, model.ncell, len(model.active_wells()),
-                 config.end_time)
+                 config.end_time, config.flux_scheme)
         solver = self.linear_solver or ScipyCgIluSolver(config.linear_solver)
         solver.reset()
         self._reject_incompatible_engine(config)
