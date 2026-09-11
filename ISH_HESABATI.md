@@ -1730,3 +1730,63 @@ Bütöv dəst: 2 259 keçdi, 1 ötürüldü, 1 xfail, 0 UĞURSUZ (10:42)
 
 Seans 7-də 2 246 idi; fərq 13 yeni testdir. `test_regression.py`
 (2 fazalı 5-spot etalonu) yenə **dəyişmədi**.
+
+---
+
+## 11 sentyabr 2026 — Seans 9: Dəyişikliklərin ikinci maşına endirilməsi
+
+### Nə edildi
+
+Sahibkarın ikinci maşınında (`C:\Users\Acer\IMEX2D`) GitHub-dan son
+dəyişikliklər endirildi. Bu seansda **yeni kod yazılmadı** — yalnız
+mövcud işin bu maşına gətirilməsi və qeydə alınması.
+
+### Tapıntı: son iş `main`-də DEYİL
+
+`git fetch` göstərdi ki, `origin/main` dəyişməyib (`2c2efd8` — Seans 2-nin
+sonu). Seans 3–8-in bütün işi **`a7-berpa` budağındadır** və `main`-ə
+birləşdirilməyib. `main..origin/a7-berpa` fərqi:
+
+| Commit | Nə |
+|---|---|
+| `479bba3` | docs: sahibkarın planı kod bazası ilə tutuşduruldu (Seans 3) |
+| `118c752` | docs: hədəf proqrama çatmaq üçün icra planı (B1–B7) |
+| `fed364f` | faza B1: MPFA-O istifadəçiyə açıldı (konfiqurasiya + servis + UI + `.imx`) |
+| `7ef8cd2` | docs: B1 real tətbiqdə uc-uca yoxlanıldı + iki mühit tapıntısı |
+| `1168a58` | tapıntı: PVT + tam implicit mühərrik doyma təzyiqindən aşağı bölgədə yığılmır |
+| `b509d7f` | faza B2: A7 qaz fazası servisə və UI-yə qaytarıldı |
+| `b4d9fbb` | faza B3-A: doyma təzyiqindən aşağı Bo degenerasiyası düzəldildi |
+| `97c576b` | faza B4b: ilkin həll olmuş qaz (Rs) — M4 bağlandı |
+
+Ölçü: **49 fayl, +11 948 / −4 644 sətir.** Onlardan 13 fayl yeni test
+(`test_three_phase_residual.py`, `test_gas_pvt.py`, `test_stone_relperm.py`,
+`test_initial_solution_gor.py`, `test_dead_oil_below_bubble_point.py`,
+`test_flux_scheme_selection.py` və s.).
+
+### Bu maşında edilən əməliyyat
+
+```
+git fetch origin
+git checkout -b a7-berpa origin/a7-berpa      # yerli budaq yaradıldı
+```
+
+`main` **toxunulmadı** — hələ də `2c2efd8`-dədir. Birləşdirmə (`merge`)
+edilmədi, çünki bu, sahibkarın qərarıdır (aşağıda açıq sual).
+
+### Yoxlama
+
+```
+python -c "import app"      → OK (idxal zənciri təmiz, PyQt5 + matplotlib yüklənir)
+imex2d.version.VERSION      → 69  (buraxılış: 2026-08-28)
+```
+
+### Açıq suallar ⏳
+
+1. **`a7-berpa` → `main` birləşdirilsinmi?** B1–B4b işi 8 commit-dir və
+   `main`-də yoxdur. Sahibkar qərar verməlidir: birləşdirilsin, yoxsa
+   B7-yə qədər ayrı budaqda qalsın.
+2. **Bütöv test dəsti BU maşında qaçırılmadı.** Seans 8-in qeydinə görə
+   2 259 test keçir, lakin həmin ölçmə digər maşında (`C:\Dev\LSM`)
+   aparılıb. Bu maşının `venv`-i ilə təsdiq edilməyib.
+3. **Proqram bu maşında GUI ilə açılıb sınaqdan keçirilmədi** — yalnız
+   idxal yoxlanıldı.
