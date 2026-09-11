@@ -1917,3 +1917,89 @@ yaxınsama sürətini aşağı salır.
 Ehtimal olunan mənbə: `ThreePhaseWellJacobian`-da RATE rejiminin açıq
 sənədləşmiş sadələşdirməsi və ya sərbəst qaz debitinin `∂/∂Sw`
 həddinin olmaması. **Ölçülməyib** — iddia etmirəm.
+
+---
+
+## 11 sentyabr 2026 — Seans 11: Proqram işə salındı, `run.bat` düzəldildi
+
+### Kontekst
+
+Bu seans **ikinci maşında** (yerli nüsxə) aparıldı. Başlayanda yerli
+`main` commit `2c2efd8`-də ilişib qalmışdı — B1…B4b fazalarının
+12 commit-i (Seans 3–10) yalnız remote-da idi. Sahibkarın tələbi
+sadə idi: "proqramı run elə".
+
+### Görülən iş
+
+#### 1. Proqram işə salındı və doğrulandı
+
+Kod dəyişikliyi aparılmadı — mövcud vəziyyət işlək halda yoxlanıldı.
+Yoxlama **iki dəfə** edildi: əvvəl köhnə yerli kodla, sonra remote-dan
+endirilən B1–B4b kodu ilə. **Hər ikisi təmiz açıldı.**
+
+| Yoxlanılan | Nəticə |
+|---|---|
+| `.venv` asılılıqları (PyQt5, matplotlib, numpy, scipy) | ✅ mövcud |
+| Proqramın başlaması | ✅ `IMEX-2D v69 başladıldı` |
+| Əsas pəncərə | ✅ açıldı, 12 tab |
+| Jurnalda xəta / istisna | ✅ yoxdur |
+
+İşə salma əmri:
+
+```
+.venv\Scripts\pythonw.exe app.py
+```
+
+Pəncərənin başlığı: `IMEX-2D v69 · Geoloji modelləşdirmə və rezervuar
+simulyasiyası`. Yaddaş: ~427 MB.
+
+⚠️ **Yalnız açılış yoxlanıldı** — simulyasiya işlədilmədi, B1–B4b-nin
+funksional nəticələri bu seansda **ölçülmədi**. Onlar Seans 4–10-da
+öz maşınında artıq yoxlanılıb.
+
+#### 2. `run.bat` — `.venv` yolu əlavə edildi
+
+Skript venv-i `..\venv` və `venv`-də axtarırdı, faktiki mühit isə
+kökdə `.venv`-dədir — yəni skript **heç vaxt işləmirdi**, həmişə
+"XETA: venv tapilmadi" verirdi. Bax: `QARARLAR.md` → Q-10.
+
+### Tapıntı 1 — GUI-ni fon prosesi kimi başlatmaq olmur
+
+İlk cəhddə `python.exe app.py` **fon (background) prosesi** kimi
+başladıldı. Nəticə:
+
+- proses qalxdı, jurnala həm `başladıldı`, həm də `12 tab` yazıldı —
+  **yəni Qt işləyirdi və `window.show()` çağırılmışdı**
+- lakin `EnumWindows` ilə heç bir görünən pəncərə tapılmadı
+- yaddaş 10 MB-da ilişib qalmışdı (normal işləyən instans ~427 MB)
+
+Pəncərə interaktiv masaüstünə düşmür. Düzgün üsul — `Start-Process`
+ilə birbaşa istifadəçinin sessiyasında başlatmaq.
+
+### Tapıntı 2 — venv `pythonw.exe` yalnız ötürücüdür
+
+`.venv\Scripts\pythonw.exe` əsl interpretator deyil (launcher stub);
+o, əsas Python-u **ayrı proses** kimi çağırır:
+
+```
+pythonw.exe (venv, PID N)
+  └── pythonw3.12.exe (Microsoft Store Python 3.12, PID M)  ← pəncərə BUNUNDUR
+```
+
+Prosesi axtaranda və ya dayandıranda **uşaq prosesə** baxmaq lazımdır —
+`python.exe` / `pythonw.exe` adına görə filtr uşağı tapmır.
+
+**Əlavə qeyd:** proqram `.venv` (Python 3.12) altında problemsiz işləyir.
+Bu, Q-05-in "venv-də SciPy bloklanır" ölçməsinə **zidd deyil** — Q-07-də
+blokun aradan qalxdığı artıq qeydə alınıb. VTK ayrı məsələdir və
+açılışda idxal olunmur.
+
+### Buraxılan iş
+
+Bu seansda kod dəyişikliyi olmadı (yalnız `run.bat`) — `ROADMAP.md` və
+`ARCHITECTURE.md` toxunulmadı, mərhələ statusu dəyişməyib.
+
+### Açıq suallar
+
+Seans 2-nin iki açıq sualı (OneDrive qovluğu, GitHub repo adı) **hələ
+də açıqdır** — cavab verilməyib.

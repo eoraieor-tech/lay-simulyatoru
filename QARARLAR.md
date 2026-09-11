@@ -268,3 +268,38 @@ davranışıdır — yeni bir şey icad edilmir.
 
 İki fazalı yol (`dead_oil_below_bubble_point`) **olduğu kimi qalır** —
 o, ayrı problemin ayrı həllidir. Bax Q-08 və B3-A.
+
+---
+
+## Q-10 — `run.bat` əvvəlcə `.venv`-ə baxır
+
+**Tarix:** 11 sentyabr 2026
+**Vəziyyət:** Qəbul olunub
+
+**Kontekst:** `run.bat` virtual mühiti iki yerdə axtarırdı: `..\venv`
+və `venv`. Layihənin faktiki venv-i isə repo kökündə **`.venv`** adı
+ilə yerləşir — yəni skript onu heç vaxt tapmırdı və hər dəfə
+"XETA: venv tapilmadi" verirdi. Skript işlək deyildi.
+
+**Qərar:** `.venv\Scripts\activate.bat` axtarış siyahısına **birinci**
+sırada əlavə edildi. Köhnə iki yol olduğu kimi saxlanıldı.
+
+**Səbəb:** `.venv` — Python alətlərinin (uv, VS Code, PyCharm) standart
+adıdır və `.gitignore`-da artıq var. Birinci sırada olmalıdır ki, kökdə
+həm `.venv`, həm də köhnə `venv` varsa, aktual olan seçilsin. Köhnə
+yolların silinməməsi isə başqa maşınlarda qurulmuş mühitləri
+sındırmamaq üçündür.
+
+**Nəticələr:** `run.bat` indi standart quraşdırmada işləyir. Xəta
+mesajındakı gözlənilən yerlər siyahısına da `.venv` əlavə olundu.
+
+**Q-05 ilə münasibət:** Q-05 "bu layihə üçün yeni venv yaradılmır"
+demişdi — səbəb SAC blokları idi. Q-07-də blokun aradan qalxdığı
+qeydə alınıb və `.venv` (3.12) altında proqram problemsiz işləyir
+(ölçüldü, 11 sentyabr). Q-05 **ləğv edilmir** — bu dəyişiklik yeni
+venv yaratmır, yalnız mövcud olanı tanıyır.
+
+**Qeyd:** skriptin özü `python app.py` çağırır — konsol pəncərəsi açıq
+qalır və `errorlevel` yoxlanılır. Bu qəsdəndir: xəta olanda `pause`
+mesajı göstərsin. Konsolsuz işə salma üçün `pythonw.exe` istifadə
+olunur (bax `ISH_HESABATI.md` → Seans 11, Tapıntı 2).
