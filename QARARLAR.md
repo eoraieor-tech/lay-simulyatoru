@@ -362,3 +362,52 @@ Test bunu kilidləyir: lüləli və lüləsiz qaçışın RF-i bitə-bit eynidir
 `ControlMode.THP` (B variantı) gələndə əlaqə addımın əvvəlinə köçəcək,
 lakin `simulation/wellbore/` paketi YENİDƏN İŞLƏDİLƏCƏK — təkrar
 yazılmayacaq.
+
+---
+
+## Q-12 — İşləməyən panel sahələri bozarılır, keş isə silinmir
+
+**Tarix:** 11 sentyabr 2026 · **Kontekst:** "parametrlər təsir etmir"
+bildirişi (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 13)
+
+### Sual
+
+İstifadəçi paneldə dəyər dəyişirdi, nəticə isə dəyişmirdi. Üç səbəb
+tapıldı və hər üçü **dizayn üzrə** idi:
+
+* PVT modeli işlədiləndə μo `PVT cədvəlindən` gəlir;
+* interpolyasiya olunmuş geologiya keşlənir;
+* GRDECL idxalında φ/K faylın xəritələrindən gəlir.
+
+Yəni fizika səhv deyildi — **davranış görünmürdü**.
+
+### Qərar 1 — hesablama DEYİL, görünürlük düzəldilir
+
+Mühərriyə toxunulmadı. Bunun əvəzinə işləməyən sahələr söndürülür
+(`setEnabled(False)`) və səbəb yazılır.
+
+**Alternativ rədd edildi:** "panel dəyəri PVT cədvəlini üstələsin".
+Bu, black-oil modelini pozardı — cədvəldəki μo(p) təzyiqdən asılıdır,
+paneldəki isə sabitdir; ikisini qarışdırmaq termodinamik olaraq
+uyğunsuz nəticə verərdi.
+
+### Qərar 2 — keş SİLİNMİR, yalnız köhnəlmiş işarələnir
+
+`_geology_model_from_wells` keşinin öz məqsədi var: böyük gridi hər
+klikdə yenidən interpolyasiya etməmək (funksiyanın sənədi bunu açıq
+yazır). Avtomatik silmək həmin niyyəti pozardı.
+
+Ona görə φ/K dəyişəndə yalnız **mövcud banner** ("Nəticə köhnəlib —
+'İnterpolyasiya et' basın") işə düşür. Qərar istifadəçinindir.
+
+### Qərar 3 — ayrıca `geology_changed` siqnalı
+
+`RockFluidPanel.changed` bütün sahələr üçün atəş açır. Lözlük
+dəyişəndə geologiyanı köhnəlmiş saymaq YANLIŞ siqnal olardı, ona görə
+yalnız φ/K/heterogenlik sahələri ayrıca siqnal verir.
+
+### Qərar 4 — bozarma dəyəri SİLMİR
+
+Söndürülmüş widget öz dəyərini saxlayır və `fluids()` onu oxumağa
+davam edir. Beləliklə PVT söndürüləndə istifadəçinin əvvəlki lözlük
+dəyəri itmir. Ayrıca testlə kilidləndi.

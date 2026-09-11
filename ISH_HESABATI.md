@@ -2136,3 +2136,94 @@ hidrostatik sütuna 1e-9 dəqiqliklə bərabərdir; Chen ↔ Colebrook
 * Sürətlənmə həddi
 * Eclipse `VFPPROD` cədvəl idxalı (`domain/vfp.py`, `io/vfp_io.py`)
 * Əyri (deviated) quyu — MD→TVD profili
+
+---
+
+## 11 sentyabr 2026 — Seans 13: "Parametrlər təsir etmir" — görünürlük düzəlişi
+
+### Bildiriş
+
+Sahibkar: interfeysdən neft lözlüyünü və φ/K dəyişdikdə RF tərpənmir.
+
+### Audit nəticəsi — MÜHƏRRİK SAĞLAMDIR
+
+Ölçüldü, fərziyyə qurulmadı. **Sahibkarın fərziyyəsi qismən yanlış idi:**
+defolt (sintetik) yolda φ və K **əla işləyir**:
+
+| Parametr | Dəyər | RF % | Kum. neft |
+|---|---|---|---|
+| məsaməlilik | 0.10 → 0.35 | 63.23 → 53.57 | 11 260 → 33 392 |
+| keçiricilik | 10 → 1000 mD | 10.72 → 66.82 | 4 201 → 26 181 |
+| neft lözlüyü (PVT söndürülü) | 1 → 30 cP | 64.92 → 22.49 | — |
+
+**Hardcode rəqəm TAPILMADI.** Yoxlanıldı:
+
+* `implicit/residual.py:112-128` — təmiz `pvt is None` budaqlanması
+* `discretization.py:102` — `model.units.darcy_constant` (vahid sistemi
+  sabiti, UNITS.md sənədləşdirib, audit əl hesabı ilə təsdiqləyib)
+* `three_phase_newton.py:131,177` — `fluids.water_viscosity` yalnız
+  `pvt is None` halında
+
+### Tapılan ÜÇ səssiz üstələmə mexanizmi
+
+**A — PVT açıq olanda panel lözlüyü ÖLÜDÜR.**
+`μo = 1 cP → RF 64.8206`, `μo = 30 cP → RF 64.8206` (bitə-bit eyni).
+Səbəb dizayn üzrədir: PVT cədvəli paneli üstələyir. PVT açıq olanda
+əsl düymə **API və temperaturdur**:
+
+| Düymə | Dəyər | μo(250 bar) | RF % |
+|---|---|---|---|
+| panel μo | 1 → 30 | 1.03 (dəyişmir) | 64.82 (dəyişmir) |
+| PVT: API | 15 → 50 | 6.36 → 0.34 | 49.01 → 67.61 |
+| PVT: temperatur | 40 → 120 °C | 1.83 → 0.66 | 62.15 → 66.15 |
+
+**B — interpolyasiya olunmuş geologiya keşlənir.**
+`_geology_model_from_wells` YALNIZ "İnterpolyasiya et" düyməsi və
+layihə açılışı ilə təyin olunur; φ/K dəyişəndə etibarsızlaşdırılmırdı.
+Keşin özü DÜZGÜNDÜR (böyük gridi hər klikdə interpolyasiya etmək
+olmaz) — problem istifadəçiyə heç bir işarə verilməməsi idi.
+
+`mark_stale()` mexanizmi ARTIQ MÖVCUD idi, lakin yalnız geologiya
+CƏDVƏLİ redaktə olunanda çağırılırdı.
+
+**C — GRDECL idxalında φ/K faylın xəritələrindən gəlir.**
+Geologiya panelinin hesabatında yazılırdı, lakin süxur panelinin
+sahələri açıq və redaktə edilə bilən qalırdı.
+
+Sahibkarın halı: **A + B** (GRDECL idxal etməyib).
+
+### Edilən — MÜHƏRRİYƏ TOXUNULMADI
+
+| # | Düzəliş |
+|---|---|
+| 1 | PVT açıq olanda μw/μo/lözlük vahidi/Bo **bozarır** + izah: dəyərlər PVT tabından gəlir, API/temperaturu redaktə edin |
+| 2 | φ/K və ya grid dəyişəndə interpolyasiya **köhnəlmiş** işarələnir → mövcud banner ("Nəticə köhnəlib — 'İnterpolyasiya et' basın") çıxır |
+| 3 | GRDECL idxalında φ/K sahələri bozarır + izah |
+| 4 | **Həssaslıq test dəsti** — əlaqə gələcəkdə səssizcə qırılsa tutulsun |
+
+Toxunulan fayllar: `ui/panels.py` (`RockFluidPanel.set_context()`,
+yeni `geology_changed` siqnalı, `context_note` etiketi),
+`ui/main_window.py` (kontekst yenilənməsi + `_mark_geology_stale`).
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Ayrıca `geology_changed` siqnalı quruldu**, mövcud `changed`
+   işlədilmədi. Səbəb: `changed` lözlük dəyişəndə də atəş açır, o isə
+   geologiyaya TƏSİR ETMİR — interpolyasiyanı köhnəlmiş saymaq yanlış
+   siqnal olardı.
+2. **Keş avtomatik SİLİNMİR, yalnız köhnəlmiş işarələnir.** Orijinal
+   niyyət (böyük gridi hər klikdə yenidən hesablamamaq) qorunur.
+3. **Grid paneli də köhnəlmə siqnalına qoşuldu** — eyni qüsur ona da
+   aiddir (nx/dx dəyişəndə keşlənmiş model qalırdı).
+4. **Bozarma dəyəri SİLMİR** — söndürülmüş widget-dən `fluids()` hələ
+   də oxuyur, yəni heç bir hesablama davranışı dəyişmir. Ayrıca testlə
+   kilidləndi.
+
+### Yoxlama
+
+```
+tests/test_parameter_sensitivity.py   14 keçdi (YENİ)
+```
+
+9 fizika testi (parametr → RF əlaqəsi) + 5 UI testi (bozarma, banner,
+siqnal seçiciliyi, dəyərin itməməsi).

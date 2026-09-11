@@ -1277,6 +1277,11 @@ class ScalSourcePanel(QWidget):
 class RockFluidPanel(QWidget):
     changed = pyqtSignal()
 
+    #: YALNIZ geoloji modeli dəyişdirən sahələr (φ, K, heterogenlik).
+    #: `changed`-dən ayrıdır, çünki lözlük dəyişəndə interpolyasiyanı
+    #: köhnəlmiş saymaq YANLIŞ olardı — flüid geologiyaya təsir etmir.
+    geology_changed = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         form = QFormLayout(self)
@@ -1315,6 +1320,20 @@ class RockFluidPanel(QWidget):
             sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
             sig.connect(self.changed)
 
+        # Geologiyaya təsir edən sahələr ayrıca siqnal verir — bax
+        # `geology_changed`.
+        for widget in (self.porosity, self.permx, self.permx_unit,
+                       self.ky_over_kx, self.kv_over_kh,
+                       self.heterogeneity, self.sigma, self.seed):
+            sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
+            sig.connect(self.geology_changed)
+
+        self.context_note = QLabel("")
+        self.context_note.setWordWrap(True)
+        self.context_note.setStyleSheet("color:#e0a020;font-size:11px")
+        self.context_note.setVisible(False)
+        form.addRow(self.context_note)
+
     def geology_values(self) -> dict:
         permx_engine = to_engine_units(self.permx.value(), self.permx_unit.currentText(),
                                        "permeability")
@@ -1333,6 +1352,50 @@ class RockFluidPanel(QWidget):
 
     def rock_compressibility_value(self) -> float:
         return self.rock_compressibility.value()
+
+    # ───────────────────────────────────── kontekst (görünürlük düzəlişi)
+    #: Geologiya sahələri — GRDECL idxal olunanda bunlar İŞLƏMİR.
+    GEOLOGY_WIDGETS = ("porosity", "permx", "permx_unit", "ky_over_kx",
+                       "kv_over_kh", "heterogeneity", "sigma", "seed")
+    #: Flüid sahələri — PVT modeli işlədiləndə bunlar İŞLƏMİR.
+    FLUID_WIDGETS = ("mu_w", "mu_o", "viscosity_unit", "bo")
+
+    def set_context(self, pvt_active: bool = False,
+                    geology_imported: bool = False) -> None:
+        """Hansı sahələrin FAKTİKİ təsiri olduğunu görünən edir.
+
+        PROBLEM (ölçülüb, `ISH_HESABATI.md` → Seans 13). Bu paneldəki
+        bəzi sahələr müəyyən şəraitdə mühərriyə ÜMUMİYYƏTLƏ çatmırdı,
+        lakin redaktə edilə bilən qalırdı — istifadəçi dəyəri dəyişir,
+        nəticə isə dəyişmir və simulyator sınmış kimi görünür.
+
+          * PVT modeli işlədiləndə μw/μo/Bo `PVT cədvəlindən` gəlir
+            (bax `simulation/implicit/residual.py` — `pvt is None`
+            budaqlanması). Paneldəki dəyərlər oxunmur.
+          * GRDECL modeli idxal olunanda φ/K faylın öz xəritələrindən
+            gəlir (bax `main_window._build_geological_model`).
+
+        Bu metod HEÇ BİR hesablamanı dəyişmir — yalnız işləməyən
+        sahələri söndürür və səbəbini yazır.
+        """
+        notes = []
+        for name in self.FLUID_WIDGETS:
+            getattr(self, name).setEnabled(not pvt_active)
+        if pvt_active:
+            notes.append(
+                "Lözlük və Bo PVT tabından gəlir — buradakı dəyərlər "
+                "işlədilmir. Onları dəyişmək üçün PVT tabındakı API, "
+                "temperatur və doyma təzyiqini redaktə edin.")
+
+        for name in self.GEOLOGY_WIDGETS:
+            getattr(self, name).setEnabled(not geology_imported)
+        if geology_imported:
+            notes.append(
+                "Məsaməlilik və keçiricilik GRDECL faylından gəlir — "
+                "buradakı dəyərlər işlədilmir.")
+
+        self.context_note.setText("  ".join(notes))
+        self.context_note.setVisible(bool(notes))
 
 
 class ScalPanel(QWidget):

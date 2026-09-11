@@ -280,6 +280,14 @@ class MainWindow(QMainWindow):
                       self.fault_panel, self.scal_panel, self.scal_source_panel,
                       self.pvt_panel, self.well_panel, self.numerical_panel):
             panel.changed.connect(self.rebuild_model)
+        # GÖRÜNÜRLÜK DÜZƏLİŞİ: interpolyasiya olunmuş geologiya keşlənir
+        # (`_geology_model_from_wells`) və φ/K dəyişəndə AVTOMATİK
+        # yenilənmir — bu, qəsdəndir (böyük gridi hər klikdə yenidən
+        # interpolyasiya etmək olmaz). Lakin əvvəl istifadəçiyə heç bir
+        # işarə verilmirdi: dəyər dəyişir, nəticə dəyişmir.
+        # İndi banner çıxır. Bax `ISH_HESABATI.md` → Seans 13.
+        self.rock_panel.geology_changed.connect(self._mark_geology_stale)
+        self.grid_panel.changed.connect(self._mark_geology_stale)
         self.geology_panel.changed.connect(self._on_geology_table_changed)
         self.geology_panel.interpolate_requested.connect(self._interpolate_geology)
         self.geology_panel.cross_validate_requested.connect(self._cross_validate_geology)
@@ -1365,6 +1373,11 @@ class MainWindow(QMainWindow):
                                                     imported.nz):
                 LOG.info("Grid ölçüsü dəyişdirildi — GRDECL modeli ləğv olundu.")
                 self.imported_geology = None
+        # Hansı panel sahələrinin FAKTİKİ təsiri olduğunu görünən edir
+        # (görünürlük düzəlişi — hesablamaya təsiri YOXDUR).
+        self.rock_panel.set_context(
+            pvt_active=self.pvt_panel.is_enabled(),
+            geology_imported=self.imported_geology is not None)
         try:
             geology = self._build_geological_model()
             self.project.add_geological_model(geology)
@@ -1630,6 +1643,16 @@ class MainWindow(QMainWindow):
         self._geology_model_from_wells = geology
         self.geology_panel.mark_fresh()
         self.rebuild_model()
+
+    def _mark_geology_stale(self):
+        """φ/K və ya grid dəyişdi — interpolyasiya nəticəsi köhnəldi.
+
+        YALNIZ interpolyasiya olunmuş model FAKTİKİ işlənəndə banner
+        çıxır: sintetik yolda panel dəyərləri onsuz da hər qaçışda
+        oxunur, GRDECL idxalında isə ayrıca izah verilir.
+        """
+        if self._geology_model_from_wells is not None and self.geology_panel.wells():
+            self.geology_panel.mark_stale()
 
     def _well_index_snapshot(self) -> dict:
         """`{quyu: (i, j, K üst, K alt)}` — həndəsə dəyişməzdən ƏVVƏL/
