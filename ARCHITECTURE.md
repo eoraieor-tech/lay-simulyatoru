@@ -72,6 +72,29 @@ ui ──> rendering ──┐
 `domain` heç kimdən asılı deyil. `simulation` konkret provider siniflərini
 deyil, `interfaces`-dəki abstraksiyaları tanıyır.
 
+### 2.1 Quyu lüləsi hidravlikası (B4, 11 sentyabr 2026)
+
+Lay tənlikləri ilə quyu lüləsinin içi QƏSDƏN ayrıdır — mühərrik yalnız
+quyu dibi təzyiqini (BHP) tanıyır:
+
+```
+domain/tubing.py                 TubingGeometry — yalnız məlumat
+interfaces/providers.py          IWellHydraulicsProvider — sərhəd
+simulation/wellbore/
+    friction.py                  Chen (1979) sürtünmə əmsalı
+    holdup.py                    IHoldupCorrelation, NoSlipHoldup
+    traverse.py                  çoxseqmentli təzyiq marşı
+    hydraulics.py                nəticəyə THP/BHP sıralarını yazır
+```
+
+**V1-də əlaqə BİR İSTİQAMƏTLİDİR** (BHP → THP) və POST-PROSESDİR:
+`SimulationService.run()` mühərrik bitəndən sonra çağırır. Ona görə
+Nyuton həlledicisi bu qatdan XƏBƏRSİZDİR və heç bir quyuda lülə
+həndəsəsi yoxdursa kod ümumiyyətlə işə düşmür.
+
+`ControlMode.THP` (B4-B) gələndə çağırış nöqtəsi addımın əvvəlinə
+köçəcək, lakin paketin özü dəyişməyəcək.
+
 ---
 
 ## 3. UML — sinif diaqramı (mətn formatı)

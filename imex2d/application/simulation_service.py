@@ -28,6 +28,7 @@ from ..simulation.initialization.saturation_map import (
     SaturationMapInitializationProvider, SaturationMapOverride,
     water_saturation_from_map)
 from ..simulation.linear_solver import ScipyCgIluSolver
+from ..simulation.wellbore.hydraulics import WellboreHydraulics
 from ..simulation.pvt.black_oil import BlackOilPVTProvider
 from ..simulation.scal_adapter import CoreyRelativePermeabilityAdapter
 from ..simulation.scal_tables_provider import (
@@ -160,7 +161,27 @@ class SimulationService:
 
     def run(self, model: ReservoirModel, config: SimulationConfig,
             reporter: Optional[IProgressReporter] = None) -> SimulationResult:
-        return self.create_engine(model, config).run(reporter)
+        result = self.create_engine(model, config).run(reporter)
+        self._annotate_wellbore(model, result)
+        return result
+
+    def _annotate_wellbore(self, model: ReservoirModel,
+                           result: SimulationResult) -> None:
+        """B4 — quyu başı təzyiqi (THP) POST-PROSES kimi hesablanır.
+
+        Mühərrik toxunulmur: BHP rejimli quyuda quyu dibi təzyiqi
+        onsuz da sabitdir, debit sıraları isə nəticədə artıq var.
+        Bax `simulation/wellbore/hydraulics.py`.
+
+        HEÇ BİR quyuda lülə həndəsəsi yoxdursa dərhal qayıdır — yəni
+        mövcud modellərin davranışı və sürəti DƏYİŞMİR.
+        """
+        if not any(getattr(well, "tubing", None) is not None
+                   for well in model.wells):
+            return
+        hydraulics = WellboreHydraulics(
+            pvt=getattr(self, "pvt_provider", None), fluids=model.fluids)
+        hydraulics.annotate(model, result)
 
     def run_in_project(self, project: Project, model_name: str,
                        config: SimulationConfig,

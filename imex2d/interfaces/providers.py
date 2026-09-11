@@ -164,3 +164,30 @@ class IInitializationProvider(ABC):
     @abstractmethod
     def initialize(self, model) -> InitialState:
         """ReservoirModel-dən ilkin təzyiq və doyumluluq sahələri qurur."""
+
+
+class IWellHydraulicsProvider(ABC):
+    """Quyu lüləsi hidravlikası — B4 (THP / şaquli axın performansı).
+
+    Lay tənlikləri lülənin içini BİLMİR: mühərrik yalnız quyu dibi
+    təzyiqini (BHP) tanıyır. Bu müqavilə həmin sərhəddi rəsmiləşdirir —
+    lülədəki təzyiq düşgüsü buradan gəlir, analitik traversdən də ola
+    bilər, Eclipse `VFPPROD` cədvəlindən də.
+
+    V1-də YALNIZ BİR İSTİQAMƏT var (BHP → THP), çünki əlaqə hesabat
+    xarakterlidir və Nyutona toxunmur. `ControlMode.THP` əlavə olunanda
+    (B variantı) bu sinfə `bottom_hole_pressure()` metodu gələcək —
+    ⏳ hələ YOXDUR.
+    """
+
+    @abstractmethod
+    def tubing_head_pressure(self, bhp: float, perforation_depth: float,
+                             stream, tubing) -> float:
+        """Quyu başı təzyiqi, bar.
+
+        `stream` — səth debitləri (`simulation.wellbore.WellStream`).
+        `tubing` — lülə həndəsəsi (`domain.tubing.TubingGeometry`).
+
+        Quyu axmırsa `nan` qaytarır: axan traverse dayanmış quyu üçün
+        təyin olunmayıb və uydurma dəyər verilmir.
+        """

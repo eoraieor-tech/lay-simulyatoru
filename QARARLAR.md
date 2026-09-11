@@ -268,3 +268,62 @@ davranışıdır — yeni bir şey icad edilmir.
 
 İki fazalı yol (`dead_oil_below_bubble_point`) **olduğu kimi qalır** —
 o, ayrı problemin ayrı həllidir. Bax Q-08 və B3-A.
+
+---
+
+## Q-10 — THP traversi çoxseqmentlidir; Hagedorn-Brown İŞLƏDİLMİR
+
+**Tarix:** 11 sentyabr 2026 · **Kontekst:** B4, A variantı
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 11)
+
+### Qərar 1 — tək seqment yox, N seqment (defolt 20)
+
+`ICRA_PLANI.md`-dəki ilkin B4 eskizi təzyiq düşgüsünü **tək seqmentdə**
+(orta təzyiqdə) hesablamağı nəzərdə tuturdu.
+
+**Rədd edildi.** Səbəb ölçülüb: B4b-dən sonra modeldə real sərbəst qaz
+var (maks S_g 0.11), qaz isə yuxarı qalxdıqca genişlənir — `Bg` böyüyür,
+ρ azalır, v artır. Qazlı quyuda (GOR 150, 2000 m):
+
+| Seqment | THP, bar | 200-dən fərq |
+|---|---|---|
+| 1 | 115.58 | **2.77 bar** |
+| 5 | 118.20 | 0.15 bar |
+| 20 | 118.34 | 0.006 bar |
+| 200 | 118.35 | — |
+
+Tək seqment yalnız qazsız quyuda düzgündür. Defolt **20** seçildi.
+
+### Qərar 2 — Hagedorn-Brown DEYİL
+
+Sahibkar HB-ni adı ilə soruşdu. Rədd səbəbi **texnikidir, fiziki deyil**:
+HB korrelyasiyası `CNL` və `ψ` **qrafiklərinin** rəqəmsallaşdırılmasını
+tələb edir. O cədvəl datası bizdə yoxdur; uyğunlaşdırılmış əyriləri
+uydursaydım, nəticə "Hagedorn-Brown" adını daşıyıb HB OLMAZDI.
+
+Sahibkar razılaşdı: v1-də **sürüşmə yoxdur** (`H_L = λ_L`).
+Sürüşmə lazım olanda **Beggs-Brill** tövsiyə olunur — qapalı
+düsturlarla yazılır, testlənə bilir və `IHoldupCorrelation`
+interfeysinə çağıranı dəyişmədən oturur.
+
+⚠️ **Sənədləşən nəticə:** no-slip qazlı quyuda hidrostatik sütunu
+OLDUĞUNDAN YÜNGÜL göstərir, yəni hesablanan THP həqiqi dəyərdən
+YÜKSƏKDİR. Fərq GOR artdıqca böyüyür.
+
+### Qərar 3 — axa bilməyən quyuda `nan`, sıfır YOX
+
+Sütunun çəkisi BHP-ni üstələyəndə traverse `nan` qaytarır. Sıfıra
+"qısaldılmış" dəyər qrafikdə REAL ÖLÇMƏ kimi görünərdi — bu, səssiz
+yanlış məlumat olardı. `nan` qrafikdə boşluq buraxır və mesajda səbəb
+yazılır ("süni qaldırma lazımdır").
+
+### Qərar 4 — THP post-prosesdir, mühərrik toxunulmur
+
+A variantında quyu dibi təzyiqi onsuz da sabitdir (istifadəçinin
+hədəfi), debit sıraları isə `SimulationResult`-da var. Ona görə THP
+simulyasiyadan SONRA hesablanır — Nyutonun yığılmasına sıfır risk.
+Test bunu kilidləyir: lüləli və lüləsiz qaçışın RF-i bitə-bit eynidir.
+
+`ControlMode.THP` (B variantı) gələndə əlaqə addımın əvvəlinə köçəcək,
+lakin `simulation/wellbore/` paketi YENİDƏN İŞLƏDİLƏCƏK — təkrar
+yazılmayacaq.

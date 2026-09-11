@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
+                             QGroupBox,
                              QFileDialog, QFormLayout, QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QMessageBox,
                              QPushButton, QSpinBox, QTableWidget,
@@ -42,6 +43,7 @@ from ..domain.properties import FluidProperties
 from ..domain.scal import (CapillaryParameters, CoreyParameters,
                            GasCoreyParameters)
 from ..domain.unit_conversions import convert, to_engine_units
+from ..domain.tubing import TubingGeometry
 from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation
 from ..rendering.theme import PALETTE
 from .geology_map import GeologyMapWidget
@@ -1598,6 +1600,8 @@ class WellPanel(QWidget):
         self.warning_label.setStyleSheet("color:#e0a020;font-size:11px")
         layout.addWidget(self.warning_label)
 
+        layout.addWidget(self._build_tubing_group())
+
         hint = QLabel("BHP → bar,   RATE → m³/gün (rezervuar həcmi)\n"
                       "Ad/i/j/k geologiya cədvəlindən avtomatik gəlir. "
                       "Perf üst/alt boşdursa bütün lay perforasiya olunur.")
@@ -1633,8 +1637,65 @@ class WellPanel(QWidget):
             self.table.blockSignals(False)
         self._recompute_ij_k()
 
+    def _build_tubing_group(self) -> QGroupBox:
+        """Lülə həndəsəsi — quyu başı təzyiqi (THP) hesabatı üçün (B4).
+
+        V1-də parametrlər BÜTÜN istismarçılara eyni tətbiq olunur.
+        Quyu cədvəli onsuz da 10 sütundur; hər quyuya ayrıca lülə
+        vermək VFP cədvəlləri gələndə mənalı olacaq (⏳ B4 v2).
+        """
+        group = QGroupBox("Lülə — quyu başı təzyiqi (THP)")
+        form = QFormLayout(group)
+
+        self.thp_enabled = QCheckBox("THP hesabla")
+        self.thp_enabled.setChecked(False)
+        self.thp_enabled.setToolTip(
+            "Quyu dibi təzyiqindən (BHP) lülə boyunca yuxarı təzyiq "
+            "düşgüsü hesablanır və quyu başı təzyiqi tapılır. "
+            "V1: yalnız BHP rejimli istismarçılar, tam şaquli lülə, "
+            "sürüşmə (slip) nəzərə alınmır.")
+        form.addRow("", self.thp_enabled)
+
+        self.tubing_diameter = _spin(62.0, 10.0, 400.0, 1, 1.0, "mm")
+        self.tubing_diameter.setToolTip("Borunun DAXİLİ diametri")
+        form.addRow("Daxili diametr", self.tubing_diameter)
+
+        self.tubing_roughness = _spin(0.06, 0.0, 5.0, 3, 0.01, "mm")
+        self.tubing_roughness.setToolTip(
+            "Mütləq kələ-kötürlük ε. Yeni polad boru üçün ~0.06 mm.")
+        form.addRow("Kələ-kötürlük", self.tubing_roughness)
+
+        self.wellhead_depth = _spin(0.0, 0.0, 3000.0, 1, 10.0, "m")
+        self.wellhead_depth.setToolTip(
+            "Quyu başının dərinliyi. Quruda 0, su altında müsbət.")
+        form.addRow("Quyu başı dərinliyi", self.wellhead_depth)
+
+        self.tubing_segments = _ispin(20, 1, 500)
+        self.tubing_segments.setToolTip(
+            "Traverse neçə hissəyə bölünsün. Qazlı quyuda az seqment "
+            "kobud nəticə verir — 20 tövsiyə olunur.")
+        form.addRow("Seqment sayı", self.tubing_segments)
+
+        for widget in (self.thp_enabled, self.tubing_diameter,
+                       self.tubing_roughness, self.wellhead_depth,
+                       self.tubing_segments):
+            signal = getattr(widget, "stateChanged", None) or widget.valueChanged
+            signal.connect(lambda *_: self.changed.emit())
+        return group
+
+    def tubing_values(self) -> Optional[TubingGeometry]:
+        """Paneldəki lülə həndəsəsi — THP söndürülübsə `None`."""
+        if not self.thp_enabled.isChecked():
+            return None
+        return TubingGeometry(
+            diameter=self.tubing_diameter.value() / 1000.0,
+            roughness=self.tubing_roughness.value() / 1000.0,
+            wellhead_depth=self.wellhead_depth.value(),
+            segments=self.tubing_segments.value())
+
     def values(self) -> List[Well]:
         wells: List[Well] = []
+        tubing = self.tubing_values()
         for row in range(self.table.rowCount()):
             name_item = self.table.item(row, self.COL_NAME)
             if name_item is None:
@@ -1655,7 +1716,8 @@ class WellPanel(QWidget):
                 name=name, well_type=WellType(kind),
                 control=WellControl(ControlMode(mode), target),
                 perforations=[Perforation(i, j, k) for k in range(first, last + 1)],
-                radius=rw, perf_top=perf_top, perf_bottom=perf_bottom))
+                radius=rw, perf_top=perf_top, perf_bottom=perf_bottom,
+                tubing=(tubing if WellType(kind) is WellType.PRODUCER else None)))
         return wells
 
     # -------------------------------------------------------- internal

@@ -1917,3 +1917,136 @@ yaxınsama sürətini aşağı salır.
 Ehtimal olunan mənbə: `ThreePhaseWellJacobian`-da RATE rejiminin açıq
 sənədləşmiş sadələşdirməsi və ya sərbəst qaz debitinin `∂/∂Sw`
 həddinin olmaması. **Ölçülməyib** — iddia etmirəm.
+
+---
+
+## 11 sentyabr 2026 — Seans 11: B4 (A variantı) — THP hesabatı
+
+### Sahibkarın seçimləri (müzakirədən sonra)
+
+| Sual | Qərar |
+|---|---|
+| Əhatə | **A variantı**: BHP məlum → yuxarı traverse → THP. B ayrı commit-də |
+| Sürüşmə | v1-də **no-slip**; interfeys Beggs-Brill üçün açıq qalsın |
+| RATE quyuları | v1-də **yalnız BHP rejimi**; Peaceman-ın tərsi sonraya |
+| Lülə həndəsəsi | **tam şaquli** (TVD = MD) |
+
+Hagedorn-Brown RƏDD EDİLDİ — onun `CNL`/`ψ` qrafiklərinin rəqəmsal
+datası bizdə yoxdur və uydurulmayacaq.
+
+### Kodda tapılan iki əsassız iddia
+
+1. **`ROADMAP.md`-dəki "M5: BHP ✅" həqiqətdən zəif idi.** BHP çıxış
+   deyil, GİRİŞ idi: `ControlMode.BHP`-də istifadəçi onu yazır,
+   `SimulationResult`-da isə `well_bhp` sahəsi ÜMUMİYYƏTLƏ YOX idi.
+   RATE rejimində mühərrik BHP-ni heç hesablamır. İndi `well_bhp`
+   əlavə olundu və BHP həqiqətən qrafikə düşür.
+2. **"M6: GOR ✅" — GOR heç bir renderer-də çəkilmirdi.** `grep`
+   boş qayıtdı. İndi dashboard-a ayrıca panel əlavə olundu.
+
+### Riyazi struktur
+
+    dp/dz = [ ρ_qrav·g + f·ρ_ns·v_m²/(2d) ] / 1e5      [bar/m]
+    THP   = BHP − Σ (Δp_qravitasiya + Δp_sürtünmə)
+
+* **Sürtünmə:** Chen (1979) açıq düsturu (Colebrook-un iterasiyasız
+  yaxınlaşması). Laminar budaq `64/Re`; 2000–4000 aralığında XƏTTİ
+  keçid — sıçrayış B variantında Nyutonu pozardı.
+* **Qarışıq sıxlığı:** kütlə axını lülə boyunca sabitdir, ona görə
+  `ρ = kütlə/həcm` DƏQİQDİR. Qravitasiya `H_L` ilə, sürtünmə `λ_L`
+  ilə çəkilir (sənaye standartı); no-slip halda ikisi üst-üstə düşür.
+* **Sürətlənmə həddi DAXİL DEYİL** — ⏳ v2.
+
+### Ölçülmüş: TƏK SEQMENT YETƏRSİZDİR
+
+Plandakı ilkin eskiz tək seqment (orta təzyiqdə) nəzərdə tuturdu.
+Ölçüldü (qazlı quyu, GOR 150, 2000 m):
+
+| Seqment | THP, bar |
+|---|---|
+| 1 | 115.58 |
+| 5 | 118.20 |
+| 20 | **118.34** |
+| 200 | 118.35 |
+
+Tək seqmentin xətası **2.8 bar**-dır. Defolt 20 seçildi (200-dən fərq
+0.006 bar). Bax `QARARLAR.md` → Q-10.
+
+### Testin tutduğu SƏHV — B3-B-nin lülədəki analoqu
+
+İlk versiyada `Bo` doymuş cədvəldən oxunurdu. Nəticə fiziki olaraq
+QEYRİ-MONOTON çıxdı:
+
+    GOR=  0 → THP 113.7
+    GOR= 50 → THP 108.0   ← AŞAĞI düşdü, halbuki qaz sütunu
+    GOR=150 → THP 118.4      yüngülləşdirməlidir
+    GOR=400 → THP 155.0
+
+Səbəb B3-B-dəki ilə EYNİ idi: doymamış neftə doymuş qolun Bo-su
+verilirdi. Düzəliş: axının hasilat GOR-u `Rs`-in HƏQİQİ dəyərini
+verir; `Rs < Rs_sat(p)` olduqda `oil_fvf_undersaturated()` işlədilir.
+Düzəlişdən sonra: 78.8 → 90.6 → 118.3 → 155.0 (monoton).
+
+### Sərhəd halları — uydurma dəyər YOXDUR
+
+| Hal | Davranış |
+|---|---|
+| Quyu dayanıb | `thp = nan` — axan traverse təyin olunmayıb |
+| Sütun BHP-ni üstələyir | `thp = nan` + "süni qaldırma lazımdır" |
+
+Sıfıra "qısaldılmış" dəyər QƏSDƏN qaytarılmır: qrafikdə 0 bar real
+ölçmə kimi görünərdi.
+
+Ölçüldü — dərinliyə görə axan addımların sayı (24 addımdan):
+1200 m → 24, 2000 m → 20, 3000 m → 11, 3500 m → 1, 5000 m → 0.
+Keçid kəskin deyil, tədricidir: qaz ayrıldıqca sütun yüngülləşir.
+
+### Toxunulan fayllar
+
+| Fayl | Nə |
+|---|---|
+| `domain/tubing.py` | **YENİ** — `TubingGeometry` |
+| `domain/wells.py` | `Well.tubing` (defolt `None`) |
+| `interfaces/providers.py` | `IWellHydraulicsProvider` |
+| `simulation/wellbore/friction.py` | **YENİ** — Chen (1979) |
+| `simulation/wellbore/holdup.py` | **YENİ** — `IHoldupCorrelation`, `NoSlipHoldup` |
+| `simulation/wellbore/traverse.py` | **YENİ** — çoxseqmentli marş |
+| `simulation/wellbore/hydraulics.py` | **YENİ** — nəticəyə THP/BHP yazır |
+| `simulation/results.py` | `well_bhp`, `well_thp` |
+| `application/simulation_service.py` | post-proses qoşuldu |
+| `application/serialization.py` | `.imx` açarı + geriyə uyğunluq |
+| `ui/panels.py` | "Lülə — quyu başı təzyiqi (THP)" qrupu |
+| `rendering/renderers.py` | dashboard 2×2 → 3×2: quyu təzyiqləri + GOR |
+| `ui/main_window.py` | `_figure(3, 2)` |
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **THP POST-PROSESDİR, mühərrik toxunulmadı.** BHP rejimli quyuda
+   quyu dibi təzyiqi onsuz da sabitdir, debit sıraları isə nəticədə
+   var. Nyutona SIFIR risk. Test bunu kilidləyir: lüləli və lüləsiz
+   qaçışın RF-i BİTƏ-BİT eynidir.
+2. **Lülə parametrləri quyu cədvəlinə DEYİL, ayrıca qrupa qoyuldu.**
+   Cədvəl artıq 10 sütundur; v1 onsuz da bütün istismarçılara eyni
+   həndəsə tətbiq edir. Per-quyu lülə VFP cədvəlləri gələndə mənalı
+   olacaq (⏳).
+3. **Renderer düzümü ADAPTİVDİR** (2×2 və 3×2) — mövcud testlər və
+   çağırışlar dəyişmədən keçir.
+
+### Yoxlama
+
+```
+tests/test_wellbore_thp.py   26 keçdi (YENİ)
+```
+
+Sərhəd testləri analitik etalonla tutuşdurulur: sürtünməsiz hədd
+hidrostatik sütuna 1e-9 dəqiqliklə bərabərdir; Chen ↔ Colebrook
+(iterasiya ilə həll olunan müstəqil etalon) fərqi < 0.5 %.
+
+### Qalan ⏳
+
+* B variantı — `ControlMode.THP` (açıq birləşmə)
+* RATE quyularında BHP (Peaceman-ın tərsi)
+* Beggs-Brill sürüşməsi
+* Sürətlənmə həddi
+* Eclipse `VFPPROD` cədvəl idxalı (`domain/vfp.py`, `io/vfp_io.py`)
+* Əyri (deviated) quyu — MD→TVD profili

@@ -19,7 +19,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
 | M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | ✅ **B2-də bağlandı** |
 | M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b + B3-B** (Pb = 300 bar-a qədər ölçülüb) |
-| M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 BHP ✅, THP ❌ |
+| M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 **B4-A-da bağlandı** (BHP rejimli istismarçılar); RATE ⏳ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
 | M8 | Nəticələrin fayla ixracı | 🟡 PDF ✅, CSV ❌ |
@@ -291,6 +291,33 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
 
 ## B4 — THP / VFP modulu (SIFIRDAN)
 
+### B4-A — THP hesabat kəmiyyəti kimi ✅ BİTDİ (11 sentyabr 2026)
+
+> **Əhatə (sahibkarın seçimi):** BHP məlum → yuxarı traverse → THP.
+> Mühərrik TOXUNULMADI — hesablama post-prosesdir, Nyutona sıfır risk.
+> Sürüşmə yoxdur (no-slip), yalnız BHP rejimli istismarçılar, lülə
+> tam şaquli.
+>
+> **Planın bir eskizi DƏYİŞDİRİLDİ:** aşağıdakı ilkin mətn tək
+> seqmentli hesabat nəzərdə tuturdu. Ölçüldü — qazlı quyuda tək
+> seqmentin xətası 2.8 bar-dır, ona görə çoxseqmentli marş quruldu
+> (defolt 20). Bax [QARARLAR.md](QARARLAR.md) → Q-10.
+>
+> **İki əsassız iddia düzəldildi:** `well_bhp` sahəsi ÜMUMİYYƏTLƏ
+> yox idi (M5-in "BHP ✅"-si girişi nəzərdə tuturdu), GOR isə heç
+> bir qrafikdə çəkilmirdi (M6). Hər ikisi indi dashboard-dadır.
+>
+> 26 yeni test: `tests/test_wellbore_thp.py`.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 11.
+
+### B4-B — `ControlMode.THP` ⏳ NÖVBƏTİ
+
+Sahibkarın qərarı: ayrı commit-də. THP verilir, addımın əvvəlində
+əvvəlki debitlərlə BHP çıxarılır və Nyutona sabit BHP kimi ötürülür
+(açıq birləşmə).
+
+**Aşağıdakı ilkin plan mətni tarixi qeyd kimi saxlanılır:**
+
 **Həcm:** orta (~2 seans) · **Risk:** aşağı · **Asılılıq: yoxdur**
 
 Kodda THP/VFP **ümumiyyətlə yoxdur** — planın ən dəyərli bəndi (3.8).
@@ -445,7 +472,8 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | ~~B2 A7 qaytarılması~~ ✅ **BİTDİ** | orta | orta | **M3 ✅ · M4 qismən** |
 | B3-A iki fazalı degenerasiya ✅ **BİTDİ** | orta | yüksək | **PVT səhvi (RUN-002) bağlandı** |
 | ~~B3-B üç fazalı yol~~ ✅ **BİTDİ** | orta | yüksək | **M3/M4 yüksək Pb-də bağlandı** |
-| B4 THP/VFP | orta | aşağı | **M5** |
+| ~~B4-A THP hesabatı~~ ✅ **BİTDİ** | orta | aşağı | **M5 (qismən)** |
+| B4-B `ControlMode.THP` ⏳ | orta | orta | M5 (tam) |
 | B5 Pcog + CSV | kiçik | aşağı | **M8** |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |
 | B7 yekun doğrulama | kiçik-orta | aşağı | hamısı |

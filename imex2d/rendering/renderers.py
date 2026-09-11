@@ -227,11 +227,18 @@ class MapRenderer:
 
 
 class ProductionCurveRenderer:
-    """Debit, sulaşma, kumulyativ hasilat və RF qrafikləri."""
+    """Debit, sulaşma, kumulyativ hasilat, RF, quyu təzyiqləri və GOR.
+
+    Düzüm ADAPTİVDİR: 2×2 verilsə köhnə dörd panel çəkilir (mövcud
+    çağırışlar və testlər DƏYİŞMİR), 3×2 verilsə əlavə iki panel —
+    quyu təzyiqləri (BHP/THP, B4) və qaz-neft nisbəti — gəlir.
+    """
 
     def draw(self, axes, result: SimulationResult):
-        (a1, a2), (a3, a4) = axes
-        for ax in (a1, a2, a3, a4):
+        flat = [ax for row in axes for ax in row]
+        a1, a2, a3, a4 = flat[:4]
+        extra = flat[4:]
+        for ax in flat:
             ax.clear()
         s = result.series
         if not s.time:
@@ -264,6 +271,53 @@ class ProductionCurveRenderer:
         for spine in twin.spines.values():
             spine.set_color(PALETTE.line)
         style_axes(a4, "Recovery Factor", "Zaman, gün", "RF, %")
+
+        if extra:
+            self._draw_well_pressures(extra[0], result)
+        if len(extra) > 1:
+            self._draw_gas_oil_ratio(extra[1], t, s)
+
+    @staticmethod
+    def _draw_well_pressures(ax, result: SimulationResult):
+        """Quyu dibi (BHP) və quyu başı (THP) təzyiqləri — B4.
+
+        Hər ikisi BAR olduğuna görə TƏK oxda çəkilir; ikinci ox
+        qoymaq iki miqyası süni əlaqələndirərdi.
+        """
+        series = result.series
+        if not series.time or not result.well_bhp:
+            ax.text(0.5, 0.5, "THP hesablanmayıb",
+                    ha="center", va="center", transform=ax.transAxes,
+                    color=PALETTE.text_dim, fontsize=9)
+            style_axes(ax, "Quyu təzyiqləri", "Zaman, gün", "P, bar")
+            return
+
+        for name in sorted(result.well_bhp):
+            bhp = result.well_bhp[name]
+            steps = min(len(series.time), len(bhp))
+            ax.plot(series.time[:steps], bhp[:steps], color=PALETTE.water,
+                    lw=1.6, ls="--", label=f"{name} BHP")
+        for name in sorted(result.well_thp):
+            thp = result.well_thp[name]
+            steps = min(len(series.time), len(thp))
+            ax.plot(series.time[:steps], thp[:steps], color=PALETTE.oil,
+                    lw=2.0, label=f"{name} THP")
+        style_axes(ax, "Quyu təzyiqləri", "Zaman, gün", "P, bar")
+        legend(ax)
+
+    @staticmethod
+    def _draw_gas_oil_ratio(ax, t, series):
+        """GOR — üç fazalı qaçışda qazın ayrılmasını göstərir (M4/M6)."""
+        gor = series.gas_oil_ratio
+        if not gor:
+            ax.text(0.5, 0.5, "qaz fazası söndürülüb", ha="center",
+                    va="center", transform=ax.transAxes,
+                    color=PALETTE.text_dim, fontsize=9)
+            style_axes(ax, "Qaz-neft nisbəti", "Zaman, gün", "GOR, sm³/sm³")
+            return
+        steps = min(len(t), len(gor))
+        ax.plot(t[:steps], gor[:steps], color=PALETTE.accent, lw=2)
+        style_axes(ax, "Qaz-neft nisbəti", "Zaman, gün", "GOR, sm³/sm³")
 
 
 class ScalRenderer:

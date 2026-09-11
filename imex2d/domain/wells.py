@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from .tubing import TubingGeometry
 from .validation import validate_pressure, validate_well_rate
 
 
@@ -75,6 +76,11 @@ class Well:
     # grid ölçüsü dəyişəndə itməməsi üçün saxlanılır (bax `depth_to_k`).
     perf_top: Optional[float] = None
     perf_bottom: Optional[float] = None
+
+    #: Lülə borusu — THP hesabatı üçün (B4). `None` olanda quyu üçün
+    #: THP hesablanmır; mühərrik onsuz da yalnız BHP ilə işləyir, ona
+    #: görə bu sahə HEÇ NƏYİ məcbur etmir (geriyə tam uyğundur).
+    tubing: Optional[TubingGeometry] = None
 
     @classmethod
     def vertical(cls, name, i, j, well_type=WellType.PRODUCER,

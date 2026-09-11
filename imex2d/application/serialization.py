@@ -32,6 +32,7 @@ from ..domain.reservoir_model import ReservoirModel
 from ..domain.scal import CapillaryParameters, CoreyParameters
 from ..domain.structure import FaultReference, HorizonReference, RegionSet
 from ..domain.units import FIELD, METRIC
+from ..domain.tubing import TubingGeometry
 from ..domain.wells import (ControlMode, Perforation, Phase, Well, WellControl,
                             WellType)
 from ..geology.facies import FaciesVariogramParams
@@ -271,6 +272,20 @@ def _phase_or_water(value) -> Phase:
         return Phase(value) if value else Phase.WATER
     except ValueError:
         return Phase.WATER
+
+
+def _tubing_or_none(data):
+    """`.imx`-dən lülə həndəsəsi — açarı olmayan KÖHNƏ fayl `None` verir.
+
+    B4-dən əvvəlki layihə fayllarında bu açar yoxdur; `None` isə
+    "THP hesablanmasın" deməkdir, yəni köhnə fayllar eyni davranır."""
+    if not data:
+        return None
+    return TubingGeometry(
+        diameter=float(data.get("diameter", 0.062)),
+        roughness=float(data.get("roughness", 6.0e-5)),
+        wellhead_depth=float(data.get("wellhead_depth", 0.0)),
+        segments=int(data.get("segments", 20)))
 
 
 def _known_fields(cls, data: dict) -> dict:
@@ -570,6 +585,11 @@ class ProjectSerializer:
             "active": well.active,
             "perf_top": well.perf_top,
             "perf_bottom": well.perf_bottom,
+            "tubing": (None if well.tubing is None else {
+                "diameter": well.tubing.diameter,
+                "roughness": well.tubing.roughness,
+                "wellhead_depth": well.tubing.wellhead_depth,
+                "segments": well.tubing.segments}),
         }
 
     @staticmethod
@@ -584,7 +604,8 @@ class ProjectSerializer:
             radius=data.get("radius", 0.1),
             active=data.get("active", True),
             perf_top=data.get("perf_top"),
-            perf_bottom=data.get("perf_bottom"))
+            perf_bottom=data.get("perf_bottom"),
+            tubing=_tubing_or_none(data.get("tubing")))
 
     # -------------------------------------------------------------- pvt
     @staticmethod

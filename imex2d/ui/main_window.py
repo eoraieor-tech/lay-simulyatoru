@@ -357,7 +357,9 @@ class MainWindow(QMainWindow):
             f"background:{PALETTE.panel_alt};border:1px solid {PALETTE.line};"
             f"border-radius:4px;padding:9px;font-family:monospace;"
             f"font-size:12px;color:{PALETTE.text}")
-        self.result_fig, self.result_canvas, self.result_axes = _figure(2, 2)
+        # 3×2: dörd klassik panel + quyu təzyiqləri (BHP/THP, B4)
+        # + qaz-neft nisbəti. Renderer hər iki düzümü qəbul edir.
+        self.result_fig, self.result_canvas, self.result_axes = _figure(3, 2)
         layout.addWidget(self.kpi)
         layout.addWidget(self.result_canvas, 1)
         self.tabs.addTab(page, "Nəticələr")

@@ -27,8 +27,16 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **11 sentyabr 2026:** B3-B bağlandı — üç fazalı mühərrik artıq
 > Pb = 300 bar-a qədər yığılır (doymamış Bo qolu düzəldildi, bax
-> [QARARLAR.md](QARARLAR.md) → Q-09). Qalan bloklar: **B4 (THP/VFP)**,
-> **B5 (Pcog + CSV)**, **B6 (3D animasiya)**, **B7 (yekun doğrulama)**.
+> [QARARLAR.md](QARARLAR.md) → Q-09).
+>
+> **11 sentyabr 2026 (davamı):** **B4-A** bitdi — quyu başı təzyiqi
+> (THP) çoxseqmentli şaquli traversdən hesablanır və BHP ilə yanaşı
+> dashboard-a düşür (Q-10). Yol boyu iki əsassız status düzəldildi:
+> `well_bhp` sahəsi ümumiyyətlə yox idi, GOR isə heç bir qrafikdə
+> çəkilmirdi — hər ikisi indi var.
+>
+> Qalan bloklar: **B4-B** (`ControlMode.THP`), **B5** (Pcog + CSV),
+> **B6** (3D animasiya), **B7** (yekun doğrulama).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
