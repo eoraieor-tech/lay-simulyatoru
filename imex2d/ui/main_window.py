@@ -285,7 +285,7 @@ class MainWindow(QMainWindow):
         # yenilənmir — bu, qəsdəndir (böyük gridi hər klikdə yenidən
         # interpolyasiya etmək olmaz). Lakin əvvəl istifadəçiyə heç bir
         # işarə verilmirdi: dəyər dəyişir, nəticə dəyişmir.
-        # İndi banner çıxır. Bax `ISH_HESABATI.md` → Seans 13.
+        # İndi banner çıxır. Bax `ISH_HESABATI.md` → Seans 14.
         self.rock_panel.geology_changed.connect(self._mark_geology_stale)
         self.grid_panel.changed.connect(self._mark_geology_stale)
         self.geology_panel.changed.connect(self._on_geology_table_changed)

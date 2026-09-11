@@ -368,7 +368,7 @@ yazılmayacaq.
 ## Q-12 — İşləməyən panel sahələri bozarılır, keş isə silinmir
 
 **Tarix:** 11 sentyabr 2026 · **Kontekst:** "parametrlər təsir etmir"
-bildirişi (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 13)
+bildirişi (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 14)
 
 ### Sual
 

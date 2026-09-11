@@ -1,6 +1,6 @@
 """Parametr həssaslığı — UI-dan verilən dəyər NƏTİCƏYƏ çatırmı?
 
-PROBLEM (sahibkarın bildirişi, `ISH_HESABATI.md` → Seans 13). İstifadəçi
+PROBLEM (sahibkarın bildirişi, `ISH_HESABATI.md` → Seans 14). İstifadəçi
 interfeysdə neft lözlüyünü və φ/K-nı dəyişirdi, RF isə tərpənmirdi.
 
 Audit göstərdi ki, **mühərrik sağlamdır** — mobillik və transmissibillik

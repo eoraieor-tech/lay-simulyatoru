@@ -1364,7 +1364,7 @@ class RockFluidPanel(QWidget):
                     geology_imported: bool = False) -> None:
         """Hansı sahələrin FAKTİKİ təsiri olduğunu görünən edir.
 
-        PROBLEM (ölçülüb, `ISH_HESABATI.md` → Seans 13). Bu paneldəki
+        PROBLEM (ölçülüb, `ISH_HESABATI.md` → Seans 14). Bu paneldəki
         bəzi sahələr müəyyən şəraitdə mühərriyə ÜMUMİYYƏTLƏ çatmırdı,
         lakin redaktə edilə bilən qalırdı — istifadəçi dəyəri dəyişir,
         nəticə isə dəyişmir və simulyator sınmış kimi görünür.
