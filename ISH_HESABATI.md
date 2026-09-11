@@ -2136,3 +2136,94 @@ hidrostatik sütuna 1e-9 dəqiqliklə bərabərdir; Chen ↔ Colebrook
 * Sürətlənmə həddi
 * Eclipse `VFPPROD` cədvəl idxalı (`domain/vfp.py`, `io/vfp_io.py`)
 * Əyri (deviated) quyu — MD→TVD profili
+
+---
+
+## 11 sentyabr 2026 — Seans 13: Son dəyişikliklər əsas maşına endirildi
+
+### Nə istənildi
+
+Sahibkar: "Ən son dəyişiklikləri məndə də et." Yəni əsas maşında
+(`C:\Dev\LSM`) uzaq repodakı bütün yeni iş tətbiq olunsun. Bu seansda
+**yeni funksional kod yazılmadı** — endirmə, mühit yoxlanışı və iki
+köhnəlmiş ROADMAP sətrinin düzəldilməsi.
+
+### Vəziyyət: yerli repo ÜÇ commit geri idi
+
+Seans başlayanda yerli `a7-berpa` `97c576b`-də (Seans 8-in sonu) idi,
+iş ağacı təmiz. `git fetch --all` göstərdi:
+
+| Budaq | Əvvəl | Sonra |
+|---|---|---|
+| `a7-berpa` | `97c576b` | `ad6104e` (+3 commit) |
+| `main` | `2c2efd8` | `3b3e66b` (+12 commit) |
+| `b4-thp` | *yox idi* | `963358f` (**YENİ budaq**) |
+
+Diqqət: Seans 9-un açıq sualı (`a7-berpa` → `main` birləşdirilsinmi)
+**həll olunub** — `main` artıq B1–B3-B işini daşıyır (`3b3e66b`).
+
+### Endirilən iş (`97c576b` → `963358f`)
+
+**26 fayl, +2 542 / −29 sətir.**
+
+| Blok | Nə gətirdi |
+|---|---|
+| **B3-B** (`8a5ecce`) | üç fazalı mühərrik yüksək doyma təzyiqində yığılır — `three_phase_newton.py`, `three_phase_residual.py`, `black_oil.py` + `test_three_phase_high_bubble_point.py` (23 test) |
+| **B4-A** (`97979be`) | quyu başı təzyiqi (THP) — YENİ `simulation/wellbore/` paketi: `friction.py` (Chen 1979), `holdup.py`, `traverse.py`, `hydraulics.py`; `domain/tubing.py`; UI + dashboard 3×2 + `.imx` açarı + `test_wellbore_thp.py` (26 test) |
+| **run.bat** (`3b3e66b`) | `.venv` yolunu tanıyır (Seans 11 düzəlişi) |
+| `ad6104e` | yerli qrafik faylı `.gitignore`-a |
+
+### Bu maşında edilən əməliyyat
+
+```
+git fetch --all
+git merge --ff-only origin/a7-berpa      # a7-berpa: 97c576b -> ad6104e
+git fetch . origin/main:main             # main:      2c2efd8 -> 3b3e66b
+git checkout -B b4-thp origin/b4-thp     # ish burada davam edir
+```
+
+Üç budağın hamısı `origin` ilə eynidir. Aktiv budaq: **`b4-thp`**.
+
+### Mühit yoxlanışı — Seans 9-un 2-ci və 3-cü açıq sualı bağlandı
+
+Bu maşında `.venv` **yoxdur**; `run.bat`-ın gözlədiyi üç yerin heç
+birində venv tapılmır. Lakin sistem Python-u (3.14.7) bütün asılılıqları
+daşıyır:
+
+```
+PyQt5 OK · vtk OK · numpy OK · scipy OK · matplotlib OK · pytest OK
+import app  → OK,  imex2d.version.VERSION = 69
+```
+
+**Bütöv test dəsti BU maşında qaçırıldı** (Seans 9-da bu edilməmişdi):
+
+```
+python -m pytest -q
+2308 keçdi · 1 skip · 1 xfail · 0 XƏTA   (648 s)
+```
+
+Seans 8-də 2 259 idi; fərq 49 testdir — məhz B3-B (23) və B4-A (26)
+ilə gələnlər. Yəni iki maşının nəticəsi uc-uca uyğundur.
+
+### Düzəldilən: ROADMAP-da iki köhnəlmiş sətir
+
+B4-A THP-ni gətirsə də, `ROADMAP.md`-də status `❌` qalmışdı:
+
+| Sətir | Əvvəl | İndi |
+|---|---|---|
+| **3.8** VFP: hidrostatik sütun + sürtünmə → BHP ↔ THP | `❌ YOXDUR` | `🟡` BHP → THP ✅ (B4-A), tərs istiqamət ⏳ B4-B |
+| **6.5** Dashboard: debet, BHP, RF | `🟡 ... THP ❌` | `✅` THP/BHP paneli (3×2 düzüm) |
+
+3.8 QƏSDƏN `✅` edilmədi: `ControlMode.THP` (tərs istiqamət — THP-dən
+BHP tapmaq) hələ yoxdur, o B4-B-dir.
+
+### Açıq suallar ⏳
+
+1. **`b4-thp` → `main` birləşdirilsinmi?** B4-A `main`-də yoxdur.
+   Sahibkarın qərarıdır.
+2. **`.venv` bu maşında qurulsunmu?** Hazırda sistem Python-u işləyir,
+   amma `run.bat` venv axtarır və tapmayanda "XETA: venv tapilmadi"
+   verib dayanır. Yəni `run.bat` ilə proqram BU maşında açılmır —
+   `python app.py` ilə açılır.
+3. **Proqram bu maşında GUI ilə açılıb sınanmadı** — yalnız idxal və
+   testlər yoxlanıldı.

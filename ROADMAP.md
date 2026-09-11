@@ -140,7 +140,7 @@ fiziki cəhətdən düzgün qaytarılır, testlərlə təsdiqlənir.
 | 3.5 | Doğrulama: TPFA ilə müqayisə | `tests/` | ✅ |
 | 3.6 | Doğrulama: anizotrop tenzorda | `tests/` | ✅ |
 | 3.7 | Peaceman 3D quyu indeksi (WI), anizotrop r_e | `simulation/well_model.py` | ✅ |
-| **3.8** | **VFP: hidrostatik sütun + sürtünmə itkisi → BHP ↔ THP** | — | ❌ **YOXDUR** |
+| **3.8** | **VFP: hidrostatik sütun + sürtünmə itkisi → BHP ↔ THP** | `simulation/wellbore/` | 🟡 **BHP → THP ✅** (B4-A: Chen sürtünməsi + çoxseqmentli traverse) · tərs istiqamət (`ControlMode.THP`) ⏳ B4-B |
 | 3.9 | Quyu rejimləri: sabit BHP, sabit debet | `domain/wells.py` | ✅ |
 | 3.10 | Testlər: axın balansı, WI analitik yoxlama | `tests/` | ✅ |
 
@@ -195,7 +195,7 @@ su cəbhəsi fiziki cəhətdən düzgün irəliləyir.
 | 6.2 | Su/qaz cəbhəsinin irəliləmə animasiyası | `rendering/` | ❌ |
 | 6.3 | İnteraktiv kəsik (slice plane) aləti | `rendering/` | ❌ (statik kəsik ✅) |
 | 6.4 | Volumetric rendering | `rendering/volume.py` | 🟡 psevdo-3D var, əsl volume yox |
-| 6.5 | Dashboard: debet, BHP, RF | `rendering/renderers.py` | 🟡 matplotlib ✅ · **THP ❌** |
+| 6.5 | Dashboard: debet, BHP, RF | `rendering/renderers.py` | ✅ matplotlib · THP/BHP paneli (B4-A, 3×2 düzüm) |
 | 6.6 | Nəticə animasiyasının video/GIF ixracı | `rendering/` | ❌ |
 
 **Bitmə şərti:** istifadəçi simulyasiyanı işə salır, 3D-də cəbhənin
