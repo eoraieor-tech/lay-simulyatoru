@@ -126,16 +126,49 @@ class ThreePhaseNewtonSolver:
         sw, sg = state.water_saturation, state.gas_saturation
         rs = state.solution_gor(self.pvt)
         pc = None
+        bo, bo_p, bo_rs = self._oil_fvf(state, rs)
         return ThreePhaseFluidState(
             mu_w=np.full(state.ncell, self.model.fluids.water_viscosity)
                 if self.pvt is None else self._water_viscosity(pressure),
             mu_o=self.pvt.oil_viscosity(pressure),
             mu_g=self.pvt.gas_viscosity(pressure),
-            bw=self.pvt.water_fvf(pressure), bo=self.pvt.oil_fvf(pressure),
+            bw=self.pvt.water_fvf(pressure), bo=bo,
             bg=self.pvt.gas_fvf(pressure), rs=rs,
             krw=self.relperm.krw(sw),
             kro=self.relperm.kro_three_phase(sw, sg),
-            krg=self.relperm.krg(sg), pc=pc)
+            krg=self.relperm.krg(sg), pc=pc,
+            bo_p=bo_p, bo_rs=bo_rs)
+
+    def _oil_fvf(self, state: ThreePhaseState, rs: np.ndarray):
+        """Bo və törəmələri — DOYMA VƏZİYYƏTİNƏ GÖRƏ (B3-B).
+
+        Doymuş hüceyrə  → `Bo_sat(p)`, 3-cü dəyişən Sg-dir, `∂Bo/∂Sg = 0`.
+        Doymamış hüceyrə → `Bo(p, Rs)` doymamış qoldan; `∂Bo/∂Rs ≠ 0`.
+
+        Əvvəl HƏR hüceyrədə `oil_fvf(p)` (doymuş qol) işlədilirdi —
+        doymamış hüceyrədə bu, termodinamik olaraq yanlışdır və
+        Jakobianı kilidləyirdi. Tam izah: `BlackOilPVTProvider.
+        oil_fvf_undersaturated`.
+
+        Provider doymamış qolu dəstəkləmirsə (öz IPVTProvider
+        implementasiyası) köhnə davranışa qayıdılır — mühərrik
+        müqaviləsi genişlənmir.
+        """
+        pressure = state.pressure
+        bo_sat = self.pvt.oil_fvf(pressure)
+        branch = getattr(self.pvt, "oil_fvf_undersaturated", None)
+        if branch is None:
+            return bo_sat, None, None
+
+        saturated = state.is_saturated
+        bo_u = branch(pressure, rs)
+        du_dp, du_drs = self.pvt.oil_fvf_undersaturated_derivatives(pressure, rs)
+        sat_dp = self.pvt.oil_fvf_derivative(pressure)
+
+        bo = np.where(saturated, bo_sat, bo_u)
+        bo_p = np.where(saturated, sat_dp, du_dp)
+        bo_rs = np.where(saturated, 0.0, du_drs)
+        return bo, bo_p, bo_rs
 
     def _water_viscosity(self, pressure):
         analytic = getattr(self.pvt, "water_viscosity", None)

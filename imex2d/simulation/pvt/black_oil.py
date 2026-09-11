@@ -63,6 +63,128 @@ class BlackOilPVTProvider(IPVTProvider):
                        ("gas_viscosity", table.gas_viscosity)]
         self._slopes = {name: np.diff(values) / np.diff(pressure)
                         for name, values in columns}
+        self._build_undersaturated_branch()
+
+    # ═════════════════════════ doymamış qol — Bo(p, Rs) (B3-B)
+    def _build_undersaturated_branch(self):
+        """Rs → Pb tərsini və doymamış sıxılmanı bir dəfə hazırlayır.
+
+        Bax `oil_fvf_undersaturated` — niyə lazım olduğu orada.
+        """
+        pressure = np.asarray(self.table.pressure, float)
+        rs = np.asarray(self.table.solution_gor, float)
+        pb = float(self.table.bubble_point)
+
+        # ── Rs_sat-ın tərsi: yalnız Rs-in ARTAN hissəsi (Pb-yə qədər).
+        # Pb-dən yuxarı Rs plato olduğu üçün oraya `np.interp` ilə
+        # müraciət birmənalı olmazdı.
+        increasing = np.concatenate(([True], np.diff(rs) > 0.0))
+        self._rs_nodes = rs[increasing]
+        self._pb_nodes = pressure[increasing]
+        if self._rs_nodes.size >= 2:
+            self._dpb_drs = (np.diff(self._pb_nodes) / np.diff(self._rs_nodes))
+        else:                       # Rs sabitdir (ölü neft) — tərs yoxdur
+            self._dpb_drs = np.zeros(0)
+
+        # ── doymamış sıxılma c_o: cədvəlin ÖZ doymamış qolundan.
+        # Cədvəl `Bo = Bo_b·exp(c_o·(Pb − p))` ilə qurulur (bax
+        # `correlations.saturated_undersaturated_oil_properties`), yəni
+        # ln(Bo) orada p-yə görə XƏTTİDİR və meyli tam `−c_o`-dur.
+        above = pressure > pb
+        bo = np.asarray(self._oil_fvf, float)
+        if int(np.count_nonzero(above)) >= 2 and np.all(bo[above] > 0.0):
+            slope = np.polyfit(pressure[above], np.log(bo[above]), 1)[0]
+            self._undersaturated_co = float(max(-slope, 1e-6))
+        else:
+            # Cədvəldə doymamış qol yoxdur (Pb ≥ p_maks). Süxur-flüid
+            # sıxılmasının neft hissəsi ən yaxın fiziki əvəzdir.
+            fallback = float(np.max(self._co)) if np.size(self._co) else 0.0
+            self._undersaturated_co = max(fallback, 1e-6)
+
+    def saturation_pressure(self, rs) -> np.ndarray:
+        """Pb(Rs) — verilmiş həll olmuş qazın doyma təzyiqi.
+
+        `Rs_sat(p)` artan olduğu üçün tərsi parçalı xətti interpolyasiya
+        ilə DƏQİQ alınır. Doymuş hüceyrədə `Rs = Rs_sat(p)` olduğundan
+        bu funksiya elə `p`-nin özünü qaytarır — doymuş/doymamış keçid
+        beləcə KƏSİLMƏZ olur.
+        """
+        rs = np.asarray(rs, float)
+        if self._rs_nodes.size < 2:
+            return np.full(rs.shape, float(self.table.bubble_point))
+        return np.interp(rs, self._rs_nodes, self._pb_nodes)
+
+    def _saturation_pressure_slope(self, rs) -> np.ndarray:
+        """dPb/dRs — `saturation_pressure`-in parçalı meyli.
+
+        Tərsin ÖZ meylindən çıxarılır (`1/Rs_sat'` kimi ayrıca
+        hesablanmır) ki, sonlu fərqlə bitə-bit uyğun gəlsin.
+        """
+        rs = np.atleast_1d(np.asarray(rs, float))
+        if self._dpb_drs.size == 0:
+            return np.zeros_like(rs)
+        index = np.clip(np.searchsorted(self._rs_nodes, rs, side="right") - 1,
+                        0, self._dpb_drs.size - 1)
+        slope = self._dpb_drs[index]
+        outside = (rs < self._rs_nodes[0]) | (rs > self._rs_nodes[-1])
+        return np.where(outside, 0.0, slope)
+
+    def oil_fvf_undersaturated(self, pressure, rs) -> np.ndarray:
+        """Bo(p, Rs) — doymamış qol, sənaye standartı (Eclipse `PVTO`).
+
+        NİYƏ LAZIMDIR (ölçülüb, `ISH_HESABATI.md` → Seans 10). Üç fazalı
+        mühərrik Bo-nu `oil_fvf(p)` ilə, yəni cədvəlin DOYMUŞ qolundan
+        oxuyurdu — hüceyrənin doymamış olub-olmamasından ASILI OLMAYARAQ.
+        Bu, termodinamik olaraq yanlışdır: doymamış hüceyrədə neftin
+        tərkibi sabitdir (`Rs` sərbəst dəyişəndir və `Rs < Rs_sat(p)`),
+        ona görə Bo həmin `Rs`-in doyma təzyiqindən başlayan SIXILMA
+        qoluna aiddir, `Rs_sat(p)`-in doymuş qoluna yox.
+
+        İki nəticəsi vardı:
+
+          1. `dBo/dp` doymuş qolda Pb-də işarə dəyişir və SIFIRDAN keçir
+             → neft tənliyinin təzyiq diaqonalı (`−So·B'o/Bo²`) itir,
+             Jakobian kilidlənir, Nyuton donur (B3-A-nın üç fazalı
+             analoqu — Pb ≥ 240 bar-da yığılma alınmırdı).
+          2. Neft tənliyi 3-cü dəyişəndən (doymamışda `Rs`) HEÇ asılı
+             olmurdu (`∂N_o/∂Rs = 0`) — ona görə qaz tənliyi 1-ci
+             problemi kompensasiya EDƏ BİLMİRDİ.
+
+        DÜZGÜN QOL:
+
+            Bo(p, Rs) = Bo_sat(Pb(Rs)) · exp(c_o · (Pb(Rs) − p))
+
+        Bu, cədvəlin öz doymamış qolu ilə EYNİ düsturdur — orada
+        `Rs = Rs_sat(Pb_cədvəl)` xüsusi halıdır. Yəni Pb-dən yuxarıda
+        nəticə DƏYİŞMİR; dəyişən yalnız Pb-dən aşağı DOYMAMIŞ
+        hüceyrələrdir, harada ki əvvəl yanlış qol işlədilirdi.
+
+        Fayda: `dBo/dp = −c_o·Bo < 0` HƏR YERDƏ (kilidlənmə yoxdur) və
+        `dBo/dRs ≠ 0` (neft tənliyi 3-cü dəyişənə bağlanır). `Rs`-in
+        ÖZÜ toxunulmur — qaz kütlə balansı POZULMUR.
+        """
+        pressure = np.asarray(pressure, float)
+        pb = self.saturation_pressure(rs)
+        bo_at_pb = self._interp(self._oil_fvf, pb)
+        return bo_at_pb * np.exp(self._undersaturated_co * (pb - pressure))
+
+    def oil_fvf_undersaturated_derivatives(self, pressure, rs):
+        """`(∂Bo/∂p, ∂Bo/∂Rs)` — `oil_fvf_undersaturated`-in törəmələri.
+
+        ∂Bo/∂p  = −c_o·Bo
+        ∂Bo/∂Rs = (dPb/dRs)·Bo·(B'o_sat(Pb)/Bo_sat(Pb) + c_o)
+        """
+        pressure = np.asarray(pressure, float)
+        pb = self.saturation_pressure(rs)
+        bo_at_pb = self._interp(self._oil_fvf, pb)
+        bo = bo_at_pb * np.exp(self._undersaturated_co * (pb - pressure))
+
+        d_dp = -self._undersaturated_co * bo
+        safe = np.where(bo_at_pb > 0.0, bo_at_pb, 1.0)
+        d_drs = (self._saturation_pressure_slope(rs) * bo
+                 * (self._slope("oil_fvf", pb) / safe
+                    + self._undersaturated_co))
+        return d_dp, d_drs
 
     # ═══════════════════════ doyma təzyiqindən aşağı Bo düzəlişi (B3-A)
     @staticmethod

@@ -1790,3 +1790,130 @@ imex2d.version.VERSION      → 69  (buraxılış: 2026-08-28)
    aparılıb. Bu maşının `venv`-i ilə təsdiq edilməyib.
 3. **Proqram bu maşında GUI ilə açılıb sınaqdan keçirilmədi** — yalnız
    idxal yoxlanıldı.
+
+---
+
+## 11 sentyabr 2026 — Seans 10: B3-B həll olundu (doymamış Bo qolu)
+
+### Nə istənildi
+
+Sahibkar B3-B-ni `xfail` kimi kilidləməyi RƏDD ETDİ: "qaz fazasının
+Pb ≥ 240 bar şəraitində tam problemsiz işləməsini istəyirəm".
+
+### Diaqnozun DƏQİQLƏŞDİRİLMƏSİ — əvvəlki hipotez natamam idi
+
+Seans 9-da ölçmüşdüm ki, ölü-neft düzəlişini qaz cədvəlinə MƏCBURİ
+tətbiq etsək Pb=240/300 yığılır — yəni kök səbəb B3-A ilə eynidir.
+Bu doğru idi, LAKİN düzəlişin ÖZÜ yanlış olardı: 3 fazalı modeldə
+ölü-neft Bo-su neftin şişməsini silir və qaz kütlə balansını pozar.
+
+Bu seansda əsl səbəb tapıldı — `three_phase_newton.build_fluid()`:
+
+```python
+bo=self.pvt.oil_fvf(pressure)      # HƏR hüceyrədə DOYMUŞ qol
+```
+
+Doymamış hüceyrədə bu termodinamik olaraq YANLIŞDIR. Orada neftin
+tərkibi sabitdir (`Rs` sərbəst primary dəyişəndir və `Rs < Rs_sat(p)`),
+ona görə Bo həmin `Rs`-in doyma təzyiqindən başlayan SIXILMA qoluna
+aiddir — `Rs_sat(p)`-in doymuş qoluna YOX.
+
+İki nəticəsi vardı:
+
+1. `dBo/dp` doymuş qolda Pb-də sıfırdan keçir → neft tənliyinin təzyiq
+   diaqonalı (`−So·B'o/Bo²`) itir → Jakobian kilidlənir.
+2. `∂N_o/∂Rs = 0` (`three_phase_residual.py`, `blocks[:, 1, 2]`) —
+   neft tənliyi 3-cü dəyişəndən TAM qopmuşdu. Kodda yazılmışdı ki
+   "qaz tənliyi kompensasiya edir"; **ölçmə bunu təkzib etdi** —
+   kompensasiya edə BİLMƏZDİ, çünki əlaqə heç yox idi.
+
+### Həll — sənaye standartı, saxtakarlıq yox
+
+Doymamış qol Eclipse `PVTO` məntiqi ilə bərpa olundu:
+
+    Bo(p, Rs) = Bo_sat(Pb(Rs)) · exp(c_o · (Pb(Rs) − p))
+
+`c_o` cədvəlin ÖZ doymamış qolundan çıxarılır (`ln Bo` orada p-yə görə
+xəttidir). `Rs` TOXUNULMUR — qaz kütlə balansı pozulmur.
+
+Xassələri:
+
+* `dBo/dp = −c_o·Bo < 0` HƏR YERDƏ → kilidlənmə yoxdur;
+* `∂Bo/∂Rs ≠ 0` → neft tənliyi 3-cü dəyişənə bağlanır;
+* doymuş hüceyrədə `Pb(Rs) = p` → `Bo = Bo_sat(p)`, yəni keçid
+  KƏSİLMƏZ (ölçüldü: fərq 8·10⁻⁷);
+* Pb-dən yuxarı düstur cədvəlin qurulduğu düsturun eynisidir → köhnə
+  nəticələr DƏYİŞMİR.
+
+### Toxunulan fayllar
+
+| Fayl | Nə |
+|---|---|
+| `simulation/pvt/black_oil.py` | `saturation_pressure`, `oil_fvf_undersaturated` və törəmələri (yeni, additiv) |
+| `implicit/three_phase_newton.py` | `_oil_fvf()` — vəziyyətdən asılı Bo |
+| `implicit/three_phase_residual.py` | `bo_p`/`bo_rs` flüid sahələri; akkumulyasiya, axın və quyu Jakobianlarında `∂Bo/∂Rs` hədləri |
+
+Köhnə çağırışlar üçün geri-dönüş saxlanıldı: flüid `bo_p`/`bo_rs`
+verməzsə Jakobian əvvəlki davranışa qayıdır (`coupled_newton` və
+flüidi əl ilə quran testlər toxunulmadı).
+
+### Ölçülmüş nəticə — 8×8, ilkin 250 bar, BHP 150 bar, 400 gün
+
+| Pb | əvvəl | indi | maksSg | GOR |
+|---|---|---|---|---|
+| 100 | ✅ RF 62.72 % | ✅ **bitə-bit eyni** | 0.0000 | 52.8 |
+| 150 | ✅ RF 64.72 % | ✅ **bitə-bit eyni** | 0.0000 | 86.1 |
+| 200 | ✅ RF 65.61 % | ✅ RF 65.71 % | 0.0807 | 124.9 |
+| 220 | ✅ RF 64.98 % | ✅ RF 65.56 % | 0.0890 | 155.6 |
+| **240** | ❌ **yığılmırdı** | ✅ **23 addım, RF 65.24 %** | 0.1033 | 199.4 |
+| **300** | ❌ **yığılmırdı** | ✅ **22 addım, RF 64.41 %** | 0.1119 | 283.6 |
+
+Pb = 100/150 dəyişmir, çünki orada heç bir hüceyrə Pb-yə çatmır və
+`Rs` platoda qalır — yəni Bo elə cədvəlin öz qoludur.
+
+Fizika monotondur: Pb artdıqca həll olmuş qaz, ayrılan sərbəst qaz
+(maksSg) və GOR hamısı artır.
+
+### Jakobianın doğrulanması
+
+* `∂R_neft/∂Rs` diaqonalı: **0.0 → 1.31** (doymamış hüceyrələrdə)
+* `∂Bo/∂p`, `∂Bo/∂Rs` mərkəzi fərqlə uyğun (5·10⁻⁹ və 1.6·10⁻²;
+  ikincisi parçalı-xətti tərsin sınıq nöqtələrindən gəlir)
+* akkumulyasiya bloku tam sonlu fərqlə yoxlanıldı — yeni testdə
+
+### Yeni testlər
+
+`tests/test_three_phase_high_bubble_point.py` — **23 test**: qolun
+kəsilməzliyi, Pb-dən yuxarı dəyişməzlik, `dBo/dp` işarəsi, törəmələrin
+sonlu fərqlə uyğunluğu, `Rs_sat` tərsinin dəqiqliyi, neft tənliyinin
+3-cü dəyişənə bağlanması, Pb=240/300-də yığılma, M4 (qaz ayrılması),
+monotonluq və REQRESSİYA qorumaları (Pb=100 dəyişməzliyi, 2 fazalı
+yolun toxunulmazlığı).
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Ölü-neft düzəlişi 3 fazalıya TƏTBİQ EDİLMƏDİ.** Sahibkarın sualı
+   "onu qaz balansını pozmadan necə tətbiq etmək olar?" idi. Cavab:
+   tətbiq etmək LAZIM DEYİL — o, iki fazalı modelin natamamlığını
+   örtən yamaqdır. Üç fazalı modeldə düzgün fizika onsuz da mövcuddur,
+   sadəcə YANLIŞ QOLDAN oxunurdu.
+2. **`c_o` cədvəldən çıxarılır**, korrelyasiya parametrlərindən yox —
+   provider yalnız cədvəli tanıyır; idxal olunan (Eclipse) cədvəldə də
+   işləsin deyə.
+3. **Geri-dönüş yolu saxlanıldı** (`bo_p=None` → köhnə davranış) ki,
+   `IPVTProvider` müqaviləsi genişlənməsin və öz provider-ini yazan
+   kod sınmasın.
+
+### Açıq qalan — AYRI qüsur ⏳
+
+Tam Jakobianın sonlu fərqlə yoxlanışında bir hüceyrədə (istismarçı
+quyusu, **qaz tənliyi ↔ Sw** elementi) **87 % xəta** var.
+
+⚠️ Bu, BU seansın düzəlişindən GƏLMİR — ölçüldü: düzəlişdən əvvəl də
+eyni idi (−9.22·10⁴ vs −9.25·10⁴). Yəni B3-B-dən ayrı, əvvəldən
+mövcud qüsurdur. Yığılmanı bloklamır (22–23 addım), lakin Nyutonun
+yaxınsama sürətini aşağı salır.
+
+Ehtimal olunan mənbə: `ThreePhaseWellJacobian`-da RATE rejiminin açıq
+sənədləşmiş sadələşdirməsi və ya sərbəst qaz debitinin `∂/∂Sw`
+həddinin olmaması. **Ölçülməyib** — iddia etmirəm.

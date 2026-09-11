@@ -18,7 +18,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M1 | Kəşfiyyat quyusu faylı → 3D heterogen lay modeli, ekranda | ✅ |
 | M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
 | M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | ✅ **B2-də bağlandı** |
-| M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b-də bağlandı** (Pb ≤ 200 rejimində ölçülüb) |
+| M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b + B3-B** (Pb = 300 bar-a qədər ölçülüb) |
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 BHP ✅, THP ❌ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
@@ -197,7 +197,34 @@ etmək**, sonra testlə təsdiqləmək.
 > 11 yeni test: `tests/test_dead_oil_below_bubble_point.py`.
 > Təfərrüat: `ISH_HESABATI.md` → Seans 7.
 
-### B3-B — üç fazalı yol ⏳ B4b-dən SONRA ölçüləcək
+### B3-B — üç fazalı yol ✅ BİTDİ (11 sentyabr 2026)
+
+> **KÖK SƏBƏB: Bo YANLIŞ QOLDAN oxunurdu.** `build_fluid()` Bo-nu hər
+> hüceyrədə `oil_fvf(p)` ilə, yəni cədvəlin DOYMUŞ qolundan alırdı.
+> Doymamış hüceyrədə bu termodinamik olaraq yanlışdır: orada neftin
+> tərkibi sabitdir (`Rs` sərbəst dəyişəndir), ona görə Bo həmin Rs-in
+> doyma təzyiqindən başlayan sıxılma qoluna aiddir.
+>
+> Nəticə ikiqat idi: `dBo/dp` Pb-də sıfırdan keçirdi (təzyiq diaqonalı
+> itirdi) VƏ `∂N_o/∂Rs = 0` idi — yəni neft tənliyi 3-cü dəyişəndən
+> tamamilə qopmuşdu. Kodda yazılan "qaz tənliyi kompensasiya edir"
+> fərziyyəsi ÖLÇMƏ İLƏ TƏKZİB OLUNDU: kompensasiya edə bilməzdi,
+> çünki əlaqə yox idi.
+>
+> **Düzəliş:** doymamış qol sənaye standartına (Eclipse `PVTO`) uyğun
+> bərpa olundu — `Bo(p,Rs) = Bo_sat(Pb(Rs))·exp(c_o·(Pb(Rs)−p))`.
+> `Rs` toxunulmur, qaz kütlə balansı pozulmur. Ölü-neft düzəlişi üç
+> fazalıya TƏTBİQ EDİLMƏDİ — ona ehtiyac yoxdur.
+>
+> Ölçülmüş nəticə (8×8, ilkin 250 bar, BHP 150 bar):
+> Pb=240 → ✅ 23 addım, RF 65.24 %; Pb=300 → ✅ 22 addım, RF 64.41 %.
+> Pb=100/150 BİTƏ-BİT dəyişmədi.
+>
+> 23 yeni test: `tests/test_three_phase_high_bubble_point.py`.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 10.
+
+**Köhnə plan mətni (tarixi qeyd):**
+
 
 Üç fazalı mühərrik ilkin Rs = 0 olduğu üçün faktiki olaraq iki
 fazalıdır və EYNİ degenerasiyanı miras alır. B4b (ilkin Rs) qaz
@@ -315,6 +342,8 @@ debitlərə görə BHP hesablanır və Nyutona **sabit BHP kimi** verilir
 > GOR 121.9 → 124.9). 13 yeni test.
 >
 > ⚠️ Pb = 240/300-də üç fazalı mühərrik HƏLƏ yığılmır — **B3-B qalır**.
+> *(11 sentyabr 2026 qeydi: B3-B artıq BİTDİ — yuxarı bax. Bu sətir
+> B4b-nin öz tarixçəsi kimi saxlanılır.)*
 > Təfərrüat: `ISH_HESABATI.md` → Seans 8.
 
 Domain modelində "ilkin həll olmuş qaz (Rs)" sahəsi YOXDUR. Ona görə
@@ -415,7 +444,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | ~~B1 MPFA seçimi~~ ✅ **BİTDİ** | kiçik | aşağı | **M2 bağlandı** |
 | ~~B2 A7 qaytarılması~~ ✅ **BİTDİ** | orta | orta | **M3 ✅ · M4 qismən** |
 | B3-A iki fazalı degenerasiya ✅ **BİTDİ** | orta | yüksək | **PVT səhvi (RUN-002) bağlandı** |
-| B3-B üç fazalı yol ⏳ | ? | ? | B4b-dən sonra ölçüləcək |
+| ~~B3-B üç fazalı yol~~ ✅ **BİTDİ** | orta | yüksək | **M3/M4 yüksək Pb-də bağlandı** |
 | B4 THP/VFP | orta | aşağı | **M5** |
 | B5 Pcog + CSV | kiçik | aşağı | **M8** |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |

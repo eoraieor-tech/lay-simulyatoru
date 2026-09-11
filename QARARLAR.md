@@ -219,3 +219,52 @@ işlədilir. `ROADMAP.md`-dəki mərhələ cədvəlləri buna görə real fayl
 yolları və ölçülmüş statuslarla dolduruldu.
 
 ⏳ *Sahibkar bu təklifi təsdiqləyənə qədər qərar qüvvəyə minmir.*
+
+---
+
+## Q-09 — Üç fazalı Bo doymamış qoldan hesablanır; ölü-neft düzəlişi TƏTBİQ EDİLMİR
+
+**Tarix:** 11 sentyabr 2026 · **Kontekst:** B3-B (bax
+[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 10)
+
+### Sual
+
+Üç fazalı mühərrik Pb ≥ 240 bar-da yığılmırdı. İki yol vardı:
+
+1. B3-A-nın **ölü-neft düzəlişini** qaz sütunlu cədvələ də tətbiq etmək;
+2. **doymamış Bo qolunu** düzgün hesablamaq.
+
+### Qərar — 2-ci yol
+
+`Bo(p, Rs) = Bo_sat(Pb(Rs)) · exp(c_o · (Pb(Rs) − p))`
+
+### Niyə 1-ci yol RƏDD EDİLDİ
+
+Ölçüldü: məcburi ölü-neft düzəlişi də yığılmanı bərpa edir (Pb=240 →
+23 addım). **Lakin nəticə fiziki olaraq YANLIŞ olardı** — ölü-neft Bo-su
+"neftdən qaz ayrılmır, tərkib sabitdir" deməkdir. İki fazalı modeldə bu
+qəbuledilən yamaqdır, çünki model ayrılan qazı onsuz da saymır. Üç
+fazalı modeldə isə qaz tənliyi məhz o qazı sayır — Bo-nu ölü-neftə
+çevirmək neftin şişməsini silib **qaz kütlə balansını pozardı**.
+
+### Niyə 2-ci yol DÜZGÜNDÜR
+
+Problem heç vaxt "Bo-nun düzəldilməli olması" deyildi — Bo **YANLIŞ
+QOLDAN oxunurdu**. Doymamış hüceyrədə neftin tərkibi sabitdir, ona görə
+Bo həmin Rs-in sıxılma qoluna aiddir. Düzgün qol:
+
+* `dBo/dp < 0` hər yerdə → Jakobian kilidlənmir;
+* `∂Bo/∂Rs ≠ 0` → neft tənliyi 3-cü dəyişənə bağlanır (kodda yazılmış
+  "qaz tənliyi kompensasiya edir" fərziyyəsi məhz bu əlaqənin
+  olmamasına görə SƏHV idi);
+* `Rs` toxunulmur → **qaz kütlə balansı pozulmur**;
+* doymuş hüceyrədə `Pb(Rs) = p` → keçid kəsilməz;
+* Pb-dən yuxarı cədvəlin öz düsturudur → köhnə nəticələr dəyişmir.
+
+Bu, Eclipse `PVTO`-nun və sənaye black-oil simulyatorlarının standart
+davranışıdır — yeni bir şey icad edilmir.
+
+### Nəticə
+
+İki fazalı yol (`dead_oil_below_bubble_point`) **olduğu kimi qalır** —
+o, ayrı problemin ayrı həllidir. Bax Q-08 və B3-A.

@@ -20,9 +20,15 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > Tam təhlil: [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 3 ·
 > [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md)
 >
-> **Həqiqətən qalan iş:** THP/VFP · qaz mühərrikinin servisə qaytarılması ·
-> qaz Nyuton rəqsi · MPFA-nın UI-dən seçilməsi · animasiya/slice ·
-> Pcog · CSV ixracı.
+> **Həqiqətən qalan iş:** THP/VFP · ~~qaz mühərrikinin servisə
+> qaytarılması~~ ✅ B2 · ~~qaz Nyuton rəqsi~~ ✅ B3-A + B3-B ·
+> ~~MPFA-nın UI-dən seçilməsi~~ ✅ B1 · animasiya/slice · Pcog ·
+> CSV ixracı.
+>
+> **11 sentyabr 2026:** B3-B bağlandı — üç fazalı mühərrik artıq
+> Pb = 300 bar-a qədər yığılır (doymamış Bo qolu düzəldildi, bax
+> [QARARLAR.md](QARARLAR.md) → Q-09). Qalan bloklar: **B4 (THP/VFP)**,
+> **B5 (Pcog + CSV)**, **B6 (3D animasiya)**, **B7 (yekun doğrulama)**.
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
