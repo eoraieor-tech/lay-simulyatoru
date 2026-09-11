@@ -301,14 +301,14 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
 > **Planın bir eskizi DƏYİŞDİRİLDİ:** aşağıdakı ilkin mətn tək
 > seqmentli hesabat nəzərdə tuturdu. Ölçüldü — qazlı quyuda tək
 > seqmentin xətası 2.8 bar-dır, ona görə çoxseqmentli marş quruldu
-> (defolt 20). Bax [QARARLAR.md](QARARLAR.md) → Q-10.
+> (defolt 20). Bax [QARARLAR.md](QARARLAR.md) → Q-11.
 >
 > **İki əsassız iddia düzəldildi:** `well_bhp` sahəsi ÜMUMİYYƏTLƏ
 > yox idi (M5-in "BHP ✅"-si girişi nəzərdə tuturdu), GOR isə heç
 > bir qrafikdə çəkilmirdi (M6). Hər ikisi indi dashboard-dadır.
 >
 > 26 yeni test: `tests/test_wellbore_thp.py`.
-> Təfərrüat: `ISH_HESABATI.md` → Seans 11.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 12.
 
 ### B4-B — `ControlMode.THP` ⏳ NÖVBƏTİ
 

@@ -31,7 +31,7 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **11 sentyabr 2026 (davamı):** **B4-A** bitdi — quyu başı təzyiqi
 > (THP) çoxseqmentli şaquli traversdən hesablanır və BHP ilə yanaşı
-> dashboard-a düşür (Q-10). Yol boyu iki əsassız status düzəldildi:
+> dashboard-a düşür (Q-11). Yol boyu iki əsassız status düzəldildi:
 > `well_bhp` sahəsi ümumiyyətlə yox idi, GOR isə heç bir qrafikdə
 > çəkilmirdi — hər ikisi indi var.
 >

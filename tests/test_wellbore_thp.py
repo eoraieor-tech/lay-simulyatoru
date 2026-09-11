@@ -1,6 +1,6 @@
 """B4 (A variantı) — quyu başı təzyiqi (THP) və şaquli axın traversi.
 
-ƏHATƏ (sahibkarın seçimi, `ISH_HESABATI.md` → Seans 11):
+ƏHATƏ (sahibkarın seçimi, `ISH_HESABATI.md` → Seans 12):
   * BHP məlumdur → yuxarı traverse → THP (mühərrik TOXUNULMUR);
   * sürüşmə YOXDUR (no-slip), interfeys Beggs-Brill üçün açıqdır;
   * yalnız BHP rejimli istismarçılar;
@@ -169,7 +169,7 @@ def test_single_segment_is_measurably_worse():
     """Tək seqmentin YETƏRSİZ olduğunu sənədləşdirir.
 
     Bu test planın ilkin eskizinə (tək seqment) qarşı verilmiş qərarın
-    ölçülmüş əsasıdır — bax `QARARLAR.md` → Q-10.
+    ölçülmüş əsasıdır — bax `QARARLAR.md` → Q-11.
     """
     stream = WellStream(oil=80.0, water=20.0, gas=80.0 * 150.0)
     one = pressure_traverse(250.0, 2000.0, TubingGeometry(segments=1),
