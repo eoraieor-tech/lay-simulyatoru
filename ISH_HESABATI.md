@@ -2715,3 +2715,78 @@ səbəbi testin sənədinə yazıldı.
 * Üç fazalı `_time_config`-də `soft_failure_cnv_tolerance` və
   `soft_failure_mb_tolerance` yoxdur (iki fazalıda var). Onları əlavə
   etmək yığılma davranışını dəyişər — ayrıca ölçülməlidir.
+
+---
+
+## 12 sentyabr 2026 — Seans 18: B6-b — oynatma idarəsi
+
+### Planın B6 bölməsi vəziyyəti OLDUĞUNDAN ZƏİF göstərirdi
+
+İşə başlamazdan əvvəl dörd bəndin hamısı yoxlanıldı:
+
+| Plan bəndi | Real vəziyyət |
+|---|---|
+| 2. Cəbhə animasiyası (`QTimer`) | 🟢 **əsasən HAZIR İDİ** |
+| 4. Dashboard-a THP | ✅ B4-A-da edilmişdi |
+| 1. İnteraktiv kəsik | ❌ yoxdur |
+| 3. GIF / PNG ixracı | ❌ yoxdur |
+
+`main_window`-da `▶ Oynat` düyməsi, zaman slider-i və 140 ms-lik
+`QTimer` ARTIQ vardı. Slider həm 2D xəritəni, həm də **3D VTK
+görüntüsünü** yeniləyir (`_update_volume_vtk` sənədi: *"səhnə
+keşlənir, zaman slider-i sürüşdürəndə yalnız DƏYƏRLƏR yenilənir"*).
+
+Yəni cəbhənin hərəkəti onsuz da izlənilirdi. Çatışmayan: sürət
+tənzimi, kadr-kadr addımlama, sonda dayanma seçimi.
+
+### Nə edildi
+
+| Fayl | Nə |
+|---|---|
+| `ui/playback.py` | **YENİ** — saf məntiq: `interval_ms`, `step_value`, `advance` |
+| `ui/main_window.py` | ◀ / ▶ düymələri, sürət seçicisi (0.25×…4×), "Dövrə" qutusu |
+| `tests/test_playback_controls.py` | **YENİ** — 20 test |
+
+Yeni idarə elementləri:
+
+* **◀ / ▶** — kadr-kadr geri/irəli. Oynatma gedirsə **dayandırılır**
+  (yoxsa taymer istifadəçinin seçdiyi kadrı dərhal üstələyərdi).
+* **Sürət** — 0.25× / 0.5× / **1×** / 2× / 4×. Əmsal intervalı bölür.
+* **Dövrə** — işarəli (defolt): sonda əvvələ qayıdır; söndürülmüş:
+  son kadrda dayanır.
+
+### TESTİN QAÇIRICINI ÇÖKDÜRMƏSİ — dizaynı dəyişdirdi
+
+İlk versiyada testlər `MainWindow()` qururdu. Nəticə: **`pytest` fatal
+xəta ilə çökdü** (C stack trace, 14 test birdən). Səbəb: pəncərənin
+qurulması VTK səhnəsi və bir neçə matplotlib kanvası yaradır.
+
+Diqqətəlayiq: **mövcud 2350+ testin heç biri `MainWindow` qurmur** —
+hamısı panelləri ayrıca sınayır. Bu, təsadüf deyilmiş.
+
+Ona görə oynatma məntiqi `ui/playback.py`-yə çıxarıldı: Qt-dən tam
+asılısız, saf funksiyalar. `main_window` yalnız taymeri idarə edir və
+onları çağırır. Bu, layihənin öz qaydası ilə də uyğundur
+(`ARCHITECTURE.md` → 1.3 "UI biznes məntiqini daşımamalıdır").
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Kadr-kadr addımlama DÖVRƏ ETMİR**, avtomatik oynatma edir.
+   Səbəb: əl ilə addımlayan istifadəçi son kadrdan birdən başlanğıca
+   atılmağı gözləmir; avtomatik oynatmada isə dövrə faydalıdır.
+2. **Defolt dəyərlər köhnə davranışı BİTƏ-BİT saxlayır** — 1× = tam
+   140 ms, dövrə açıq. Yəni B6-b-yə toxunmayan istifadəçi heç bir
+   fərq görmür. Ayrıca testlə kilidləndi.
+3. **İntervalın aşağı həddi 10 ms** qoyuldu. Çox yüksək sürətdə Qt
+   hadisə növbəsi boğulur və interfeys cavab verməz olur.
+4. **Yararsız sürət dəyəri 1×-ə düşür** (`None`, mənfi, mətn) —
+   taymer heç bir halda partlamamalıdır.
+
+### Qalan ⏳
+
+* **B6-a** — interaktiv kəsik müstəvisi (`vtkPlaneWidget` + `vtkCutter`)
+* **B6-c** — GIF / PNG ixracı (Pillow 12.3.0 hazırdır)
+
+⚠️ B6-a üçün bilinməli: `vtkPlaneWidget` **interaktor tələb edir**,
+ekransız testdə mümkün olmaya bilər. Ölçülməlidir; mümkün olmasa,
+kəsik məntiqi (`vtkCutter`) widget-dən ayrı test olunmalıdır.

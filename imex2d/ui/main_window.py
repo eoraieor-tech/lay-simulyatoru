@@ -61,6 +61,8 @@ from ..history.observation_io import (ObservationFormatError,
                                        read_observations_csv)
 from ..io.eclipse_export import EclipseDeckWriter
 from ..reporting import results_export
+from .playback import (PLAYBACK_DEFAULT_INDEX, PLAYBACK_SPEEDS,
+                       advance, interval_ms, step_value)
 from ..reporting.report import ReportContext, ReportGenerator
 from ..io.grdecl import GrdeclError, read_grdecl
 from ..io.grdecl_import import GrdeclImporter
@@ -337,8 +339,30 @@ class MainWindow(QMainWindow):
         self.layer_spin.setRange(1, 1)
         self.layer_spin.setPrefix("K = ")
         self.layer_spin.valueChanged.connect(self.update_map)
+        self.step_back_button = QPushButton("◀")
+        self.step_back_button.setToolTip("Bir kadr geri")
+        self.step_back_button.setMaximumWidth(34)
+        self.step_back_button.clicked.connect(lambda: self.step_frame(-1))
         self.play_button = QPushButton("▶  Oynat")
         self.play_button.clicked.connect(self.toggle_play)
+        self.step_forward_button = QPushButton("▶")
+        self.step_forward_button.setToolTip("Bir kadr irəli")
+        self.step_forward_button.setMaximumWidth(34)
+        self.step_forward_button.clicked.connect(lambda: self.step_frame(+1))
+
+        self.speed_box = QComboBox()
+        for label, factor in PLAYBACK_SPEEDS:
+            self.speed_box.addItem(label, factor)
+        self.speed_box.setCurrentIndex(PLAYBACK_DEFAULT_INDEX)
+        self.speed_box.setToolTip("Oynatma sürəti")
+        self.speed_box.currentIndexChanged.connect(self._on_speed_changed)
+
+        self.loop_box = QCheckBox("Dövrə")
+        self.loop_box.setChecked(True)
+        self.loop_box.setToolTip(
+            "İşarəli: son kadrdan sonra əvvələ qayıdır (defolt davranış). "
+            "Söndürülmüş: sonda dayanır.")
+
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setEnabled(False)
         self.slider.valueChanged.connect(self.update_map)
@@ -347,9 +371,16 @@ class MainWindow(QMainWindow):
         self.time_label.setStyleSheet(f"color:{PALETTE.accent};font-family:monospace")
         bar.addWidget(QLabel("Xassə:")); bar.addWidget(self.property_box, 1)
         bar.addWidget(self.view_mode, 1); bar.addWidget(self.layer_spin)
-        bar.addWidget(self.play_button); bar.addWidget(self.slider, 2)
+        bar.addWidget(self.step_back_button)
+        bar.addWidget(self.play_button)
+        bar.addWidget(self.step_forward_button)
+        bar.addWidget(self.speed_box)
+        bar.addWidget(self.loop_box)
+        bar.addWidget(self.slider, 2)
         bar.addWidget(self.time_label)
         layout.addLayout(bar)
+        # Nəticə yoxdur — slider kimi oynatma idarəsi də söndürülüdür.
+        self._set_playback_enabled(False)
         self.map_fig = Figure(facecolor=PALETTE.background)
         self.map_canvas = FigureCanvas(self.map_fig)
         gridspec = self.map_fig.add_gridspec(1, 2, width_ratios=[40, 1],
@@ -1807,6 +1838,7 @@ class MainWindow(QMainWindow):
         self.run_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.slider.setEnabled(False)
+        self._set_playback_enabled(False)
         self.worker = SimulationWorker(service, self.reservoir_model, config)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished_ok.connect(self._on_finished)
@@ -1855,6 +1887,7 @@ class MainWindow(QMainWindow):
         self.progress.setValue(100)
         self._log(result.message)
         self.slider.setEnabled(True)
+        self._set_playback_enabled(True)
         self.slider.setRange(0, len(result.snapshots) - 1)
         self.slider.setValue(len(result.snapshots) - 1)
         self.statusBar().showMessage(result.message)
@@ -1953,20 +1986,64 @@ class MainWindow(QMainWindow):
                 f"μo = {table.oil_viscosity.min():.2f}–{table.oil_viscosity.max():.2f} cP")
         self.pvt_canvas.draw_idle()
 
-    def toggle_play(self):
+    # ═══════════════════════════════════ oynatma idarəsi (B6-b)
+    def _frame_interval_ms(self) -> int:
+        """Cari sürətə uyğun kadr intervalı — bax `ui/playback.py`."""
+        return interval_ms(self.speed_box.currentData() or 1.0)
+
+    def _on_speed_changed(self):
+        """Sürət dəyişəndə oynatma DAYANMIR — interval dərhal yenilənir."""
         if self._player.isActive():
+            self._player.start(self._frame_interval_ms())
+
+    def _set_playing(self, playing: bool):
+        if playing:
+            self._player.start(self._frame_interval_ms())
+            self.play_button.setText("❚❚  Dayan")
+        else:
             self._player.stop()
             self.play_button.setText("▶  Oynat")
+
+    def toggle_play(self):
+        if self._player.isActive():
+            self._set_playing(False)
         elif self.result:
-            self._player.start(140)
-            self.play_button.setText("❚❚  Dayan")
+            self._set_playing(True)
+
+    def _set_playback_enabled(self, enabled: bool):
+        """Kadr düymələri slider ilə BİRLİKDƏ aktivləşir.
+
+        Nəticə yoxdursa onlar mənasızdır; slider onsuz da söndürülür,
+        düymələr də eyni vəziyyəti izləməlidir.
+        """
+        for widget in (self.step_back_button, self.step_forward_button,
+                       self.play_button, self.speed_box, self.loop_box):
+            widget.setEnabled(enabled)
+
+    def step_frame(self, delta: int):
+        """Kadr-kadr irəli/geri — oynatma gedirsə DAYANDIRILIR.
+
+        Səbəb: istifadəçi əl ilə addımlayırsa, artıq avtomatik
+        oynatma istəmir; yoxsa taymer onun seçdiyi kadrı dərhal
+        üstələyərdi.
+        """
+        if not self.result or not self.slider.isEnabled():
+            return
+        self._set_playing(False)
+        self.slider.setValue(step_value(
+            self.slider.value(), delta,
+            self.slider.minimum(), self.slider.maximum()))
 
     def _next_frame(self):
         if not self.result:
-            self._player.stop()
+            self._set_playing(False)
             return
-        value = self.slider.value() + 1
-        self.slider.setValue(0 if value > self.slider.maximum() else value)
+        value, keep_playing = advance(self.slider.value(),
+                                      self.slider.maximum(),
+                                      self.loop_box.isChecked())
+        if not keep_playing:
+            self._set_playing(False)              # sonda dayan
+        self.slider.setValue(value)
 
     # ═════════════════════════════════════════════════ B-L validasiyası
     def run_validation(self):
@@ -2212,6 +2289,7 @@ class MainWindow(QMainWindow):
         self.result = latest.result if latest else None
         if self.result and self.result.snapshots:
             self.slider.setEnabled(True)
+            self._set_playback_enabled(True)
             self.slider.setRange(0, len(self.result.snapshots) - 1)
             self.slider.setValue(len(self.result.snapshots) - 1)
             self.update_results()

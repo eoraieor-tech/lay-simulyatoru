@@ -431,6 +431,30 @@ Pcog üçün monotonluq və son nöqtə testləri.
 
 ## B6 — 3D canlı vizualizasiya
 
+> ⚠️ **Aşağıdakı ilkin plan mövcud vəziyyəti OLDUĞUNDAN ZƏİF
+> göstərirdi.** İşə başlamazdan əvvəl yoxlanıldı (12 sentyabr 2026):
+> 2-ci bənd (animasiya) ƏSASƏN HAZIR idi — `▶ Oynat`, zaman slider-i
+> və 140 ms-lik `QTimer` mövcud idi, slider həm 2D xəritəni, həm də
+> 3D VTK görüntüsünü yeniləyirdi. 4-cü bənd (THP) isə B4-A-da
+> edilmişdi.
+
+### B6-b — oynatma idarəsi ✅ BİTDİ (12 sentyabr 2026)
+
+> Sürət seçicisi (0.25×…4×), kadr-kadr ◀ ▶ düymələri, "Dövrə"
+> qutusu. Defolt dəyərlər köhnə davranışı BİTƏ-BİT saxlayır.
+>
+> **Dizayn dəyişikliyi:** testlər `MainWindow()` qurmağa çalışanda
+> `pytest` FATAL XƏTA ilə çökdü (VTK + matplotlib). Ona görə oynatma
+> məntiqi `ui/playback.py`-yə — Qt-dən asılısız saf funksiyalara —
+> çıxarıldı. 20 yeni test.
+>
+> Təfərrüat: `ISH_HESABATI.md` → Seans 18.
+
+### B6-a — interaktiv kəsik ⏳ NÖVBƏTİ
+### B6-c — GIF / PNG ixracı ⏳
+
+**Aşağıdakı ilkin plan mətni saxlanılır:**
+
 **Həcm:** orta (~2 seans) · **Risk:** aşağı · **Yeni asılılıq: YOXDUR**
 
 Q-08 təklifinə uyğun: **PyVista-ya keçmirik**, mövcud
