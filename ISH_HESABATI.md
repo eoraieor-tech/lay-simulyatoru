@@ -2315,3 +2315,109 @@ tests/test_parameter_sensitivity.py   14 keçdi (YENİ)
 
 9 fizika testi (parametr → RF əlaqəsi) + 5 UI testi (bozarma, banner,
 siqnal seçiciliyi, dəyərin itməməsi).
+
+---
+
+## 12 sentyabr 2026 — Seans 15: Seans 14 işi əsas maşına endirildi
+
+### Nə istənildi
+
+Sahibkar: "Bütün dəyişiklikləri məndə et." Yəni bu maşında
+(`C:\Dev\LSM`) uzaq repodakı bütün yeni iş tətbiq olunsun. Seans 13-ün
+eyni tapşırığıdır, bir mərhələ sonra. Bu seansda **yeni funksional kod
+yazılmadı** — endirmə, mühit yoxlanışı və bütöv test dəsti.
+
+### Vəziyyət: yerli `main` altı commit geri idi
+
+Seans başlayanda aktiv budaq `b4-thp` (`18a1b88`) idi, iş ağacı təmiz.
+`git fetch --all --prune` göstərdi:
+
+| Budaq | Əvvəl | Sonra |
+|---|---|---|
+| `main` | `3b3e66b` | `9d3ac51` (+6 commit) |
+| `b4-thp` | `18a1b88` | `18a1b88` (dəyişməyib) |
+| `a7-berpa` | `ad6104e` | `ad6104e` (dəyişməyib) |
+| `fix-ui-parameter-visibility` | *yox idi* | `9d3ac51` (**yeni uzaq budaq**, `main` ilə eyni commit) |
+
+### Seans 13-ün 1-ci açıq sualı BAĞLANDI
+
+Sual idi: "`b4-thp` → `main` birləşdirilsinmi?" Cavab artıq verilib —
+digər maşında birləşdirilib:
+
+```
+git merge-base --is-ancestor b4-thp origin/main   ->  BƏLİ
+git log origin/main..b4-thp                       ->  BOŞ
+```
+
+`b4-thp` tam şəkildə `origin/main`-in içindədir. Yəni B4-A (THP) artıq
+`main`-dədir. Bu səbəbdən **aktiv budaq `b4-thp`-dən `main`-ə keçirildi**
+— ayrıca budaqda qalmağın daha bir səbəbi yoxdur.
+
+### Endirilən iş (`3b3e66b` → `9d3ac51`)
+
+Altı commit-in beşi `b4-thp` tərəfindən gələn və bu maşında onsuz da
+mövcud olan işdir (Seans 12–13). **Həqiqətən YENİ olan tək commit:**
+
+| Commit | Nə gətirdi |
+|---|---|
+| `8895993` | **Seans 14** — `fix(ui)`: işləməyən panel sahələri bozarılır + geologiya köhnəlmə banneri |
+| `9d3ac51` | birləşdirmə commit-i (`b4-thp` → `fix-ui-parameter-visibility`) |
+
+`8895993` — **5 fayl, +459 sətir, 0 silinmə**:
+`ui/panels.py`, `ui/main_window.py`, `tests/test_parameter_sensitivity.py`
+(YENİ, 14 test), `ISH_HESABATI.md`, `QARARLAR.md` (Q-12).
+
+Mühərrikə toxunulmayıb — dəyişən yalnız `ui/` altındadır.
+
+### Bu maşında edilən əməliyyat
+
+```
+git fetch --all --prune
+git checkout main
+git merge --ff-only origin/main     # main: 3b3e66b -> 9d3ac51
+```
+
+Yalnız fast-forward. Heç bir birləşdirmə münaqişəsi, heç bir yerli
+dəyişiklik itkisi olmadı (iş ağacı əvvəlcədən təmiz idi). Hər üç yerli
+budaq indi `origin` ilə eynidir.
+
+### Mühit yoxlanışı
+
+```
+Python 3.14.7 (sistem interpretatoru, .venv YOXDUR)
+PyQt5 OK · vtk 9.7.0 · numpy 2.5.2 · scipy 1.18.1 · matplotlib OK · pytest OK
+import app  -> OK,  imex2d.version.VERSION = 69
+```
+
+### Bütöv test dəsti BU maşında qaçırıldı
+
+```
+python -m pytest -q
+2322 keçdi · 1 skip · 1 xfail · 0 XƏTA   (742 s)
+```
+
+Seans 13-də bu maşında 2 308 idi; fərq **tam olaraq 14 testdir** —
+məhz Seans 14-ün gətirdiyi `test_parameter_sensitivity.py`. Rəqəm
+digər maşının nəticəsi (2 322) ilə **bitə-bit uyğundur**.
+
+### Sənədlərə edilən dəyişiklik
+
+Yalnız bu bölmə. `ROADMAP.md`, `QARARLAR.md`, `ARCHITECTURE.md`
+**qəsdən toxunulmadı**: bu seansda nə mərhələ statusu dəyişdi, nə
+texniki qərar verildi, nə də struktur. Seans 14-ün öz qərarı (Q-12)
+onsuz da endirilən commit-lə birlikdə gəldi.
+
+### Açıq suallar ⏳
+
+1. **`.venv` bu maşında qurulsunmu?** (Seans 13-dən qalır, hələ açıq.)
+   Hazırda sistem Python-u hər şeyi daşıyır və `python app.py` işləyir,
+   lakin `run.bat` üç yerdə venv axtarır (Q-10), tapmayanda
+   `XETA: venv tapilmadi` verib dayanır — yəni proqram bu maşında
+   `run.bat` ilə AÇILMIR. İki yol var: (a) burada `.venv` qurmaq,
+   (b) `run.bat`-a "venv yoxdursa sistem Python-u ilə davam et" qolu
+   əlavə etmək. Seçim sahibkarındır — öz təşəbbüsümlə edilmədi.
+2. **Proqram bu maşında GUI ilə açılıb sınanmadı** (Seans 13-dən qalır)
+   — yalnız idxal və testlər yoxlanıldı. Seans 14 məhz UI dəyişikliyidir,
+   ona görə gözlə yoxlanması xüsusilə mənalıdır.
+3. **`fix-ui-parameter-visibility` uzaq budağı silinsinmi?** `main` ilə
+   eyni commit-dədir, yəni işi bitib.
