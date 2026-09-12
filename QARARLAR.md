@@ -481,3 +481,60 @@ blok təkrarlanar.
 
 **Diqqət:** bu qərar YALNIZ bu maşına aiddir. Application Control
 maneəsi olmayan maşında adi izolyasiya olunmuş venv üstündür.
+
+---
+
+## Q-14 — İxrac formatının qaydaları: BOM, kvadrat mötərizə, boş xana
+
+**Tarix:** 12 sentyabr 2026 · **Kontekst:** B5-a
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 16)
+
+### Qərar 1 — vahid KVADRAT MÖTƏRİZƏDƏ, vergüllə deyil
+
+İlk versiya `"t, gün"` yazırdı. Bu, `UNITS.md` prinsipinə ("vahid
+başlıqda olsun") uyğun idi, LAKİN vergül CSV-nin öz ayırıcısıdır —
+nəticədə hər başlıq dırnağa düşürdü və `awk`/`cut` kimi sadə alətlər
+faylı sındırırdı.
+
+İndi: `t [gün]`, `RF [%]`, `GOR [sm³/sm³]`.
+
+⚠️ **Bu qüsuru test TAPMADI** — `csv` modulu dırnaqlanmış sahəni
+düzgün oxuyur, ona görə gedər-gələr testi keçirdi. Qüsur **faylı açıb
+gözlə baxanda** göründü. Dərs: format qərarlarında test kifayət deyil,
+çıxışa baxmaq lazımdır.
+
+### Qərar 2 — CSV `utf-8-sig` (BOM ilə)
+
+Windows Excel BOM-suz UTF-8-i tanımır: `ə`, `ş`, `ğ` korlanır. BOM
+əlavə olunur; `csv` və `pandas` onu özləri atır, yəni gedər-gələr
+pozulmur.
+
+**Alternativ rədd edildi:** "ASCII başlıqlar işlət" — sənədlərin
+hamısı Azərbaycan dilindədir, ixracı ingiliscəyə çevirmək uyğunsuzluq
+yaradardı.
+
+### Qərar 3 — `nan` BOŞ xana, JSON-da `null`
+
+CSV-də boş xana, JSON-da `null`. **`0` QƏTİYYƏN YOX.**
+
+Səbəb B4-A-dan gəlir: `well_thp`-də quyunun səthə axa bilmədiyi
+addımlar `nan`-dır və bu, qəsdən belədir (bax
+[QARARLAR.md](QARARLAR.md) → Q-11). `0 bar` yazsaydıq, o, real ölçmə
+kimi oxunardı — eyni səhv, sadəcə qrafik əvəzinə faylda.
+
+`json.dump` defolt `NaN` yazır, lakin bu, JSON spesifikasiyasına
+ziddir — `allow_nan=False` ilə qadağan olundu.
+
+### Qərar 4 — metadata yalnız JSON-da
+
+CSV TƏMİZ cədvəldir: başlıq + sətirlər, şərh sətri yoxdur. `#` ilə
+başlayan sətirlər ciddi CSV oxuyucularını sındırır və gedər-gələr
+müqaviləsini mənasızlaşdırır. Model adı, OOIP/OGIP, yığılma vəziyyəti
+JSON-dadır.
+
+### Qərar 5 — rəqəmlər tam dəqiqliklə
+
+`repr(float)` işlədilir (`8.952477630417802e-05`), yuvarlaqlaşdırma
+YOXDUR. İxrac faylı hesabat deyil, **məlumatdır**; yuvarlaqlaşdırma
+"geri oxunanda eyni ədədlər" müqaviləsini pozardı. İnsan üçün
+oxunaqlı təqdimat PDF hesabatın işidir.

@@ -60,6 +60,7 @@ from ..history.parameters import ParameterSet, standard_parameters
 from ..history.observation_io import (ObservationFormatError,
                                        read_observations_csv)
 from ..io.eclipse_export import EclipseDeckWriter
+from ..reporting import results_export
 from ..reporting.report import ReportContext, ReportGenerator
 from ..io.grdecl import GrdeclError, read_grdecl
 from ..io.grdecl_import import GrdeclImporter
@@ -203,6 +204,8 @@ class MainWindow(QMainWindow):
         for text, slot in [("GRDECL grid oxu…", self.import_grdecl),
                            ("Eclipse deck yaz (.DATA)…", self.export_eclipse),
                            ("PDF hesabat yaz…", self.export_pdf_report),
+                           ("Nəticələri ixrac et (CSV/JSON)…",
+                            self.export_results),
                            ("OPM Flow nəticəsini yüklə (.EGRID+.UNRST)…",
                             self.import_opm_case)]:
             action = QAction(text, self)
@@ -2471,6 +2474,34 @@ class MainWindow(QMainWindow):
         size = os.path.getsize(path) / 1024.0
         QMessageBox.information(
             self, "Hesabat hazırdır",
+            f"{os.path.basename(path)}  ({size:.0f} KB)")
+        self.statusBar().showMessage(f"Yazıldı: {os.path.basename(path)}")
+
+    def export_results(self):
+        """Zaman sıralarını CSV və ya JSON kimi yazır (B5-a).
+
+        PDF hesabatdan FƏRQLİ olaraq bu, maşın-oxunaqlı ixracdır:
+        Excel, pandas və ya başqa alətdə emal üçün. Format faylın
+        uzantısından seçilir.
+        """
+        if self.result is None:
+            QMessageBox.information(self, "Nəticə yoxdur",
+                                    "Əvvəlcə simulyasiyanı işə salın.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Nəticələri ixrac et", "neticeler.csv",
+            "CSV (*.csv);;JSON (*.json)")
+        if not path:
+            return
+        try:
+            results_export.write(self.result, path)
+        except Exception as error:
+            QMessageBox.critical(self, "Yazılmadı", str(error))
+            LOG.exception("Nəticələrin ixracı alınmadı")
+            return
+        size = os.path.getsize(path) / 1024.0
+        QMessageBox.information(
+            self, "İxrac hazırdır",
             f"{os.path.basename(path)}  ({size:.0f} KB)")
         self.statusBar().showMessage(f"Yazıldı: {os.path.basename(path)}")
 

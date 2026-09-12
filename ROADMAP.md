@@ -23,7 +23,7 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > **Həqiqətən qalan iş:** THP/VFP · ~~qaz mühərrikinin servisə
 > qaytarılması~~ ✅ B2 · ~~qaz Nyuton rəqsi~~ ✅ B3-A + B3-B ·
 > ~~MPFA-nın UI-dən seçilməsi~~ ✅ B1 · animasiya/slice · Pcog ·
-> CSV ixracı.
+> ~~CSV ixracı~~ ✅ B5-a.
 >
 > **11 sentyabr 2026:** B3-B bağlandı — üç fazalı mühərrik artıq
 > Pb = 300 bar-a qədər yığılır (doymamış Bo qolu düzəldildi, bax
@@ -35,7 +35,7 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > `well_bhp` sahəsi ümumiyyətlə yox idi, GOR isə heç bir qrafikdə
 > çəkilmirdi — hər ikisi indi var.
 >
-> Qalan bloklar: **B4-B** (`ControlMode.THP`), **B5** (Pcog + CSV),
+> Qalan bloklar: **B4-B** (`ControlMode.THP`), **B5-b** (Pcog),
 > **B6** (3D animasiya), **B7** (yekun doğrulama).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
@@ -181,7 +181,7 @@ su cəbhəsi fiziki cəhətdən düzgün irəliləyir.
 | 5.3 | Water Cut (%) və GOR | `simulation/results.py` | ✅ |
 | 5.4 | Layın orta təzyiqi | `simulation/results.py` | ✅ |
 | 5.5 | Günbəgün RF (%) və hasilat profili | `simulation/results.py` | ✅ |
-| 5.6 | Nəticələrin fayla yazılması | `reporting/report.py` | 🟡 PDF ✅ · **zaman sıraları üçün CSV/JSON ❌** |
+| 5.6 | Nəticələrin fayla yazılması | `reporting/report.py`, `reporting/results_export.py` | ✅ PDF · **CSV/JSON** (B5-a: BHP/THP daxil) |
 
 **Bitmə şərti:** simulyasiyadan sonra tam hasilat hesabatı avtomatik çıxır.
 

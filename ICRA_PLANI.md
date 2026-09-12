@@ -22,7 +22,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 **B4-A-da bağlandı** (BHP rejimli istismarçılar); RATE ⏳ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
-| M8 | Nəticələrin fayla ixracı | 🟡 PDF ✅, CSV ❌ |
+| M8 | Nəticələrin fayla ixracı | ✅ **B5-a-da bağlandı** (PDF + CSV + JSON) |
 
 ---
 
@@ -396,6 +396,25 @@ qaz ayrılır və GOR əyrisi qalxır (M4-ün əsl tələbi).
 
 ## B5 — Kiçik boşluqlar: Pcog və CSV/JSON ixracı
 
+### B5-a — CSV / JSON ixracı ✅ BİTDİ (12 sentyabr 2026)
+
+> `reporting/results_export.py` — `write_csv` / `read_csv` /
+> `write_json`. UI: menyuda "Nəticələri ixrac et (CSV/JSON)…".
+> B4-A-nın verdiyi `well_bhp` / `well_thp` sıraları da ixrac olunur.
+>
+> **Gözlə görünən, testin tutmadığı qüsur:** vahid əvvəlcə vergüllə
+> yazılırdı (`"t, gün"`) — gedər-gələr keçirdi, lakin hər başlıq
+> dırnağa düşürdü və `awk`/`cut` sınırdı. İndi kvadrat mötərizə:
+> `t [gün]`. Bax [QARARLAR.md](QARARLAR.md) → Q-14.
+>
+> 14 yeni test. Təfərrüat: `ISH_HESABATI.md` → Seans 16.
+
+### B5-b — Pcog ⏳ NÖVBƏTİ (ayrıca commit)
+
+Mühərriyə toxunur, ona görə sahibkarın qərarı ilə ayrılıb.
+
+**Aşağıdakı ilkin plan mətni saxlanılır:**
+
 **Həcm:** kiçik (~1 seans) · **Risk:** aşağı
 
 1. **Pcog** — hazırda yalnız `BrooksCoreyCapillaryProvider.pcow` var.
@@ -474,7 +493,8 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | ~~B3-B üç fazalı yol~~ ✅ **BİTDİ** | orta | yüksək | **M3/M4 yüksək Pb-də bağlandı** |
 | ~~B4-A THP hesabatı~~ ✅ **BİTDİ** | orta | aşağı | **M5 (qismən)** |
 | B4-B `ControlMode.THP` ⏳ | orta | orta | M5 (tam) |
-| B5 Pcog + CSV | kiçik | aşağı | **M8** |
+| ~~B5-a CSV/JSON ixracı~~ ✅ **BİTDİ** | kiçik | sıfır | **M8 bağlandı** |
+| B5-b Pcog ⏳ | kiçik | orta | — |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |
 | B7 yekun doğrulama | kiçik-orta | aşağı | hamısı |
 

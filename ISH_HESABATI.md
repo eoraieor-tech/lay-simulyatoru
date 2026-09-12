@@ -2523,3 +2523,88 @@ düşmür, `.gitignore`-da) və bu sənədlər.
    Python-una — amma bu, maşına qlobal təsir edir. Sahibkar başqa
    yol istəyirsə (məsələn Application Control siyasətinin
    dəyişdirilməsi), qərar onundur.
+
+---
+
+## 12 sentyabr 2026 — Seans 16: B5-a — nəticələrin CSV / JSON ixracı
+
+### Nə üçün
+
+Layihədə yalnız **PDF hesabat** vardı (`reporting/report.py`) — insana
+baxmaq üçün. B4-A `well_bhp` və `well_thp` sıralarını yaratdıqdan sonra
+istifadəçinin əlində qrafikdən başqa heç nə yox idi: rəqəmləri Excel-ə
+və ya başqa alətə çıxarmaq mümkün deyildi.
+
+Sahibkarın qərarı: **B5-a əvvəl, B5-b (Pcog) ayrıca commit-də** — Pcog
+mühərriyə toxunur, B5-a isə yalnız oxuyur.
+
+### Nə edildi
+
+| Fayl | Nə |
+|---|---|
+| `reporting/results_export.py` | **YENİ** — `write_csv`, `read_csv`, `write_json`, `write` |
+| `ui/main_window.py` | menyuya "Nəticələri ixrac et (CSV/JSON)…" + `export_results()` |
+| `tests/test_results_export.py` | **YENİ** — 14 test |
+
+İki format, iki məqsəd:
+
+* **CSV** — TƏMİZ cədvəl (başlıq + sətirlər), şərh sətri yoxdur. Excel və
+  `pandas.read_csv` heç bir parametr olmadan açır.
+* **JSON** — eyni məlumat + metadata (model adı, OOIP/OGIP, addım sayı,
+  yığılma vəziyyəti).
+
+Metadata CSV-yə QƏSDƏN salınmadı: `#` şərh sətirləri ciddi CSV
+oxuyucularını sındırır və gedər-gələr müqaviləsini pozardı.
+
+### Ölçülmüş nəticə
+
+8×8 5-spot, 400 gün, qaz aktiv, lülə verilmiş:
+
+```
+CSV : 17 sütun, 30 sətir, 9.4 KB
+JSON: 13.9 KB, metadata + 12 seriya sütunu + 1 quyu
+```
+
+### Testin tutmadığı, GÖZLƏ görünən qüsur
+
+İlk versiyada vahid **vergüllə** yazılırdı (`"t, gün"`). Gedər-gələr
+testi keçirdi, çünki `csv` modulu dırnaqlanmış sahəni düzgün oxuyur.
+LAKİN faylı açıb baxanda göründü: **hər başlıq dırnağa düşür**, çünki
+vergül CSV-nin öz ayırıcısıdır. `awk`/`cut` kimi sadə alətlər belə
+faylı sındırır.
+
+Düzəliş: vahid **kvadrat mötərizədə** — `t [gün]`, `RF [%]`,
+`GOR [sm³/sm³]`. Başlıqlar artıq dırnaqsızdır. Test də yeniləndi və
+indi açıq şəkildə `"," not in header` yoxlayır.
+
+> Qeyd: bu qüsuru test tapmadı — **faylı açıb baxmaq** tapdı.
+
+### Dörd tələ (hamısı testlə kilidləndi)
+
+1. **`nan` BOŞ xana kimi yazılır, `0` kimi YOX.** `well_thp`-də quyunun
+   səthə axa bilmədiyi addımlar `nan`-dır (B4-A, qəsdən belədir).
+   `0 bar` yazsaydıq, qrafikdəki kimi real ölçmə kimi oxunardı.
+   JSON-da isə `null` — `NaN` JSON spesifikasiyasına ziddir.
+2. **İki fazalı nəticədə qaz sıraları boşdur** → sütun ümumiyyətlə
+   yaradılmır. Beləcə faylın özü "burada qaz fazası yoxdur" deyir.
+3. **`well_bhp`/`well_thp` yalnız bəzi quyularda var** (BHP rejimli,
+   lüləsi verilmiş istismarçılar) — `.get(name, [])` naxışı.
+4. **Vahid hər başlıqdadır** (`UNITS.md` prinsipi).
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **CSV `utf-8-sig` (BOM ilə) yazılır.** Windows Excel BOM-suz UTF-8-i
+   tanımır və `ə/ş/ğ` hərfləri korlanır. `csv`/`pandas` BOM-u özləri
+   atır, yəni gedər-gələr pozulmur. Ayrıca testlə kilidləndi.
+2. **Rəqəmlər `repr(float)` ilə, tam dəqiqliklə yazılır** (məs.
+   `8.952477630417802e-05`). Yuvarlaqlaşdırma gedər-gələr müqaviləsini
+   pozardı; ixrac faylı hesabat deyil, MƏLUMATDIR.
+3. **`read_csv()` modulun özündə saxlanıldı**, testə yazılmadı —
+   formatın müqaviləsi ("geri oxunanda eyni ədədlər") koddan
+   görünməlidir, yalnız testdən yox.
+4. **Qısa sütun uydurma dəyərlə doldurulmur**, boş qalır.
+
+### Qalan ⏳
+
+* **B5-b — Pcog** (qaz-neft kapilyar təzyiqi + `dpcog_dsg`). Mühərriyə
+  toxunur, ayrıca commit-də ediləcək.
