@@ -411,3 +411,73 @@ yalnız φ/K/heterogenlik sahələri ayrıca siqnal verir.
 Söndürülmüş widget öz dəyərini saxlayır və `fluids()` onu oxumağa
 davam edir. Beləliklə PVT söndürüləndə istifadəçinin əvvəlki lözlük
 dəyəri itmir. Ayrıca testlə kilidləndi.
+
+---
+
+## Q-13 — Əsas maşında `.venv` `--system-site-packages` ilə qurulur
+
+**Tarix:** 12 sentyabr 2026 · **Kontekst:** sahibkar `run.bat`-ın bu
+maşında işləməsi üçün `.venv` qurulmasını seçdi
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 15)
+
+### Sual
+
+`C:\Dev\LSM`-də `.venv` yox idi, ona görə `run.bat` (Q-10) venv
+tapmayıb dayanırdı. Adi yol — `python -m venv .venv` + `pip install
+-r requirements-dev.txt` — sınandı və **uğursuz oldu**.
+
+### Tapıntı — Windows Application Control təzə DLL-ləri bloklayır
+
+`.venv`-ə pip ilə endirilən təkərlərin imzasız yerli kitabxanaları
+işə salınanda:
+
+```
+ImportError: DLL load failed while importing vtkCommonCore:
+An Application Control policy has blocked this file.
+```
+
+Eyni paketin **sistem Python-undakı nüsxəsi işləyir** (2 322 test
+keçir, VTK-nın 49 testi daxil). Yəni maneə paketin özündə deyil,
+**yeni endirilmiş fayllarda**dır — bu, ROADMAP 0.7-də qeyd olunan
+Smart App Control maneəsinin eyni ailəsidir.
+
+Müşahidə: `scipy` bir neçə dəqiqə sonra keçdi, `vtk` isə bloklanmış
+qaldı. Yəni siyasət vaxta görə dəyişir və **etibarlı deyil**.
+
+### Qərar
+
+`.venv` **öz paket kopyaları olmadan**, sistem paketlərinə baxan
+nazik mühit kimi qurulur:
+
+```
+python -m venv --system-site-packages .venv
+```
+
+Beləliklə:
+
+* `run.bat` venv tapır → Q-10 dəyişmədən işləyir;
+* idxallar artıq **etibarlı sayılan** sistem DLL-lərinə düşür;
+* heç bir versiya fərqi yaranmır.
+
+Bu təhlükəsizdir, çünki sistem Python-u tələb olunan **18 paketin
+hamısını dəqiq pinlənmiş versiyalarda** daşıyır — `requirements.txt`
+və `requirements-dev.txt` ilə bir-bir tutuşduruldu, uyğunsuzluq 0.
+
+### Rədd edilən alternativlər
+
+| Alternativ | Niyə yox |
+|---|---|
+| Adi (izolyasiya olunmuş) `.venv` | Application Control bloklayır — proqram ümumiyyətlə açılmır |
+| `Unblock-File` / siyasəti söndürmək | Maşının təhlükəsizlik siyasətinə müdaxilədir; sahibkardan belə icazə istənilməyib |
+| `run.bat`-a "venv yoxdursa sistem Python-u" qolu | Sahibkar `.venv` variantını seçdi; həm də bu, Q-10-un məqsədini (mühitin müəyyənliyi) zəiflədərdi |
+
+### Nəticə
+
+`.venv` bu maşında `--system-site-packages` ilə qurulub və
+`run.bat` ilə proqram AÇILIR (Seans 15-də gözlə təsdiqləndi).
+Yeni asılılıq əlavə olunanda o, **sistem Python-una** qurulmalıdır
+(`pip install --user` və ya sistem interpretatoru ilə) — yoxsa eyni
+blok təkrarlanar.
+
+**Diqqət:** bu qərar YALNIZ bu maşına aiddir. Application Control
+maneəsi olmayan maşında adi izolyasiya olunmuş venv üstündür.

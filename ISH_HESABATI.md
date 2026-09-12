@@ -2421,3 +2421,105 @@ onsuz da endirilən commit-lə birlikdə gəldi.
    ona görə gözlə yoxlanması xüsusilə mənalıdır.
 3. **`fix-ui-parameter-visibility` uzaq budağı silinsinmi?** `main` ilə
    eyni commit-dədir, yəni işi bitib.
+
+---
+
+## 12 sentyabr 2026 — Seans 15 (davamı): `.venv` quruldu, proqram gözlə yoxlandı
+
+Yuxarıdakı Seans 15 bölməsi iki açıq sual qoymuşdu. Sahibkar hər
+ikisinə cavab verdi: **(1) `.venv` burada qurulsun**, **(2) proqram
+açılıb gözlə yoxlansın**. Bu bölmə onların icrasıdır.
+
+### 1 · `.venv` — adi yol UĞURSUZ oldu
+
+`python -m venv .venv` + `pip install -r requirements-dev.txt`
+işlədi (22 paket, `pip check` təmiz), amma proqram AÇILMADI:
+
+```
+ImportError: DLL load failed while importing vtkCommonCore:
+An Application Control policy has blocked this file.
+```
+
+Əvvəl eyni xəta `scipy._ufuncs_cxx`-də çıxdı, bir neçə dəqiqə sonra
+scipy keçdi, **vtk isə bloklanmış qaldı**. Yəni Windows Application
+Control (ROADMAP 0.7-dəki Smart App Control maneəsinin eyni ailəsi)
+**təzə endirilmiş imzasız DLL-ləri** bloklayır — paketin özünü yox.
+
+Təsdiq: eyni paketlərin **sistem Python-undakı** nüsxələri işləyir
+(bu maşında 2 322 test keçir, VTK-nın 49 testi daxil).
+
+### 1b · Həll — nazik venv
+
+Sistem Python-u tələb olunan **18 paketin hamısını dəqiq pinlənmiş
+versiyalarda** daşıyır (`requirements.txt` + `requirements-dev.txt`
+ilə bir-bir tutuşduruldu: **uyğunsuzluq 0**). Ona görə:
+
+```
+python -m venv --system-site-packages .venv
+```
+
+`run.bat` artıq venv tapır, idxallar isə etibarlı sayılan sistem
+DLL-lərinə düşür. Tam əsaslandırma: [QARARLAR.md](QARARLAR.md) → **Q-13**.
+
+⚠️ **Bundan sonra yeni asılılıq SİSTEM Python-una qurulmalıdır** —
+`.venv`-ə pip ilə qurulan hər şey yenidən bloklana bilər.
+
+### 1c · Nəticə — `run.bat` işləyir
+
+Proqram açıldı: `IMEX-2D v69 · 12 tab: Layihə, Model, Nəticələr,
+Nisbi keçiricilik, 3D görüntü, PVT, Validasiya (B-L), Müqayisə,
+Tarixçə, Uyğunlaşdırma, Həssaslıq, Jurnal`.
+Seans 13-ün 2-ci açıq sualı **BAĞLANDI**.
+
+### 2 · Seans 14-ün UI düzəlişi GÖZLƏ təsdiqləndi
+
+**Mexanizm A (bozarma) — canlı proqramda görüldü.** PVT korrelyasiya
+rejimində (`pvt: correlation(API=32, γg=0.75, T=70°C)`) süxur/flüid
+panelində **Su lözlüyü μw, Neft lözlüyü μo, Lözlük vahidi, Bo**
+bozarmış vəziyyətdədir, altında narıncı izah:
+
+> Lözlük və Bo PVT tabından gəlir — buradakı dəyərlər işlədilmir.
+> Onları dəyişmək üçün PVT tabındakı API, temperatur və doyma
+> təzyiqini redaktə edin.
+
+**Mexanizm B (köhnəlmə banneri)** — kor-kora klikləmə akkordeonu
+sürüşdürdüyü üçün etibarsız oldu; əvəzinə real `MainWindow` qurub
+widget-ləri birbaşa idarə edən sürücü skript yazıldı. Altı quyu
+(φ 0.16–0.28, k 60–310 mD) qurulub **"İnterpolyasiya et" BASILDI** —
+`GeologicalModel` həqiqətən quruldu (layihə ağacında "Quyu
+cədvəlindən geoloji model", K-1…K-6):
+
+| Addım | Banner | Gözlənilən |
+|---|---|---|
+| interpolyasiyadan sonra | *(boş)* | təzə ✅ |
+| neft lözlüyü μo dəyişdi | *(boş)* | geologiyaya təsir etmir ✅ |
+| **məsaməlilik φ dəyişdi** | "Nəticə köhnəlib — 'İnterpolyasiya et' basın." | köhnəlir ✅ |
+| yenidən interpolyasiya | *(boş)* | təzələnir ✅ |
+| **grid NX dəyişdi** | "Nəticə köhnəlib — ..." | köhnəlir ✅ (Q-12 qərar 3) |
+
+Yəni Q-12-nin hər dörd qərarı canlı proqramda işləyir.
+
+### Yol boyu tapılan, düzəliş TƏLƏB ETMƏYƏN davranışlar
+
+* **Boş quyu cədvəli ilə interpolyasiya haqlı olaraq RƏDD EDİLİR**:
+  "Heç bir xassə üçün seçilmiş üsula kifayət qədər quyu yoxdur
+  (tələb olunan: 3)". İlk sürücü cəhdim məhz buna düşdü — proqram
+  düzgün davrandı, **test məlumatım yanlış idi**.
+* Konsola çıxışda Azərbaycan hərfləri `cp1252`-də sınır
+  (`UnicodeEncodeError`). Bu YALNIZ skriptlə sürüklənəndə görünür,
+  proqramın öz jurnalına (`logs/imex2d.log`) aid deyil. Sürücü
+  `PYTHONUTF8=1` ilə işlədildi; **koda toxunulmadı**.
+
+### Bu bölmədə kod dəyişmədi
+
+`imex2d/` altında bir sətir də dəyişməyib. Dəyişən: `.venv` (repoya
+düşmür, `.gitignore`-da) və bu sənədlər.
+
+### Açıq suallar ⏳
+
+1. **`fix-ui-parameter-visibility` uzaq budağı silinsinmi?** `main`
+   ilə eyni commit-dədir (Seans 15-dən qalır).
+2. **Yeni asılılıq lazım olanda hara qurulsun?** Q-13-ə görə sistem
+   Python-una — amma bu, maşına qlobal təsir edir. Sahibkar başqa
+   yol istəyirsə (məsələn Application Control siyasətinin
+   dəyişdirilməsi), qərar onundur.
