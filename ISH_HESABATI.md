@@ -2608,3 +2608,110 @@ indi açıq şəkildə `"," not in header` yoxlayır.
 
 * **B5-b — Pcog** (qaz-neft kapilyar təzyiqi + `dpcog_dsg`). Mühərriyə
   toxunur, ayrıca commit-də ediləcək.
+
+---
+
+## 12 sentyabr 2026 — Seans 17: `max_dt` üç fazalı mühərrikdə hörmət olunmurdu
+
+### Bildiriş
+
+Sahibkar: interfeysdə "Maks. Δt = 20 gün" qoyulur, status sətri isə
+orta addımı 26.3 gün göstərir.
+
+### Diaqnoz — səbəb CFL DEYİL
+
+Sahibkarın fərziyyəsi "CFL tənzimləməsi limiti qulaqardına vurur" idi.
+**Ölçmə başqa şey göstərdi:** limitləmə məntiqi tamamilə düzgündür —
+`time_stepping.py:126` `dt = min(self.dt, config.max_dt, remaining)`,
+`:221` isə `np.clip(..., min_dt, max_dt)` edir.
+
+Problem odur ki, **`max_dt`-nin ÖZÜ şişirdilir**:
+
+```python
+# three_phase_engine.py:110
+max_dt=max(stepping.max_dt, 30.0)      # ← süni döşəmə
+```
+
+Yəni istifadəçi 20 desə də, həlledici 30 alır və limitləmə düzgün
+işləyərək 30-a qədər addım atır.
+
+### ⚠️ Bu səhv BİR DƏFƏ ARTIQ DÜZƏLDİLİB
+
+`engine.py::_time_config` sənədi hərfən yazır:
+
+> "`max_dt` istifadəçinin sorduğu kimi hörmət edilir. ƏVVƏLLƏR
+> (TAPILAN SƏHV) bura süni minimum (30 gün) tətbiq olunurdu —
+> istifadəçi 0.5 və ya 2 gün desə də, mühərrik səssizcə 30 günə
+> keçirdi."
+
+İki fazalı mühərrikdə düzəldilmiş, üç fazalıda qalmışdı. Səbəb aydındır:
+üç fazalı yol **A7 bərpasında (B2) git tarixçəsindən qaytarılıb** və
+köhnə kodu özü ilə geri gətirib.
+
+### Ölçülmüş — əvvəl / sonra
+
+8×8 5-spot, 400 gün:
+
+| Mühərrik | İstənilən | ƏVVƏL işlədilən | SONRA | Maks Δt (sonra) |
+|---|---|---|---|---|
+| iki fazalı | 5 / 20 / 50 | 5 / 20 / 50 ✅ | eyni | 5.00 / 20.00 / 50.00 |
+| üç fazalı | 5 | **30** ❌ | **5** ✅ | 5.00 |
+| üç fazalı | **20** | **30** ❌ | **20** ✅ | 20.00 |
+| üç fazalı | 50 | 50 ✅ | 50 | 50.00 |
+
+Simptom kəskin idi: **5 və 20 TAM EYNİ nəticə verirdi** (31 addım,
+maks Δt 30.00), çünki hər ikisi eyni həddə qaldırılırdı.
+
+### Düzəlişin doğruluğunun ƏN GÜCLÜ sübutu
+
+Pb = 100 bar-da qaz ayrılmır (maks S_g = 0.000000), yəni üç fazalı
+mühərrik faktiki olaraq iki fazalı məsələni həll edir — nəticələr
+ÜST-ÜSTƏ DÜŞMƏLİDİR:
+
+| | RF | Addım |
+|---|---|---|
+| iki fazalı | 62.861505 | 31 |
+| **üç fazalı (düzəlişdən sonra)** | **62.861429** | 31 |
+| fərq | **7.6·10⁻⁵** | — |
+| üç fazalı (düzəlişdən əvvəl) | 62.719661 | — |
+
+Düzəlişdən əvvəl bu uyğunluq YOX İDİ — 30 günlük addım nəticəni
+kobudlaşdırırdı.
+
+### Bir ETALON DƏYİŞDİ
+
+`test_three_phase_high_bubble_point.py::test_low_bubble_point_results_are_unchanged`
+Pb = 100 üçün **RF 62.72** gözləyirdi. Bu dəyər Seans 8-də ölçülmüşdü —
+yəni **səhvin öz dəyərini kilidləyirdi**. Etalon 62.86-ya yeniləndi və
+səbəbi testin sənədinə yazıldı.
+
+> Bu, layihənin "etalon pozulursa dəyişiklik səhvdir" qaydasının
+> İSTİSNASIDIR: burada pozulan şey səhvin özü idi. Ona görə etalon
+> dəyişdirildi və əvəzinə DAHA GÜCLÜ invariant qoyuldu — iki və üç
+> fazalı mühərriklərin qazsız rejimdə uyğunluğu.
+
+### Toxunulan fayllar
+
+| Fayl | Nə |
+|---|---|
+| `simulation/implicit/three_phase_engine.py` | `max(stepping.max_dt, 30.0)` → `stepping.max_dt` + sənəd |
+| `tests/test_max_timestep_respected.py` | **YENİ** — 16 test, hər iki mühərrik üçün kilid |
+| `tests/test_three_phase_high_bubble_point.py` | etalon 62.72 → 62.86, səbəbi sənədləşdi |
+
+### Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Testlər hər İKİ mühərrik üçün yazıldı**, təkcə üç fazalı üçün yox.
+   Səbəb: səhv əvvəl iki fazalıda düzəldilib, sonra üç fazalıda geri
+   qayıdıb. Ortaq kilid üçüncü dəfəni dayandırır.
+2. **`soft_failure_*` fərqinə TOXUNULMADI.** İki fazalı `_time_config`
+   onları verir, üç fazalı vermir. Bu, AYRI fərqdir və yığılma
+   davranışına toxunur — ⏳ kimi qeyd olundu.
+3. **Etalon dəyişdirildi, testə `xfail` qoyulmadı.** Yeni dəyər fiziki
+   olaraq daha düzgündür və iki fazalı mühərriklə uyğunluqla
+   təsdiqlənir.
+
+### Açıq qalan ⏳
+
+* Üç fazalı `_time_config`-də `soft_failure_cnv_tolerance` və
+  `soft_failure_mb_tolerance` yoxdur (iki fazalıda var). Onları əlavə
+  etmək yığılma davranışını dəyişər — ayrıca ölçülməlidir.

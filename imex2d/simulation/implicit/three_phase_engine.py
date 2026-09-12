@@ -104,10 +104,26 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
 
     @staticmethod
     def _time_config(config: SimulationConfig) -> AdaptiveTimeStepConfig:
+        """Adaptiv addım parametrləri — `max_dt` OLDUĞU KİMİ ötürülür.
+
+        ƏVVƏL burada `max(stepping.max_dt, 30.0)` yazılırdı: istifadəçi
+        interfeysdə 20 gün desə də, mühərrik səssizcə 30-a keçirdi.
+        Ölçüldü — 5 və 20 gün TAM EYNİ nəticə verirdi (31 addım,
+        maks Δt 30.00), çünki hər ikisi eyni həddə qaldırılırdı.
+
+        Bu, iki fazalı mühərrikdə ARTIQ tapılıb düzəldilmiş səhvin
+        eynisidir (bax `engine.py::_time_config` sənədi). Üç fazalı
+        yol A7 bərpasında (B2) git tarixçəsindən qaytarıldığı üçün
+        köhnə kodu özü ilə geri gətirmişdi.
+
+        ⏳ Qeyd: iki fazalı variant `soft_failure_*` toleranslarını da
+        verir, bu isə vermir. Bu, AYRI fərqdir — yığılma davranışına
+        toxunur, ona görə bu düzəlişdə TOXUNULMADI.
+        """
         stepping = config.time_stepping
         return AdaptiveTimeStepConfig(
             initial_dt=stepping.initial_dt, min_dt=stepping.min_dt,
-            max_dt=max(stepping.max_dt, 30.0),
+            max_dt=stepping.max_dt,
             growth_factor=stepping.growth_factor + 0.35)
 
     # ─────────────────────────────────────────────────────────── ilkin

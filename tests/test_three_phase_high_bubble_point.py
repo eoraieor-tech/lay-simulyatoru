@@ -273,11 +273,18 @@ def test_low_bubble_point_results_are_unchanged():
 
     Pb = 100 bar-da heç bir hüceyrə doyma təzyiqinə çatmır, bütün
     hüceyrələr `Rs = Rs_sat(Pb)` platosunda qalır, yəni Bo cədvəlin
-    öz doymamış qoludur. Seans 8-də ölçülmüş dəyər: RF 62.72 %.
+    öz doymamış qoludur.
+
+    ⚠️ ETALON DƏYİŞDİ: 62.72 → 62.86 (Seans 17, `max_dt` düzəlişi).
+    Köhnə 62.72 SƏHVİN ÖZ DƏYƏRİNİ kilidləyirdi — üç fazalı mühərrik
+    istifadəçinin 20 günlük həddini 30-a qaldırırdı, ona görə nəticə
+    daha kobud idi. İndi iki fazalı mühərriklə üst-üstə düşür
+    (62.861505 vs 62.861429) — bax
+    `tests/test_max_timestep_respected.py`.
     """
     result = _service().run(_model(100.0), SimulationConfig(end_time=400.0))
     assert result.converged, result.message
-    assert result.series.recovery_factor[-1] == pytest.approx(62.72, abs=0.05)
+    assert result.series.recovery_factor[-1] == pytest.approx(62.86, abs=0.05)
 
     peak_gas = max(float(np.max(snapshot.gas_saturation))
                    for snapshot in result.snapshots
