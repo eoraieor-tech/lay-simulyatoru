@@ -2790,3 +2790,102 @@ onları çağırır. Bu, layihənin öz qaydası ilə də uyğundur
 ⚠️ B6-a üçün bilinməli: `vtkPlaneWidget` **interaktor tələb edir**,
 ekransız testdə mümkün olmaya bilər. Ölçülməlidir; mümkün olmasa,
 kəsik məntiqi (`vtkCutter`) widget-dən ayrı test olunmalıdır.
+
+---
+
+## 13 sentyabr 2026 — Seans 19: GitHub-dakı son dəyişikliklər (Seans 16–18) bu nüsxəyə endirildi
+
+### 1 · Başlanğıc vəziyyət
+
+`git fetch --all --prune` nəticəsi:
+
+| Budaq | Vəziyyət |
+|---|---|
+| `origin/main` | `8a85e64` — lokal `main` ilə **eyni** (0 / 0) |
+| `origin/a7-berpa` | **GitHub-da silinib** (`[gone]`) |
+| `origin/b4-thp` | **GitHub-da silinib** — `main`-in içindədir ✅ |
+
+İş bu nüsxədə `a7-berpa` budağında gedirdi — `main`-dən **5 commit geridə**.
+
+### 2 · GitHub-dan gələn 5 commit
+
+| Commit | Tarix | Nə |
+|---|---|---|
+| `2448ab9` | 12.09 15:29 | chore: `B5_PROMPT.md` `.gitignore`-a |
+| `e3cd8a3` | 12.09 15:48 | **B5-a** — nəticələrin CSV / JSON ixracı (Seans 16) |
+| `6f4827d` | 12.09 15:48 | chore: `NUMUNE_NETICELER.*` `.gitignore`-a |
+| `f63d361` | 12.09 16:12 | **fix** — `max_dt` üç fazalı mühərrikdə hörmət olunmurdu (Seans 17) |
+| `8a85e64` | 12.09 16:37 | **B6-b** — oynatma idarəsi: sürət, kadr-kadr, dövrə (Seans 18) |
+
+Cəmi: **13 fayl, +1 345 / −121**.
+
+| Sahə | Fayllar |
+|---|---|
+| **B5-a ixrac** | `reporting/results_export.py` (**yeni**, 216) · `ui/main_window.py` (menyu) · `tests/test_results_export.py` (**yeni**) |
+| **`max_dt` düzəlişi** | `simulation/implicit/three_phase_engine.py` (`max(max_dt, 30.0)` → `max_dt`) · `tests/test_max_timestep_respected.py` (**yeni**) · `tests/test_three_phase_high_bubble_point.py` (etalon 62.72 → 62.86) |
+| **B6-b oynatma** | `ui/playback.py` (**yeni**, saf məntiq) · `ui/main_window.py` (◀ / ▶, 0.25×…4×, "Dövrə") · `tests/test_playback_controls.py` (**yeni**) |
+| **Sənədlər** | `ISH_HESABATI.md` (Seans 16–18) · `QARARLAR.md` (**Q-14** — ixrac formatı) · `ROADMAP.md` (5.6 → ✅) · `ICRA_PLANI.md` (M8 ✅, B5-a ✅, B6-b ✅) |
+
+Təfərrüat həmin seansların öz bölmələrindədir (yuxarıda) — burada təkrarlanmır.
+
+### 3 · Yoxlama — gələn testlər bu nüsxədə qaçırıldı
+
+`main` (`8a85e64`) üzərində, `.venv` (Python 3.12.10, pytest 9.1.1):
+
+```
+tests/test_results_export.py                  14 keçdi
+tests/test_max_timestep_respected.py          16 keçdi
+tests/test_playback_controls.py               20 keçdi
+tests/test_three_phase_high_bubble_point.py   23 keçdi
+============== 73 passed in 22.67s ==============
+```
+
+**Bütöv test dəsti QAÇIRILMADI** — yalnız dəyişikliklə gələn 4 fayl.
+
+### 4 · TAPINTI — iki fərqli "Seans 16" var, biri GitHub-da yoxdur
+
+Bu nüsxədə `a7-berpa` budağında GitHub-a çatmamış bir commit qalıb:
+
+```
+b2a795e  12.09 21:07  docs: Seans 16 - GitHub deyishiklikleri bu nusxeye endirildi
+```
+
+O, `ISH_HESABATI.md`-yə **"Seans 16: GitHub-dakı dəyişikliklər bu nüsxəyə
+endirildi"** bölməsini (+147 sətir) əlavə edir. Eyni vaxtda başqa maşında
+`main`-ə **"Seans 16: B5-a"** yazılıb. Nəticə:
+
+* seans nömrələri toqquşur (iki Seans 16);
+* `origin/a7-berpa` silindiyi üçün `b2a795e` **yalnız bu diskdə** yaşayır —
+  nüsxə itsə, qeyd də itir (CLAUDE.md: "tarixçə itmir").
+
+Bu seansda `a7-berpa`-nı `main`-ə birləşdirmək cəhdi **icazə sistemi
+tərəfindən bloklandı**. Ona görə commit-ə **toxunulmadı**: lokal
+`a7-berpa` budağı olduğu kimi qalır, bu bölmə isə ondan asılı deyil.
+
+### 5 · Yol boyu müşahidə — proqram köhnə kodla işlədildi
+
+Bu seansdan əvvəl (12.09 21:12 – 22:05) proqram `a7-berpa` üzərində
+açılmışdı — yəni **B5-a, B6-b və `max_dt` düzəlişi OLMADAN**. Jurnalda
+4 hesablama var (RUN-001…004; TPFA, üç fazalı, MPFA-O), xəta yoxdur.
+Proses 127 kodu ilə bağlandı, traceback yoxdur — səbəb **müəyyən edilmədi**.
+
+Qeyd: RUN-002/003 üç fazalı mühərriklə getdi və `max_dt` düzəlişindən
+**əvvəlki** koddur — həmin nəticələr (RF 1.53 %) Seans 17-dəki səhvdən
+təsirlənmiş ola bilər. ⏳ ölçülməyib.
+
+### Bu bölmədə nə dəyişmədi və niyə
+
+* `imex2d/` altında bir sətir də dəyişməyib — yalnız çəkmə, test, qeyd.
+* `QARARLAR.md` — yeni texniki seçim yoxdur.
+* `ROADMAP.md`, `ARCHITECTURE.md`, `ICRA_PLANI.md` — `main`-dən gələn
+  halda artıq aktualdır.
+
+### Açıq suallar ⏳
+
+1. **`b2a795e` (lokal Seans 16) nə olsun?** Variantlar: `main`-ə
+   birləşdirmək (başlığı dəyişmədən, toqquşma bu bölmədə izah olunub)
+   və ya yalnız lokal saxlamaq.
+2. **Bütöv test dəsti** hələ də bu nüsxədə qaçırılmayıb.
+3. **Seans nömrələməsi** iki maşında paralel işdə toqquşur — hər
+   seansdan əvvəl `git fetch` qaydası CLAUDE.md-yə əlavə olunsunmu?
+4. Seans 16-dan qalan: **bu nüsxə hansı maşındır?**
