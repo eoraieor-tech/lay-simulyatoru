@@ -72,6 +72,11 @@ class VtkViewSettings:
     """İşıq gücü (0..1) — matplotlib motorundakı "İşıq" sürgüsü ilə eyni."""
     zoom: float = 1.0
     """Yaxınlaşdırma (1.0 = tam model çərçivədə)."""
+    slice_axis: Optional[str] = None
+    """Kəsik oxu — "X", "Y", "Z" və ya None (kəsik yoxdur). B6-a."""
+    slice_position: float = 0.5
+    """Kəsiyin ox boyunca mövqeyi, 0..1 (0 = oxun ən kiçik koordinatı).
+    Z oxunda koordinat "-dərinlik" olduğu üçün 0 = ƏN DƏRİN təbəqə."""
 
 
 # ── rəng xəritələri ──────────────────────────────────────────────────
@@ -133,6 +138,45 @@ def _build_lookup_table(colormap, low: float, high: float):
     return table
 
 
+# -- kəsik həndəsəsi (B6-a) — Qt və VTK obyekti TƏLƏB ETMİR ----------
+_SLICE_AXES = {"X": 0, "Y": 1, "Z": 2}
+
+#: QEYD (ölçülüb): vtkCutter hər kəsilən hüceyrəni İKİ ÜÇBUCAQ kimi
+#: verir — 8x6x3 modeldə X-kəsiyi 36 üçbucaq = 18 hüceyrədir. Müstəvi
+#: dəqiq hüceyrə sərhədinə düşəndə də unikal hüceyrə sayı DƏYİŞMİR (18),
+#: yəni üst-üstə düşən poliqon YOXDUR — sürüşdürməyə ehtiyac yoxdur.
+
+
+def slice_plane(bounds, axis, fraction):
+    """(origin, normal) — grid sərhədlərindən kəsik müstəvisi.
+
+    bounds — VTK GetBounds() formatı: (xmin, xmax, ymin, ymax, zmin, zmax).
+    fraction 0..1 aralığına sıxılır.
+    """
+    if axis not in _SLICE_AXES:
+        raise ValueError("kəsik oxu X, Y və ya Z olmalıdır: %r" % (axis,))
+    index = _SLICE_AXES[axis]
+    low, high = float(bounds[2 * index]), float(bounds[2 * index + 1])
+    span = high - low
+    f = min(max(float(fraction), 0.0), 1.0)
+    origin = [0.5 * (bounds[0] + bounds[1]),
+              0.5 * (bounds[2] + bounds[3]),
+              0.5 * (bounds[4] + bounds[5])]
+    origin[index] = low + f * span
+    normal = [0.0, 0.0, 0.0]
+    normal[index] = 1.0
+    return tuple(float(v) for v in origin), tuple(normal)
+
+
+def slice_fraction(bounds, axis, origin):
+    """slice_plane-in tərsi — müstəvinin mövqeyindən 0..1 nisbəti."""
+    index = _SLICE_AXES[axis]
+    low, high = float(bounds[2 * index]), float(bounds[2 * index + 1])
+    if high <= low:
+        return 0.5
+    return min(max((float(origin[index]) - low) / (high - low), 0.0), 1.0)
+
+
 class VtkReservoirScene:
     """Rezervuar modelinin VTK səhnəsi.
 
@@ -160,6 +204,13 @@ class VtkReservoirScene:
         self._fault_actors = []
         self._axes_actor = None
         self._orientation_widget = None
+        # kəsik (B6-a)
+        self._lookup_table = None
+        self._scalar_range = None
+        self._slice_plane = None
+        self._slice_cutter = None
+        self._slice_actor = None
+        self._slice_widget = None
         self._build_grid()
 
     # ── həndəsə ────────────────────────────────────────────────────
@@ -352,6 +403,10 @@ class VtkReservoirScene:
         self._mapper.SetScalarRange(low, high)
         self._mapper.SetScalarModeToUseCellData()
         self._mapper.ScalarVisibilityOn()
+        # kəsik eyni rəng cədvəlini işlətməlidir — yoxsa iki görüntü
+        # eyni dəyərə FƏRQLİ rəng verərdi
+        self._lookup_table = table
+        self._scalar_range = (low, high)
 
         properties = self._actor.GetProperty()
         properties.SetOpacity(settings.opacity)
@@ -368,6 +423,7 @@ class VtkReservoirScene:
         else:
             properties.EdgeVisibilityOff()
 
+        self.update_slice()
         self._update_scalar_bar(table, label)
         self.update_wells()
         self.update_faults()
@@ -568,6 +624,130 @@ class VtkReservoirScene:
         self.renderer.AddViewProp(axes)
 
     # ══════════════════════════════════════════════ istiqamət oxu
+    # ================================================ kəsik (B6-a)
+    def update_slice(self):
+        """Kəsik müstəvisini cari parametrlərə görə yeniləyir.
+
+        Kəsik AKTİV olanda əsas həcm gizlədilir, yalnız kəsik səthi
+        görünür (quyular və faylar qalır). vtkCutter gizlədilmiş
+        (blank) hüceyrələrə HÖRMƏT EDİR — ölçüldü: K-filtri ilə kəsik
+        18 -> 6 hüceyrəyə düşür. Yəni kəsim həddi, K aralığı və status
+        filtri kəsiyə AVTOMATİK tətbiq olunur.
+        """
+        import vtk
+
+        axis = self.settings.slice_axis
+        if axis is None or self._lookup_table is None:
+            if self._slice_actor is not None:
+                self._slice_actor.VisibilityOff()
+            if self._actor is not None:
+                self._actor.VisibilityOn()
+            self._sync_slice_widget()
+            return
+
+        origin, normal = slice_plane(self._grid.GetBounds(), axis,
+                                     self.settings.slice_position)
+        if self._slice_actor is None:
+            self._slice_plane = vtk.vtkPlane()
+            self._slice_cutter = vtk.vtkCutter()
+            self._slice_cutter.SetCutFunction(self._slice_plane)
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(self._slice_cutter.GetOutputPort())
+            self._slice_actor = vtk.vtkActor()
+            self._slice_actor.SetMapper(mapper)
+            self.renderer.AddActor(self._slice_actor)
+
+        self._slice_plane.SetOrigin(*origin)
+        self._slice_plane.SetNormal(*normal)
+        self._slice_cutter.SetInputData(self._grid)
+        self._slice_cutter.Modified()
+
+        mapper = self._slice_actor.GetMapper()
+        mapper.SetLookupTable(self._lookup_table)
+        mapper.SetScalarRange(*self._scalar_range)
+        mapper.SetScalarModeToUseCellData()
+        mapper.ScalarVisibilityOn()
+
+        properties = self._slice_actor.GetProperty()
+        properties.SetAmbient(0.55)
+        properties.SetDiffuse(0.60)
+        if self.settings.show_edges:
+            properties.EdgeVisibilityOn()
+            properties.SetEdgeColor(0.15, 0.18, 0.21)
+            properties.SetLineWidth(0.5)
+        else:
+            properties.EdgeVisibilityOff()
+
+        self._slice_actor.VisibilityOn()
+        if self._actor is not None:
+            self._actor.VisibilityOff()
+        self._sync_slice_widget()
+
+    def slice_output(self):
+        """Kəsiyin vtkPolyData çıxışı — kəsik yoxdursa None."""
+        if (self._slice_actor is None
+                or not self._slice_actor.GetVisibility()):
+            return None
+        self._slice_cutter.Update()
+        return self._slice_cutter.GetOutput()
+
+    def attach_slice_widget(self, interactor, on_moved=None):
+        """Sürüklənən kəsik müstəvisi — vtkImplicitPlaneWidget2.
+
+        Normal seçilmiş oxa KİLİDLƏNİR: istifadəçi müstəvini yalnız ox
+        boyunca sürüşdürür, fırlatmır. Hər sürükləmədə on_moved(nisbət)
+        çağırılır ki, interfeysin sürgüsü sinxron qalsın.
+
+        Ölçüldü: widget VTK 9.7-də EKRANSIZ rejimdə də açılır, yəni test
+        oluna bilir. İnteraktor yoxdursa sadəcə atlanılır.
+        """
+        import vtk
+
+        if interactor is None or self._slice_widget is not None:
+            return
+        representation = vtk.vtkImplicitPlaneRepresentation()
+        representation.SetPlaceFactor(1.0)
+        representation.PlaceWidget(self._grid.GetBounds())
+        representation.SetDrawPlane(False)
+        representation.SetOutlineTranslation(False)
+        representation.SetScaleEnabled(False)
+
+        widget = vtk.vtkImplicitPlaneWidget2()
+        widget.SetInteractor(interactor)
+        widget.SetRepresentation(representation)
+
+        def moved(caller, _event):
+            axis = self.settings.slice_axis
+            if axis is None or on_moved is None:
+                return
+            origin = caller.GetRepresentation().GetOrigin()
+            on_moved(slice_fraction(self._grid.GetBounds(), axis, origin))
+
+        widget.AddObserver("InteractionEvent", moved)
+        self._slice_widget = widget
+        self._sync_slice_widget()
+
+    def _sync_slice_widget(self):
+        widget = self._slice_widget
+        if widget is None:
+            return
+        axis = self.settings.slice_axis
+        if axis is None:
+            widget.Off()
+            return
+        representation = widget.GetRepresentation()
+        origin, normal = slice_plane(self._grid.GetBounds(), axis,
+                                     self.settings.slice_position)
+        # Ox bayrağı (SetNormalToZAxis) YALNIZ sürükləmə zamanı fırlanmanı
+        # məhdudlaşdırır — ölçüldü: normal VEKTORUNU özü dəyişmir. Ona
+        # görə vektor açıq verilir, əvvəlki oxun bayrağı isə söndürülür.
+        for other in _SLICE_AXES:
+            getattr(representation, "SetNormalTo%sAxis" % other)(0)
+        getattr(representation, "SetNormalTo%sAxis" % axis)(1)
+        representation.SetNormal(*normal)
+        representation.SetOrigin(*origin)
+        widget.On()
+
     def attach_orientation_marker(self, interactor):
         """Sağ aşağı küncdə X/Y/Z istiqamət oxu — model ilə fırlanır.
 

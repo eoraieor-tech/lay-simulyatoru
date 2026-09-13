@@ -21,7 +21,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b + B3-B** (Pb = 300 bar-a qədər ölçülüb) |
 | M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 **B4-A-da bağlandı** (BHP rejimli istismarçılar); RATE ⏳ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
-| M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ❌ |
+| M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ✅ **B6-b + B6-a-da bağlandı** |
 | M8 | Nəticələrin fayla ixracı | ✅ **B5-a-da bağlandı** (PDF + CSV + JSON) |
 
 ---
@@ -450,7 +450,18 @@ Pcog üçün monotonluq və son nöqtə testləri.
 >
 > Təfərrüat: `ISH_HESABATI.md` → Seans 18.
 
-### B6-a — interaktiv kəsik ⏳ NÖVBƏTİ
+### B6-a — interaktiv kəsik ✅ BİTDİ (13 sentyabr 2026)
+
+> 3D tabında "Kəsik: Yox / X / Y / Z" + mövqe sürgüsü; müstəvi 3D-də
+> birbaşa sürüklənə bilir (`vtkImplicitPlaneWidget2`, sürgü ilə sinxron).
+> `vtkCutter` gizlədilmiş hüceyrələrə hörmət edir — filtrlər kəsiyə
+> avtomatik tətbiq olunur. Yalnız VTK motorunda.
+>
+> **Ölçmə iki yanlış fərziyyəni təkzib etdi:** "sərhəddə üst-üstə
+> poliqon" yox idi (cutter hər hüceyrəni 2 üçbucaq verir) və
+> `SetNormalToZAxis` normal vektorunu dəyişmir.
+>
+> 28 yeni test. Təfərrüat: `ISH_HESABATI.md` → Seans 21.
 ### B6-c — GIF / PNG ixracı ⏳
 
 **Aşağıdakı ilkin plan mətni saxlanılır:**

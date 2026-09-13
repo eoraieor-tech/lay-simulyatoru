@@ -624,6 +624,25 @@ class MainWindow(QMainWindow):
         self.volume_reset = QPushButton("Görünüşü sıfırla")
         self.volume_reset.clicked.connect(self.reset_volume_view)
 
+        # ── kəsik (B6-a) — yalnız VTK motorunda ────────────────────
+        self.volume_slice_axis = QComboBox()
+        self.volume_slice_axis.addItem("Yox", None)
+        self.volume_slice_axis.addItem("X", "X")
+        self.volume_slice_axis.addItem("Y", "Y")
+        self.volume_slice_axis.addItem("Z — dərinlik", "Z")
+        self.volume_slice_axis.setToolTip(
+            "Modeli seçilmiş ox boyunca kəsir. Müstəvini sürgü ilə və ya "
+            "birbaşa 3D görüntüdə sürükləyərək hərəkət etdirin.")
+        self.volume_slice_axis.currentIndexChanged.connect(self.update_volume)
+
+        self.volume_slice_position = QSlider(Qt.Horizontal)
+        self.volume_slice_position.setRange(0, 100)
+        self.volume_slice_position.setValue(50)
+        self.volume_slice_position.setMaximumWidth(160)
+        self.volume_slice_position.setToolTip(
+            "Kəsiyin ox boyunca mövqeyi. Z oxunda 0 = ən dərin təbəqə.")
+        self.volume_slice_position.valueChanged.connect(self.update_volume)
+
         appearance.addWidget(QLabel("Baxış:"))
         appearance.addWidget(self.volume_view)
         appearance.addWidget(QLabel("İşıq:"))
@@ -631,6 +650,9 @@ class MainWindow(QMainWindow):
         appearance.addWidget(QLabel("Şəffaflıq:"))
         appearance.addWidget(self.volume_opacity)
         appearance.addWidget(self.volume_reset)
+        appearance.addWidget(QLabel("Kəsik:"))
+        appearance.addWidget(self.volume_slice_axis)
+        appearance.addWidget(self.volume_slice_position)
         appearance.addStretch()
         layout.addLayout(appearance)
 
@@ -708,11 +730,25 @@ class MainWindow(QMainWindow):
                    and self.vtk_widget is not None)
         self.volume_stack.setCurrentWidget(
             self.vtk_widget if use_vtk else self.volume_canvas)
+        # Kəsik yalnız VTK motorunda mövcuddur — matplotlib-də söndürülür.
+        self.volume_slice_axis.setEnabled(use_vtk)
+        self.volume_slice_position.setEnabled(use_vtk)
         if use_vtk and self.vtk_widget is not None:
             # interaktor yalnız GÖRÜNƏN olduqdan sonra işə salına bilər
             self.vtk_widget.Initialize()
             self.vtk_widget.Start()
         self.update_volume()
+
+    def _on_slice_dragged(self, fraction: float):
+        """3D-də müstəvi sürüklənəndə sürgünü sinxron saxlayır.
+
+        Sürgünün dəyişməsi `update_volume`-u çağırır, o da müstəvini
+        eyni yerə qoyur — proqramla qoyulan mövqe widget-in
+        `InteractionEvent`-ini TƏKRAR yaratmır, yəni dövrə yoxdur.
+        """
+        value = int(round(min(max(fraction, 0.0), 1.0) * 100))
+        if value != self.volume_slice_position.value():
+            self.volume_slice_position.setValue(value)
 
     def _update_volume_vtk(self, values, key, colormap, limits, volume_filter,
                            view):
@@ -738,7 +774,9 @@ class MainWindow(QMainWindow):
             show_wells=self.volume_wells.isChecked(),
             show_faults=self.volume_faults.isChecked(),
             shading=self.volume_shading.value() / 100.0,
-            zoom=self.volume_zoom.value() / 100.0)
+            zoom=self.volume_zoom.value() / 100.0,
+            slice_axis=self.volume_slice_axis.currentData(),
+            slice_position=self.volume_slice_position.value() / 100.0)
 
         rebuild = (self.vtk_scene is None
                    or self.vtk_scene.model is not self.reservoir_model)
@@ -755,6 +793,10 @@ class MainWindow(QMainWindow):
         # görə səhnə qurulanda yox, burada bağlanır
         self.vtk_scene.attach_orientation_marker(
             self.vtk_widget.GetRenderWindow().GetInteractor())
+        # sürüklənən kəsik müstəvisi — eyni səbəbdən burada bağlanır
+        self.vtk_scene.attach_slice_widget(
+            self.vtk_widget.GetRenderWindow().GetInteractor(),
+            self._on_slice_dragged)
 
         self.vtk_scene.update_values(values, R.property_label(key))
         if rebuild or view is not None:

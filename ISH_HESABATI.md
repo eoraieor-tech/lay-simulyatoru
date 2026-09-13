@@ -2966,3 +2966,87 @@ və qaz zonası zamanla kiçilmir — testlə kilidləndi.
 
 * **`b2a795e`** — ikinci maşından xilas edilməlidir.
 * **B6-a** — interaktiv kəsik (növbəti).
+
+---
+
+## 13 sentyabr 2026 — Seans 21: B6-a — interaktiv kəsik müstəvisi
+
+### 1 · Tətbiqdən ƏVVƏL ölçülən risk
+
+B6-a planında əsas risk qeyd olunmuşdu: `vtkPlaneWidget` interaktor tələb
+edir, ekransız test mühitində işləməyə bilər. Kod yazmadan ölçüldü:
+
+| Yoxlama | Nəticə |
+|---|---|
+| VTK versiyası | 9.7.0 |
+| ekransız `Render()` | işləyir |
+| `vtkImplicitPlaneWidget2` ekransız `On()` | **işləyir** |
+| `vtkCutter` hüceyrə skalyarlarını daşıyır | bəli — eyni rəng cədvəli işlədilə bilər |
+| `vtkCutter` gizlədilmiş (blank) hüceyrələrə hörmət edir | bəli — K-filtri ilə 18 → 6 hüceyrə |
+
+Nəticə: widget-i məntiqdən ayırmağa **ehtiyac olmadı**, birbaşa sınanır.
+Kəsim həddi, K aralığı və status filtri kəsiyə **avtomatik** tətbiq olunur.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `rendering/vtk_volume.py` | `VtkViewSettings.slice_axis` / `slice_position`; saf `slice_plane()` və `slice_fraction()`; `update_slice()`, `slice_output()`, `attach_slice_widget()` |
+| `ui/main_window.py` | 3D tabında "Kəsik: Yox / X / Y / Z — dərinlik" + mövqe sürgüsü; sürüklənən müstəvi sürgü ilə sinxron |
+| `tests/test_vtk_slice.py` | **YENİ** — 28 test |
+
+Davranış:
+
+* Kəsik aktiv olanda əsas həcm gizlədilir, kəsik səthi görünür (quyular və
+  faylar qalır). Kəsik söndürüləndə həcm geri qayıdır.
+* Müstəvi iki yolla hərəkət edir: **sürgü** ilə və ya 3D görüntüdə
+  **birbaşa sürükləyərək**. Sürükləmə sürgünü yeniləyir; proqramla qoyulan
+  mövqe widget hadisəsini təkrar yaratmır — dövrə yoxdur.
+* Normal seçilmiş oxa kilidlənir — müstəvi yalnız ox boyunca sürüşür.
+* Kəsik **yalnız VTK motorunda** — matplotlib seçiləndə idarə söndürülür.
+* Z oxunda koordinat `−dərinlik` olduğu üçün sürgüdə 0 = **ən dərin** təbəqə.
+
+### 3 · İKİ YANLIŞ FƏRZİYYƏ — ölçmə ilə təkzib olundu
+
+**Fərziyyə 1 — "müstəvi hüceyrə sərhədinə düşəndə üst-üstə poliqon yaranır".**
+İlk probda 8×6×3 modelin X-ortasında 18 əvəzinə 36 poliqon görüldü və bu,
+iki qonşu hüceyrənin ortaq üzü (z-fighting) kimi yozuldu. Buna görə müstəvini
+10⁻⁶ qədər sürüşdürən `_SLICE_NUDGE` yazıldı.
+
+Testlər düşdü: sürüşdürmədən sonra da 36 idi. Ayrıca ölçüldü:
+
+| Müstəvinin yeri | poliqon | tip | **unikal hüceyrə** |
+|---|---|---|---|
+| sərhəddə dəqiq (x = 100) | 36 | üçbucaq | **18** |
+| sərhəddən 10⁻⁴ kənar | 36 | üçbucaq | **18** |
+| hüceyrənin ortası | 36 | üçbucaq | **18** |
+
+Həqiqət: `vtkCutter` **hər hüceyrəni iki üçbucaq** kimi verir. Üst-üstə
+düşmə **yoxdur**. `_SLICE_NUDGE` və onun şərhi **çıxarıldı**; testlər
+poliqon sayını deyil, unikal hüceyrə sayını yoxlayır.
+
+**Fərziyyə 2 — "`SetNormalToZAxis(1)` widget-i Z-yə çevirir".** Ölçüldü:
+bayraq normal **vektorunu dəyişmir** (1, 0, 0 qalır). Vektor indi açıq
+`SetNormal(...)` ilə verilir, əvvəlki oxun bayrağı söndürülür.
+
+> Dərs (Seans 16-dakı kimi): **testin keçməsi yetərli deyil, ölçmə lazımdır**
+> — burada isə əksinə, testin DÜŞMƏSİ yanlış izahı üzə çıxardı.
+
+### 4 · Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Kəsik zamanı həcm gizlədilir.** Şəffaf həcm + kəsik birlikdə oxunmaz
+   olur; quyular və faylar kontekst üçün qalır.
+2. **Normal oxa kilidlidir** — maili müstəvi lay kəsiyində oxunmaz olur.
+3. **Həndəsə saf funksiyalardadır** (`slice_plane`, `slice_fraction`) —
+   VTK obyektsiz sınanır.
+
+### 5 · Yoxlama
+
+```
+tests/test_vtk_slice.py + VTK + Sg görüntü testləri   154 keçdi
+```
+
+### Açıq qalan ⏳
+
+* **B6-c** — GIF / PNG ixracı (`vtkWindowToImageFilter` + Pillow).
+* **`b2a795e`** — ikinci maşından xilas edilməlidir.
