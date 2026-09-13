@@ -7,7 +7,7 @@ və ya WI-ni bilmir — bu, simulyasiya təfərrüatıdır.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -27,6 +27,10 @@ class WellConnection:
     is_injector: bool
     mode: ControlMode
     target: float
+    #: THP idarəli quyuda istifadəçinin THP hədəfi (B4-B). Belə quyu
+    #: `mode = BHP` ilə qurulur — qalıq/Jakobian yalnız BHP tanıyır —
+    #: `target` isə `ThpController` tərəfindən hər addımda yenilənir.
+    thp_target: Optional[float] = None
 
 
 class PeacemanWellModel:
@@ -87,8 +91,14 @@ class PeacemanWellModel:
                 cell=cell,
                 well_index=wi,
                 is_injector=well.well_type is WellType.INJECTOR,
-                mode=well.control.mode,
+                # THP quyusu mühərrik üçün BHP bağlantısıdır (bax
+                # `wellbore/thp_control.py`): `mode is BHP` yoxlamaları
+                # onu səssizcə RATE budağına göndərməsin deyə.
+                mode=(ControlMode.BHP if well.control.mode is ControlMode.THP
+                      else well.control.mode),
                 target=well.control.target,
+                thp_target=(well.control.target
+                            if well.control.mode is ControlMode.THP else None),
             ))
         return out
 

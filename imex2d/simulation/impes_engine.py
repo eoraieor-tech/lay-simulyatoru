@@ -48,6 +48,20 @@ def _reject_multipoint_impes(discretization: IFluxDiscretization) -> None:
             "isə belə kəmiyyət yoxdur. Bax docs/mpfa_o_phase5b1.md §11.")
 
 
+def _reject_thp_impes(model) -> None:
+    """THP idarəsi ilə AÇIQ imtina — B4-B.
+
+    THP nəzarətçisi yalnız tam implicit mühərriklərin addım dövrəsinə
+    qoşulub. IMPES-də THP quyusu sabit BHP = THP kimi işləyərdi — bu,
+    fiziki olaraq YANLIŞ nəticə olardı, ona görə səssizcə keçmirik.
+    """
+    if any(well.control.mode is ControlMode.THP
+           for well in model.active_wells()):
+        raise NotImplementedError(
+            "ImpesEngine THP idarəsi ilə İŞLƏMİR (B4-B): THP-dən BHP-yə "
+            "çevirmə yalnız tam implicit mühərrikin addım dövrəsindədir.")
+
+
 class ImpesEngine(ISimulationEngine):
 
     def __init__(self,
@@ -73,6 +87,7 @@ class ImpesEngine(ISimulationEngine):
         #: QURULDUĞU pluggable edilib.
         self.flux_discretization = flux_discretization or default_flux_discretization()
         _reject_multipoint_impes(self.flux_discretization)
+        _reject_thp_impes(model)
         self._discretization = self.flux_discretization.build(model)
         self._connections = self._discretization.connections
         self._trans = self._discretization.transmissibility

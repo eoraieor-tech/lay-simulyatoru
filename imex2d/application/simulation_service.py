@@ -85,6 +85,7 @@ class SimulationService:
         solver = self.linear_solver or ScipyCgIluSolver(config.linear_solver)
         solver.reset()
         self._reject_incompatible_engine(config)
+        self._reject_thp_with_impes(model)
         try:
             return self.engine_factory(
                 model=model,
@@ -122,6 +123,24 @@ class SimulationService:
             "MPFA-O yalnız tam implicit (Nyuton) mühərriklə işləyir. "
             "Ədədi parametrlər tabında ya hesablama sxemini "
             "«Fully implicit» edin, ya da diskretizasiyanı TPFA seçin."])
+
+    def _reject_thp_with_impes(self, model) -> None:
+        """IMPES + THP — İSTİFADƏÇİ DİLİNDƏ imtina (B4-B).
+
+        `impes_engine._reject_thp_impes()` onsuz da rədd edir, amma
+        texniki dildə. Burada quyuların adı ilə nə etməli olduğu deyilir.
+        """
+        if self.engine_factory is not ImpesEngine:
+            return
+        from ..domain.wells import ControlMode
+        names = [well.name for well in model.active_wells()
+                 if well.control.mode is ControlMode.THP]
+        if names:
+            raise ModelValidationError([
+                "THP idarəsi yalnız tam implicit (Nyuton) mühərriklə işləyir "
+                f"({', '.join(names)}). Ədədi parametrlər tabında hesablama "
+                "sxemini «Fully implicit» edin və ya quyunu BHP rejiminə "
+                "qaytarın."])
 
     @staticmethod
     def _flux_discretization(config: SimulationConfig):

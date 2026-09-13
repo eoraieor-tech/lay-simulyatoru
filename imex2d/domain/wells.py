@@ -17,6 +17,10 @@ class WellType(Enum):
 class ControlMode(Enum):
     BHP = "BHP"
     RATE = "RATE"
+    #: Quyu başı təzyiqi, bar (B4-B). Mühərrik onu HƏR ADDIMDA tərs
+    #: traversdən BHP-yə çevirir — bax `simulation/wellbore/thp_control.py`.
+    #: Lülə həndəsəsi (`Well.tubing`) tələb edir; yalnız istismarçılar.
+    THP = "THP"
 
 
 class Phase(Enum):
@@ -54,11 +58,15 @@ class WellControl:
         `simulation/implicit/standard_well.py:_signed_rate_target`."""
         if self.mode is ControlMode.BHP:
             return validate_pressure([self.target], label="BHP hədəfi").errors
+        if self.mode is ControlMode.THP:
+            return validate_pressure([self.target], label="THP hədəfi").errors
         return validate_well_rate(self.target, label="debit hədəfi").errors
 
     def validate_warnings(self) -> List[str]:
         if self.mode is ControlMode.BHP:
             return validate_pressure([self.target], label="BHP hədəfi").warnings
+        if self.mode is ControlMode.THP:
+            return validate_pressure([self.target], label="THP hədəfi").warnings
         return validate_well_rate(self.target, label="debit hədəfi").warnings
 
 

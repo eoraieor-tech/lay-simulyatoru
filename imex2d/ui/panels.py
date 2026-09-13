@@ -1665,7 +1665,8 @@ class WellPanel(QWidget):
 
         layout.addWidget(self._build_tubing_group())
 
-        hint = QLabel("BHP → bar,   RATE → m³/gün (rezervuar həcmi)\n"
+        hint = QLabel("BHP → bar,   RATE → m³/gün (rezervuar həcmi),   "
+                      "THP → bar (aşağıdakı lülə qrupu açıq olmalıdır)\n"
                       "Ad/i/j/k geologiya cədvəlindən avtomatik gəlir. "
                       "Perf üst/alt boşdursa bütün lay perforasiya olunur.")
         hint.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
@@ -1842,7 +1843,7 @@ class WellPanel(QWidget):
         self.table.setCellWidget(r, self.COL_TYPE, type_box)
 
         mode_box = QComboBox()
-        mode_box.addItems(["BHP", "RATE"])
+        mode_box.addItems(["BHP", "RATE", "THP"])
         mode_box.setCurrentText(state.get("mode", "BHP"))
         mode_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
         self.table.setCellWidget(r, self.COL_MODE, mode_box)

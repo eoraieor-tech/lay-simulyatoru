@@ -31,6 +31,7 @@ from ..discretization import TwoPointFluxDiscretization
 from ..results import SimulationResult, Snapshot
 from .newton import NewtonConfig
 from .three_phase_newton import ThreePhaseNewtonSolver
+from ..wellbore.thp_control import ThpController
 from .three_phase_state import ThreePhaseState
 from .time_stepping import AdaptiveTimeStepConfig, AdaptiveTimeStepper
 
@@ -91,6 +92,10 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in self.newton.well_model.wells
                                   if not c.is_injector})
+        # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
+        self.thp_control = ThpController(model, self.newton.well_model.wells,
+                                         pvt=pvt, fluids=model.fluids)
+        self.thp_control.initialize()
         self.state = self._initial_state()
         # IMPES/FullyImplicit ilə eyni atributlar — UI/testlər üçün
         self.pressure = self.state.pressure
@@ -304,6 +309,14 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
                         float(-rates.per_well_water.get(name, 0.0)))
                     result.well_gas_rate[name].append(
                         float(-rates.per_well_gas.get(name, 0.0)))
+
+            # B4-B: THP quyuları — bu addımda işlədilən BHP qeyd olunur,
+            # sonra son debitlərlə növbəti addımın BHP-si hesablanır.
+            if self.thp_control.active:
+                if output.record_well_rates:
+                    self.thp_control.record(result)
+                self.thp_control.update(rates.per_well_oil, rates.per_well_water,
+                                        getattr(rates, "per_well_gas", None))
 
             if time >= next_snapshot - 1e-9:
                 self._record_snapshot(result, time)

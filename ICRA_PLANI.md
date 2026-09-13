@@ -19,7 +19,7 @@ Sahibkarın orijinal tələbindən çıxarılan **qəbul meyarları**:
 | M2 | **MPFA-O** anizotrop tenzorla, istifadəçi tərəfindən seçilə bilən | ✅ **B1-də bağlandı** |
 | M3 | 5-spot (1 vurma + 4 hasilat), günbəgün, **3 fazalı** | ✅ **B2-də bağlandı** |
 | M4 | P < Psat → qazın ayrılması, GOR artımı | ✅ **B4b + B3-B** (Pb = 300 bar-a qədər ölçülüb) |
-| M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 **B4-A-da bağlandı** (BHP rejimli istismarçılar); RATE ⏳ |
+| M5 | **THP və BHP** hər quyu üçün, qrafikdə | 🟡 **B4-A + B4-B** (BHP və THP rejimli istismarçılar); RATE ⏳ |
 | M6 | RF (%), Water Cut, GOR, orta təzyiq — günbəgün | ✅ |
 | M7 | 3D-də cəbhənin hərəkəti + interaktiv kəsik | ✅ **B6-b + B6-a-da bağlandı** |
 | M8 | Nəticələrin fayla ixracı | ✅ **B5-a-da bağlandı** (PDF + CSV + JSON) |
@@ -310,7 +310,16 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
 > 26 yeni test: `tests/test_wellbore_thp.py`.
 > Təfərrüat: `ISH_HESABATI.md` → Seans 12.
 
-### B4-B — `ControlMode.THP` ⏳ NÖVBƏTİ
+### B4-B — `ControlMode.THP` ✅ BİTDİ (13 sentyabr 2026)
+
+> Açıq birləşmə: THP quyusu mühərrikdə BHP bağlantısıdır, BHP hər
+> addımdan sonra tərs traverse ilə yenilənir (relaksasiya + 25 bar
+> hədd). İki və üç fazalı mühərrik; IMPES və Eclipse ixracı açıq
+> rədd edir. Real 8×8 qaçışda rəqs yoxdur, THP hədəfə ~0.2 bar
+> dəqiqliklə oturur. VFPPROD idxalı və tam implicit birləşmə ⏳.
+>
+> 21 yeni test: `tests/test_thp_control.py`.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 23 · `QARARLAR.md` → Q-15.
 
 Sahibkarın qərarı: ayrı commit-də. THP verilir, addımın əvvəlində
 əvvəlki debitlərlə BHP çıxarılır və Nyutona sabit BHP kimi ötürülür
@@ -536,7 +545,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | B3-A iki fazalı degenerasiya ✅ **BİTDİ** | orta | yüksək | **PVT səhvi (RUN-002) bağlandı** |
 | ~~B3-B üç fazalı yol~~ ✅ **BİTDİ** | orta | yüksək | **M3/M4 yüksək Pb-də bağlandı** |
 | ~~B4-A THP hesabatı~~ ✅ **BİTDİ** | orta | aşağı | **M5 (qismən)** |
-| B4-B `ControlMode.THP` ⏳ | orta | orta | M5 (tam) |
+| ~~B4-B `ControlMode.THP`~~ ✅ **BİTDİ** | orta | orta | M5 (RATE-dən başqa) |
 | ~~B5-a CSV/JSON ixracı~~ ✅ **BİTDİ** | kiçik | sıfır | **M8 bağlandı** |
 | B5-b Pcog ⏳ | kiçik | orta | — |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |

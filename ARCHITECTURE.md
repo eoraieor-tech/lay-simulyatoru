@@ -85,6 +85,7 @@ simulation/wellbore/
     holdup.py                    IHoldupCorrelation, NoSlipHoldup
     traverse.py                  çoxseqmentli təzyiq marşı
     hydraulics.py                nəticəyə THP/BHP sıralarını yazır
+    thp_control.py               THP → BHP (tərs traverse), ThpController (B4-B)
 ```
 
 **V1-də əlaqə BİR İSTİQAMƏTLİDİR** (BHP → THP) və POST-PROSESDİR:
@@ -92,8 +93,13 @@ simulation/wellbore/
 Nyuton həlledicisi bu qatdan XƏBƏRSİZDİR və heç bir quyuda lülə
 həndəsəsi yoxdursa kod ümumiyyətlə işə düşmür.
 
-`ControlMode.THP` (B4-B) gələndə çağırış nöqtəsi addımın əvvəlinə
-köçəcək, lakin paketin özü dəyişməyəcək.
+**B4-B (13 sentyabr 2026) — tərs istiqamət.** `ControlMode.THP` seçiləndə
+quyu `well_model.build_connections`-da yenə **BHP bağlantısı** kimi
+qurulur (`thp_target` sahəsi ilə). Mühərrik (`FullyImplicitEngine`,
+`ThreePhaseSimulationEngine`) quruluşda `ThpController` yaradır və hər
+qəbul olunmuş addımdan sonra `record()` + `update()` çağırır — bağlantının
+`target`-i yerində yenilənir. Qalıq və Jakobian bu qatdan yenə xəbərsizdir.
+IMPES THP-ni rədd edir. Bax `QARARLAR.md` → Q-15.
 
 ---
 

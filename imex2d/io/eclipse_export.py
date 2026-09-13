@@ -276,6 +276,14 @@ class EclipseDeckWriter:
         if producers:
             parts += ["", "WCONPROD"]
             for well in producers:
+                if well.control.mode is ControlMode.THP:
+                    # Əks halda aşağıdakı `else` THP ədədini LRAT DEBİTİ
+                    # kimi yazardı — səssiz, tamamilə yanlış deck.
+                    raise ValueError(
+                        f"{well.name}: THP idarəsi Eclipse deck-inə "
+                        f"ixrac olunmur — WCONPROD THP rejimi VFPPROD "
+                        f"cədvəli tələb edir, o isə modeldə yoxdur. "
+                        f"İxracdan əvvəl quyunu BHP və ya RATE edin.")
                 if well.control.mode is ControlMode.BHP:
                     parts.append(f"  '{well.name}' 'OPEN' 'BHP' 5* "
                                  f"{well.control.target:.2f} /")

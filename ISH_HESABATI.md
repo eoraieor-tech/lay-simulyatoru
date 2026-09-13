@@ -3117,3 +3117,100 @@ və ilk/son kadr fərqlidir — testlə kilidləndi.
 * **B6 bloku BİTDİ** (B6-a, B6-b, B6-c). Növbəti: **B4-B** (`ControlMode.THP`),
   **B5-b** (Pcog — mühərriyə toxunur), **B7** (yekun doğrulama + SPE1).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 13 sentyabr 2026 — Seans 23: B4-B — quyunu THP ilə idarə etmək (`ControlMode.THP`)
+
+Sahibkarın tapşırığı: UI-dakı lülə parametrlərindən istifadə edərək quyunu
+yalnız BHP ilə deyil, **birbaşa THP ilə** idarə etmək. B5-b (Pcog) üç fazalı
+mühərrikə toxunduğu üçün sonraya saxlanıldı; `b2a795e` gözləmədədir.
+
+### 1 · Tətbiqdən ƏVVƏL tapılan iki TƏHLÜKƏLİ boşluq
+
+| Yer | Nə olardı |
+|---|---|
+| `connection.mode is ControlMode.BHP` — `residual.py`, `jacobian.py`, `three_phase_residual.py`, `impes_engine.py`, `standard_well.py`, `well_state.py` | Yeni rejim bağlantıya ötürülsəydi **hamısı onu SƏSSİZCƏ RATE kimi** işlədərdi — THP ədədi (məs. 20 bar) debit hədəfinə (20 m³/gün) çevrilərdi, heç bir xəta olmadan |
+| `io/eclipse_export.py` WCONPROD | BHP olmayan istismarçını `LRAT` kimi yazır — THP ədədi deck-ə debit kimi düşərdi |
+
+Hər ikisi dizaynla bağlandı və testlə kilidləndi (bax aşağıda, Q-15).
+
+### 2 · Dizayn — açıq (explicit) birləşmə
+
+```
+THP (istifadəçi) + son addımın debitləri ──tərs traverse──► BHP (növbəti addım)
+```
+
+* THP quyusu bağlantı səviyyəsində **adi BHP bağlantısıdır**
+  (`mode = BHP`, `thp_target = THP`). Qalıq və Jakobian **toxunulmadı** —
+  onlar yalnız BHP görür.
+* `ThpController` hər qəbul olunmuş addımdan sonra traversi **tərsinə**
+  həll edir (ikiqat bölmə: `bhp_from_thp`) və bağlantının `target`-ini
+  yerində yeniləyir.
+* İlk addımdan əvvəl debit məlum deyil — statik (cüzi axınlı) neft sütunu
+  ilə təxmin edilir.
+* Rəqsə qarşı iki qoruyucu: relaksasiya ω = 0.5 və addım başına maksimal
+  BHP dəyişməsi 25 bar.
+* Hər addımda **işlədilən** BHP `result.well_bhp`-yə yazılır; THP hesabatı
+  (B4-A) artıq sabit hədəfdən deyil, həmin addım-addım BHP-dən hesablanır —
+  yəni qrafikdə nəzarətçinin həqiqi dəqiqliyi görünür.
+
+### 3 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `simulation/wellbore/thp_control.py` | **YENİ** — `bhp_from_thp` (tərs traverse), `ThpController` |
+| `domain/wells.py` | `ControlMode.THP`; THP hədəfi təzyiq kimi yoxlanılır |
+| `simulation/well_model.py` | `WellConnection.thp_target`; THP quyusu `mode = BHP` ilə qurulur |
+| `simulation/implicit/engine.py`, `three_phase_engine.py` | nəzarətçi quruluşda işə düşür, hər addımdan sonra `record` + `update` |
+| `simulation/impes_engine.py`, `application/simulation_service.py` | IMPES + THP **açıq rədd** (istifadəçi dilində mesaj) |
+| `domain/reservoir_model.py` | "ən azı bir BHP quyusu" şərti THP-ni də sayır; THP üçün lülə tələbi, yalnız istismarçı, THP ≥ lay təzyiqi xəbərdarlığı; PVT diapazonuna THP daxil |
+| `simulation/wellbore/hydraulics.py` | THP quyularında addım-addım BHP işlədilir |
+| `io/eclipse_export.py` | THP quyusu ixracda **aydın xəta** verir (VFPPROD yoxdur) |
+| `ui/panels.py` | Rejim siyahısına **THP**; izah sətri |
+| `tests/test_thp_control.py` | **YENİ** — 21 test |
+
+### 4 · Real 8×8 qaçışda ölçülən (5-nöqtə, lülə Ø 62 mm, 20 seqment)
+
+| Qaçış | Yığılma | Addım | BHP ilk → son, bar | ΔBHP maks, bar | İşarə dəyişməsi | \|THP − hədəf\| median / maks, bar |
+|---|---|---|---|---|---|---|
+| 2 faza, THP = 20, 1000 gün | ✅ | 66 | 86.4 → 142.7 | 16.5 | 2 | 0.18 / 18.4 |
+| 2 faza, THP = 60, 1000 gün | ✅ | 65 | 127.0 → 180.5 | 10.9 | 2 | 0.19 / 21.7 |
+| 3 faza, THP = 20, 600 gün | ✅ | 46 | 117.3 → 142.1 | 14.5 | 2 | 1.85 / 16.3 |
+
+Oxunuşu:
+
+* **Rəqs yoxdur** — BHP bütün qaçışda cəmi 2 dəfə istiqamət dəyişir.
+* THP ilk bir neçə addımdan sonra hədəfə oturur (son addımlarda 19.98 / 59.98 bar).
+* Maksimal sapma **ilk addımlardadır**: statik təxmin həqiqi axını bilmir və
+  açıq birləşmə bir addım gecikir. Bu, açıq birləşmənin gözlənilən qiymətidir,
+  gizlədilmir.
+* BHP zamanla ARTIR — su payı böyüdükcə lülədəki sütun ağırlaşır, eyni THP
+  üçün daha böyük BHP lazımdır. Fiziki cəhətdən düzgün istiqamətdir.
+* 2 fazalı THP = 20 qaçışında ilk addımın THP-si `nan`-dır: statik təxmin
+  (neft sütunu) həqiqi axın üçün kifayət etmədi. Növbəti addımda düzəlir.
+* Monotonluq testlə yoxlandı: THP = 60 bar → THP = 10 bar-dan az neft.
+
+### 5 · Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **THP bağlantıya ötürülmür** — yuxarıdakı səssiz-RATE təhlükəsinə görə.
+2. **IMPES rədd edilir**, səssizcə sabit BHP = THP işlədilmir.
+3. **Eclipse ixracı rədd edir** — WCONPROD THP rejimi VFPPROD cədvəli tələb edir,
+   o isə modeldə yoxdur; yanlış deck yazmaq əvəzinə aydın xəta.
+4. **THP ≥ lay təzyiqi — xəbərdarlıq**, xəta deyil (BHP rejimindəki qayda ilə eyni).
+
+### 6 · Yoxlama
+
+```
+tests/test_thp_control.py        21 keçdi
+tam dəst                         2447 keçdi, 1 buraxıldı, 1 xfailed (əvvəl 2426 + 21 yeni)
+```
+
+### Açıq qalan ⏳
+
+* **Tam implicit THP birləşməsi** (THP qalıq tənliyinə daxil) — açıq birləşmənin
+  ilk addım sapması onu tələb edərsə.
+* **RATE quyusunda THP**, **Beggs-Brill sürüşməsi**, **VFPPROD idxalı** — dəyişmədi.
+* **Vurucu quyuda THP** — V1-də yoxdur (diaqnostika xəta verir).
+* Növbəti bloklar: **B5-b** (Pcog — sahibkar sonraya saxladı), **B7** (yekun
+  doğrulama + SPE1).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

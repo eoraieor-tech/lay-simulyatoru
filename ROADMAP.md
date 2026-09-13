@@ -38,6 +38,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > Qalan bloklar: **B4-B** (`ControlMode.THP`), **B5-b** (Pcog),
 > **B6** (3D animasiya), **B7** (yekun doğrulama).
 >
+> **13 sentyabr 2026:** **B6** (kəsik, oynatma, GIF) və **B4-B** bitdi —
+> quyu artıq birbaşa **THP ilə idarə olunur** (açıq birləşmə, Q-15).
+> Qalan: **B5-b** (Pcog), **B7** (yekun doğrulama).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 
@@ -140,7 +144,7 @@ fiziki cəhətdən düzgün qaytarılır, testlərlə təsdiqlənir.
 | 3.5 | Doğrulama: TPFA ilə müqayisə | `tests/` | ✅ |
 | 3.6 | Doğrulama: anizotrop tenzorda | `tests/` | ✅ |
 | 3.7 | Peaceman 3D quyu indeksi (WI), anizotrop r_e | `simulation/well_model.py` | ✅ |
-| **3.8** | **VFP: hidrostatik sütun + sürtünmə itkisi → BHP ↔ THP** | `simulation/wellbore/` | 🟡 **BHP → THP ✅** (B4-A: Chen sürtünməsi + çoxseqmentli traverse) · tərs istiqamət (`ControlMode.THP`) ⏳ B4-B |
+| **3.8** | **VFP: hidrostatik sütun + sürtünmə itkisi → BHP ↔ THP** | `simulation/wellbore/` | 🟡 **BHP → THP ✅** (B4-A: Chen sürtünməsi + çoxseqmentli traverse) · **tərs istiqamət (`ControlMode.THP`) ✅** (B4-B, açıq birləşmə) · VFPPROD ⏳ |
 | 3.9 | Quyu rejimləri: sabit BHP, sabit debet | `domain/wells.py` | ✅ |
 | 3.10 | Testlər: axın balansı, WI analitik yoxlama | `tests/` | ✅ |
 

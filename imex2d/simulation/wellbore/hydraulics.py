@@ -68,6 +68,12 @@ class WellboreHydraulics(IWellHydraulicsProvider):
 
             tubing = well.tubing
             depth = depths[well.name]
+            # BHP rejimində hədəf sabitdir. THP rejimində (B4-B) isə
+            # mühərrik HƏR ADDIMDA işlətdiyi BHP-ni `well_bhp`-yə yazıb —
+            # THP həmin addım-addım BHP-dən hesablanır ki, nəzarətçinin
+            # həqiqi dəqiqliyi (açıq birləşmənin gecikməsi) görünsün.
+            recorded = result.well_bhp.get(well.name) or []
+            thp_controlled = well.control.mode is ControlMode.THP
             bhp = float(well.control.target)
 
             oil = result.well_oil_rate.get(well.name, [])
@@ -88,11 +94,14 @@ class WellboreHydraulics(IWellHydraulicsProvider):
                     oil_density=model.fluids.oil_density,
                     water_density=model.fluids.water_density,
                     gas_density=model.fluids.gas_density)
+                step_bhp = (float(recorded[i])
+                            if thp_controlled and i < len(recorded) else bhp)
                 thp_series.append(self.tubing_head_pressure(
-                    bhp, depth, stream, tubing))
+                    step_bhp, depth, stream, tubing))
 
             result.well_thp[well.name] = thp_series
-            result.well_bhp[well.name] = [bhp] * steps
+            if not thp_controlled:
+                result.well_bhp[well.name] = [bhp] * steps
 
         self._log_summary(result)
 
@@ -105,7 +114,7 @@ class WellboreHydraulics(IWellHydraulicsProvider):
             return "lülə həndəsəsi verilməyib"
         if well.well_type is not WellType.PRODUCER:
             return "v1-də yalnız istismarçılar dəstəklənir"
-        if well.control.mode is not ControlMode.BHP:
+        if well.control.mode not in (ControlMode.BHP, ControlMode.THP):
             return ("v1-də yalnız BHP rejimi dəstəklənir — RATE rejimində "
                     "mühərrik quyu dibi təzyiqini hesablamır")
         if well.name not in depths:

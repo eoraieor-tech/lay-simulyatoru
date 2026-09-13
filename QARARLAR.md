@@ -538,3 +538,38 @@ JSON-dadır.
 YOXDUR. İxrac faylı hesabat deyil, **məlumatdır**; yuvarlaqlaşdırma
 "geri oxunanda eyni ədədlər" müqaviləsini pozardı. İnsan üçün
 oxunaqlı təqdimat PDF hesabatın işidir.
+
+
+## Q-15 — THP idarəsi açıq birləşmədir; THP quyusu mühərrikdə BHP bağlantısıdır
+
+**Tarix:** 13 sentyabr 2026 · **Kontekst:** B4-B
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 23)
+
+### Qərar 1 — `ControlMode.THP` bağlantıya ÖTÜRÜLMÜR
+
+Mühərrikdə quyu rejimi `connection.mode is ControlMode.BHP` ilə
+yoxlanılır — `else` budağı RATE-dir. Bu yoxlama altı faylda var. Yeni
+rejim bağlantıya ötürülsəydi, hamısı onu **səssizcə RATE** kimi işlədərdi.
+
+İndi THP quyusu `mode = BHP`, `thp_target = THP` ilə qurulur;
+`ThpController` bağlantının `target`-ini addım-addım yeniləyir.
+
+**Alternativ rədd edildi:** hər `is BHP` yoxlamasını `in (BHP, THP)` etmək —
+altı faylda, qalıq və Jakobian daxil, dəyişiklik; biri unudulsa səhv
+yenə səssiz olardı.
+
+### Qərar 2 — açıq (explicit) birləşmə, relaksasiya + addım həddi ilə
+
+BHP əvvəlki addımın debitlərindən tərs traverse ilə tapılır. Rəqsə qarşı
+ω = 0.5 relaksasiya və addım başına 25 bar hədd. Ölçüldü (Seans 23): üç
+qaçışda rəqs yoxdur, THP hədəfə 0.2 bar dəqiqliklə oturur, maksimal sapma
+yalnız ilk addımlardadır.
+
+**Alternativ təxirə salındı ⏳:** tam implicit birləşmə (THP tənliyi
+Nyuton sisteminə) — qalıq/Jakobianı dəyişir, B3-B-dən sonra qazanılmış
+yığılma sabitliyini riskə atardı.
+
+### Qərar 3 — dəstəklənməyən yerlərdə AÇIQ imtina
+
+IMPES və Eclipse ixracı THP-ni tanımır. Səssiz yaxınlaşma (IMPES-də
+BHP = THP, ixracda LRAT) əvəzinə aydın xəta verilir.

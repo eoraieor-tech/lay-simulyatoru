@@ -260,9 +260,10 @@ class ReservoirModel:
         if not wells:
             report.error("Modeldə aktiv quyu yoxdur.", "quyular")
             return
-        if not any(w.control.mode is ControlMode.BHP for w in wells):
+        if not any(w.control.mode in (ControlMode.BHP, ControlMode.THP)
+                   for w in wells):
             report.error(
-                "Ən azı bir quyu BHP ilə idarə olunmalıdır — "
+                "Ən azı bir quyu BHP və ya THP ilə idarə olunmalıdır — "
                 "əks halda təzyiq səviyyəsi qeyri-müəyyəndir.", "quyular")
 
         seen = {}
@@ -333,8 +334,33 @@ class ReservoirModel:
                 f"söndürüldü (WI = 0).", well.name,
                 "Qalan perforasiyalar normal işləyir")
 
+    @staticmethod
+    def _check_thp_control(well, reference, report: DiagnosticReport) -> None:
+        """THP idarəsinin şərtləri (B4-B)."""
+        if well.is_injector:
+            report.error(
+                f"{well.name}: THP idarəsi yalnız hasilat quyuları üçündür.",
+                well.name, "Vurucu quyunu BHP və ya RATE rejiminə keçirin")
+            return
+        if getattr(well, "tubing", None) is None:
+            report.error(
+                f"{well.name}: THP idarəsi lülə həndəsəsi tələb edir.",
+                well.name,
+                "Quyular panelində «Lülə — quyu başı təzyiqi» qrupunda "
+                "«THP hesabla» qutusunu işarələyin")
+            return
+        if well.control.target >= reference:
+            report.warning(
+                f"{well.name}: THP ({well.control.target:.0f} bar) lay "
+                f"təzyiqindən ({reference:.0f} bar) aşağı deyil — quyu "
+                f"hasilat verməyəcək.", well.name,
+                "Quyu başı təzyiqi həmişə quyu dibi təzyiqindən aşağıdır")
+
     def _check_well_control(self, well, reference, fracture,
                             report: DiagnosticReport) -> None:
+        if well.control.mode is ControlMode.THP:
+            self._check_thp_control(well, reference, report)
+            return
         if well.control.mode is not ControlMode.BHP:
             return
         target = well.control.target
@@ -394,7 +420,7 @@ class ReservoirModel:
         if self.pvt_table is not None and self.pvt_table.size >= 2:
             pressures = [float(self.initial_conditions.datum_pressure)]
             pressures += [float(w.control.target) for w in self.active_wells()
-                         if w.control.mode is ControlMode.BHP]
+                         if w.control.mode in (ControlMode.BHP, ControlMode.THP)]
             result = validate_query_range(
                 pressures, float(self.pvt_table.pressure[0]),
                 float(self.pvt_table.pressure[-1]), "PVT təzyiq sorğusu")

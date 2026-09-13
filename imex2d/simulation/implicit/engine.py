@@ -27,6 +27,7 @@ from ...logging_setup import get_logger
 from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
 from ..well_model import PeacemanWellModel
+from ..wellbore.thp_control import ThpController
 from .jacobian import JacobianAssembler
 from .linear import NewtonLinearSolver
 from .newton import NewtonConfig, NewtonSolver
@@ -84,6 +85,10 @@ class FullyImplicitEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in wells
                                   if not c.is_injector})
+        # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
+        self.thp_control = ThpController(model, wells, pvt=pvt,
+                                         fluids=model.fluids)
+        self.thp_control.initialize()
         self.state = self._initial_state()
         # IMPES mühərriki ilə eyni atributlar — testlər və UI üçün
         self.pressure = self.state.pressure
@@ -201,6 +206,14 @@ class FullyImplicitEngine(ISimulationEngine):
                         float(-rates.per_well_oil.get(name, 0.0)))
                     result.well_water_rate[name].append(
                         float(-rates.per_well_water.get(name, 0.0)))
+
+            # B4-B: THP quyuları — bu addımda işlədilən BHP qeyd olunur,
+            # sonra son debitlərlə növbəti addımın BHP-si hesablanır.
+            if self.thp_control.active:
+                if output.record_well_rates:
+                    self.thp_control.record(result)
+                self.thp_control.update(rates.per_well_oil, rates.per_well_water,
+                                        getattr(rates, "per_well_gas", None))
 
             if time >= next_snapshot - 1e-9:
                 self._record_snapshot(result, time)
