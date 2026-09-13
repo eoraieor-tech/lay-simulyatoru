@@ -211,6 +211,7 @@ class VtkReservoirScene:
         self._slice_cutter = None
         self._slice_actor = None
         self._slice_widget = None
+        self._caption_actor = None       # B6-c
         self._build_grid()
 
     # ── həndəsə ────────────────────────────────────────────────────
@@ -1018,6 +1019,37 @@ class VtkReservoirScene:
                 continue
             multipliers.append(fault.effective_multiplier)
         return polygons, multipliers
+
+    def set_caption(self, text: str):
+        """Sol yuxarı küncdə yazı (məs. "t = 400 gün · Sg") — B6-c.
+
+        NİYƏ SƏHNƏNİN İÇİNDƏ. VTK pəncərəsindən tutulan kadr Qt
+        etiketlərini (`volume_time_label`) DAXİL ETMİR. Zaman yazısı
+        olmasa, ixrac olunan GIF-də hansı kadrın hansı günə aid olduğu
+        görünməzdi. Boş mətn yazını gizlədir.
+        """
+        import vtk
+
+        if self._caption_actor is None:
+            actor = vtk.vtkTextActor()
+            actor.GetPositionCoordinate().SetCoordinateSystemToNormalizedViewport()
+            actor.SetPosition(0.02, 0.93)
+            properties = actor.GetTextProperty()
+            properties.SetColor(0.863, 0.894, 0.918)      # PALETTE.text
+            properties.SetFontSize(15)
+            properties.BoldOn()
+            properties.ItalicOff()
+            properties.ShadowOff()
+            self.renderer.AddViewProp(actor)
+            self._caption_actor = actor
+        self._caption_actor.SetInput(text or "")
+        self._caption_actor.SetVisibility(1 if text else 0)
+
+    def caption(self) -> str:
+        """Cari yazı — yazı yoxdursa boş sətir."""
+        if self._caption_actor is None or not self._caption_actor.GetVisibility():
+            return ""
+        return self._caption_actor.GetInput() or ""
 
     def _update_scalar_bar(self, table, label: str):
         """Rəng legendi — ResInsight-dakı kimi sağ tərəfdə, şaquli."""

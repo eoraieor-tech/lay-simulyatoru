@@ -22,7 +22,8 @@ from PyQt5.QtWidgets import (QAction, QCheckBox, QComboBox, QDoubleSpinBox,
                              QFileDialog,
                              QHBoxLayout, QHeaderView, QLabel, QTableWidget,
                              QTableWidgetItem,
-                             QMainWindow, QMessageBox, QProgressBar, QPushButton,
+                             QApplication, QMainWindow, QMessageBox, QProgressBar,
+                             QProgressDialog, QPushButton,
                              QSlider, QSpinBox, QSplitter, QStackedWidget,
                              QTabWidget, QTextEdit,
                              QToolBox, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
@@ -60,6 +61,7 @@ from ..history.parameters import ParameterSet, standard_parameters
 from ..history.observation_io import (ObservationFormatError,
                                        read_observations_csv)
 from ..io.eclipse_export import EclipseDeckWriter
+from ..rendering import animation_export
 from ..reporting import results_export
 from .playback import (PLAYBACK_DEFAULT_INDEX, PLAYBACK_SPEEDS,
                        advance, interval_ms, step_value)
@@ -672,6 +674,13 @@ class MainWindow(QMainWindow):
         save_button = QPushButton("Şəkli saxla…")
         save_button.clicked.connect(self.save_volume_image)
         toolbar.addWidget(save_button)
+        gif_button = QPushButton("Animasiyanı GIF saxla…")
+        gif_button.setToolTip(
+            "Bütün zaman kadrlarını ekrandakı görünüşlə (motor, xassə, "
+            "kəsik, baxış bucağı) animasiyalı GIF kimi yazır. Kadr "
+            "müddəti Model tabındakı oynatma sürətindən götürülür.")
+        gif_button.clicked.connect(self.save_volume_animation)
+        toolbar.addWidget(gif_button)
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
@@ -799,6 +808,7 @@ class MainWindow(QMainWindow):
             self._on_slice_dragged)
 
         self.vtk_scene.update_values(values, R.property_label(key))
+        self.vtk_scene.set_caption(getattr(self, "_volume_caption", ""))
         if rebuild or view is not None:
             # `reset_camera()` istifadəçinin fırlatdığı bucağı SIFIRLAYIR
             # — ona görə yalnız model dəyişəndə və ya hazır baxış
@@ -845,6 +855,9 @@ class MainWindow(QMainWindow):
 
         time = snapshot.time if snapshot else 0.0
         self.volume_time_label.setText(f"t = {time:8.0f} gün")
+        # VTK səhnəsinin öz yazısı — ixrac olunan kadrlarda zaman görünsün
+        # (Qt etiketi pəncərədən tutulan kadra DÜŞMÜR). B6-c.
+        self._volume_caption = f"t = {time:.0f} gün  ·  {R.property_label(key)}"
 
         # istifadəçinin fırlatdığı bucaq qorunur: yalnız hazır baxış
         # seçiləndə dəyişdirilir
@@ -913,19 +926,107 @@ class MainWindow(QMainWindow):
         else:
             self.update_volume()
 
+    def _volume_uses_vtk(self) -> bool:
+        return (self.volume_engine.currentData() == "vtk"
+                and self.vtk_widget is not None
+                and self.vtk_scene is not None)
+
+    def _capture_volume_frame(self):
+        """Ekrandakı 3D görüntünün kadrı — HANSI motor aktivdirsə ondan."""
+        if self._volume_uses_vtk():
+            return animation_export.capture_render_window(
+                self.vtk_widget.GetRenderWindow())
+        return animation_export.capture_figure(self.volume_fig)
+
     def save_volume_image(self):
+        """Cari 3D görüntünü PNG/PDF kimi saxlayır.
+
+        TAPILAN SƏHV (B6-c): əvvəl HƏMİŞƏ `volume_fig.savefig` çağırılırdı.
+        VTK motoru aktiv olanda həmin matplotlib fiquru ekranda deyil,
+        GİZLİ kanvasda olur — yəni saxlanılan şəkil istifadəçinin
+        gördüyü VTK görüntüsü DEYİLDİ. İndi aktiv motordan tutulur;
+        matplotlib yolu isə olduğu kimi qalır (vektor PDF, dpi 200).
+        """
         path, _ = QFileDialog.getSaveFileName(
             self, "3D görüntünü saxla", "model_3d.png",
             "PNG (*.png);;PDF (*.pdf)")
         if not path:
             return
         try:
-            self.volume_fig.savefig(path, dpi=200,
-                                    facecolor=self.volume_fig.get_facecolor())
+            if self._volume_uses_vtk():
+                animation_export.write_png(self._capture_volume_frame(), path)
+            else:
+                self.volume_fig.savefig(path, dpi=200,
+                                        facecolor=self.volume_fig.get_facecolor())
         except Exception as error:
             QMessageBox.critical(self, "Yazılmadı", str(error))
             return
         self.statusBar().showMessage(f"Saxlanıldı: {os.path.basename(path)}")
+
+    def save_volume_animation(self):
+        """Bütün zaman kadrlarını animasiyalı GIF kimi yazır (B6-c).
+
+        Hər kadr üçün 3D zaman sürgüsü o ana qoyulur, görüntü yenidən
+        çəkilir və AKTİV motordan tutulur — yəni GIF ekrandakı görünüşü
+        (xassə, kəsik, baxış bucağı) olduğu kimi saxlayır. Sonda sürgü
+        istifadəçinin qoyduğu kadra QAYTARILIR.
+
+        Kadr müddəti Model tabındakı oynatma sürətindən (B6-b) gəlir ki,
+        GIF ekrandakı oynatma ilə eyni tempdə getsin.
+        """
+        if not self.result or not self.result.snapshots:
+            QMessageBox.information(self, "Nəticə yoxdur",
+                                    "Əvvəlcə simulyasiyanı işə salın.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Animasiyanı saxla", "animasiya.gif", "GIF (*.gif)")
+        if not path:
+            return
+        if not path.lower().endswith(".gif"):
+            path += ".gif"
+
+        count = len(self.result.snapshots)
+        original = self.volume_time.value()
+        progress = QProgressDialog("Kadrlar çəkilir…", "Dayandır", 0, count, self)
+        progress.setWindowTitle("GIF ixracı")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        frames = []
+        try:
+            for index in range(count):
+                if progress.wasCanceled():
+                    break
+                self.volume_time.blockSignals(True)
+                self.volume_time.setValue(index)
+                self.volume_time.blockSignals(False)
+                self.update_volume()
+                QApplication.processEvents()
+                frames.append(self._capture_volume_frame())
+                progress.setValue(index + 1)
+        except Exception as error:
+            LOG.exception("GIF kadrları tutulmadı")
+            QMessageBox.critical(self, "Yazılmadı", str(error))
+            frames = []
+        finally:
+            progress.close()
+            self.volume_time.blockSignals(True)
+            self.volume_time.setValue(original)
+            self.volume_time.blockSignals(False)
+            self.update_volume()
+
+        if not frames:
+            return
+        try:
+            animation_export.write_gif(
+                frames, path, interval_ms(self.speed_box.currentData() or 1.0))
+        except Exception as error:
+            QMessageBox.critical(self, "Yazılmadı", str(error))
+            return
+        note = ("" if len(frames) == count
+                else f" (dayandırıldı: {len(frames)}/{count} kadr)")
+        self.statusBar().showMessage(
+            f"Saxlanıldı: {os.path.basename(path)} — {len(frames)} kadr{note}")
 
     def reset_volume_view(self):
         self.volume_view.setCurrentIndex(

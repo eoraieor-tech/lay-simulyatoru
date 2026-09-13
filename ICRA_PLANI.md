@@ -462,7 +462,16 @@ Pcog üçün monotonluq və son nöqtə testləri.
 > `SetNormalToZAxis` normal vektorunu dəyişmir.
 >
 > 28 yeni test. Təfərrüat: `ISH_HESABATI.md` → Seans 21.
-### B6-c — GIF / PNG ixracı ⏳
+### B6-c — GIF / PNG ixracı ✅ BİTDİ (13 sentyabr 2026)
+
+> 3D tabında "Animasiyanı GIF saxla…": hər snapshot bir kadr, aktiv
+> motordan tutulur (xassə, kəsik, baxış bucağı saxlanılır), kadr müddəti
+> B6-b oynatma sürətindən. Səhnədə "t = … gün" yazısı kadra düşür.
+>
+> **Yol boyu tapılan səhv:** "Şəkli saxla…" VTK aktiv olanda da gizli
+> matplotlib fiqurunu yazırdı — indi aktiv motordan tutulur.
+>
+> 16 yeni test, yeni asılılıq yoxdur. Təfərrüat: `ISH_HESABATI.md` → Seans 22.
 
 **Aşağıdakı ilkin plan mətni saxlanılır:**
 

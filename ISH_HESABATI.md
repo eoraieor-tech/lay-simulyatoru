@@ -3050,3 +3050,70 @@ tests/test_vtk_slice.py + VTK + Sg görüntü testləri   154 keçdi
 
 * **B6-c** — GIF / PNG ixracı (`vtkWindowToImageFilter` + Pillow).
 * **`b2a795e`** — ikinci maşından xilas edilməlidir.
+
+---
+
+## 13 sentyabr 2026 — Seans 22: B6-c — PNG kadr və animasiyalı GIF ixracı
+
+### 1 · Tətbiqdən ƏVVƏL ölçülən
+
+| Yoxlama | Nəticə |
+|---|---|
+| ekransız VTK pəncərəsindən kadr (`vtkWindowToImageFilter`) | işləyir — 10 kadr 0.11 san, RGB |
+| Pillow 12.3 ilə animasiyalı GIF | yazılır; geri oxunanda 10 kadr, 140 ms, sonsuz dövrə |
+| yeni asılılıq | **yoxdur** (`imageio` / `ffmpeg` lazım deyil) |
+
+### 2 · Yol boyu TAPILAN SƏHV — "Şəkli saxla…" yanlış görüntünü yazırdı
+
+3D tabındakı "Şəkli saxla…" düyməsi HƏMİŞƏ `volume_fig.savefig(...)`
+çağırırdı. VTK motoru aktiv olanda həmin matplotlib fiquru ekranda deyil,
+**gizli kanvasdadır** — yəni saxlanılan şəkil istifadəçinin gördüyü VTK
+görüntüsü DEYİLDİ. İndi kadr aktiv motordan tutulur; matplotlib yolu olduğu
+kimi qalıb (vektor PDF, dpi 200).
+
+### 3 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `rendering/animation_export.py` | **YENİ** — `capture_render_window`, `capture_figure`, `write_png`, `write_gif` (Qt-siz) |
+| `rendering/vtk_volume.py` | `set_caption()` / `caption()` — səhnənin içində "t = … gün · xassə" yazısı |
+| `ui/main_window.py` | "Şəkli saxla…" düzəlişi; yeni **"Animasiyanı GIF saxla…"** düyməsi |
+| `tests/test_animation_export.py` | **YENİ** — 16 test |
+
+GIF ixracı:
+
+* hər snapshot bir kadr; 3D zaman sürgüsü hər kadra qoyulur, görüntü çəkilir
+  və **aktiv motordan** tutulur — yəni xassə, kəsik (B6-a), baxış bucağı
+  ekrandakı kimi saxlanılır;
+* kadr müddəti Model tabındakı **oynatma sürətindən** (B6-b) gəlir — GIF
+  ekrandakı oynatma ilə eyni tempdə gedir;
+* irəliləmə pəncərəsində "Dayandır" var — yarımçıq ixrac da yazılır və
+  status sətrində neçə kadr olduğu göstərilir;
+* sonda sürgü istifadəçinin qoyduğu kadra **qaytarılır**.
+
+### 4 · Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Zaman yazısı VTK səhnəsinin İÇİNDƏDİR.** Pəncərədən tutulan kadr Qt
+   etiketlərini daxil etmir — yazı olmasa GIF-də hansı kadrın hansı günə aid
+   olduğu görünməzdi. Testlə təsdiqləndi: yazı tutulan piksellərə düşür.
+2. **GIF kadr müddətinin aşağı həddi 20 ms.** Brauzerlərin çoxu daha qısa
+   müddəti 100 ms kimi oynadır — yəni "daha sürətli" GIF əslində yavaş olardı.
+3. **Kadr ölçüsü dəyişsə aydın xəta.** İxrac zamanı pəncərə ölçüsü dəyişərsə,
+   sıçrayan GIF səssizcə yazılmır.
+4. **İxrac məntiqi Qt-siz modulda.** `MainWindow()` testdə `pytest`-i
+   çökdürdüyü üçün (Seans 18) kadr tutma və yazma ayrıca sınanır.
+
+### 5 · Yoxlama
+
+```
+tests/test_animation_export.py + kəsik + VTK + Sg + oynatma   145 keçdi
+```
+
+Real üç fazalı qaçışda (6 snapshot) GIF-in kadr sayı snapshot sayına bərabərdir
+və ilk/son kadr fərqlidir — testlə kilidləndi.
+
+### Açıq qalan ⏳
+
+* **B6 bloku BİTDİ** (B6-a, B6-b, B6-c). Növbəti: **B4-B** (`ControlMode.THP`),
+  **B5-b** (Pcog — mühərriyə toxunur), **B7** (yekun doğrulama + SPE1).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
