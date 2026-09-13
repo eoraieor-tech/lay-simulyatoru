@@ -14,17 +14,23 @@ from ..domain.reservoir_model import ReservoirModel
 from ..domain.scal import CoreyParameters
 from ..domain.wells import WellType
 from ..simulation.results import SimulationResult, Snapshot
-from .theme import (PALETTE, PERMEABILITY_CMAP, POROSITY_CMAP, PRESSURE_CMAP,
-                    SATURATION_CMAP, legend, style_axes)
+from .theme import (GAS_SATURATION_CMAP, PALETTE, PERMEABILITY_CMAP,
+                    POROSITY_CMAP, PRESSURE_CMAP, SATURATION_CMAP, legend,
+                    style_axes)
 
 SATURATION = "SW"
 PRESSURE = "PRESSURE"
 PERMEABILITY = "PERMX"
 POROSITY = "PORO"
 DEPTH = "DEPTH"
+#: Qaz doyumluluğu — YALNIZ üç fazalı nəticədə məna daşıyır. İki fazalı
+#: snapshot-da `gas_saturation is None` olur və Sg ≡ 0 göstərilir (bu,
+#: fiziki olaraq DƏQİQDİR: modeldə qaz fazası yoxdur).
+GAS_SATURATION = "SG"
 
 PROPERTY_LABELS = {
     SATURATION: "Su doyumluluğu (Sw)",
+    GAS_SATURATION: "Qaz doyumluluğu (Sg)",
     PRESSURE: "Təzyiq (bar)",
     PERMEABILITY: "Keçiricilik Kx (mD)",
     POROSITY: "Məsaməlilik φ",
@@ -62,6 +68,35 @@ def original_key(name: str) -> str:
 
 def impact_key(name: str) -> str:
     return f"{IMPACT_PREFIX}{name}"
+
+
+def _gas_saturation(snapshot, ncell: int) -> np.ndarray:
+    """Snapshot-dan Sg — hüceyrə üzrə düz massiv.
+
+    * snapshot yoxdur (simulyasiya hələ işləməyib) → `NaN`: ilkin qaz
+      papağı ola bilər, onu burada bilmirik — uydurma 0 VERİLMİR;
+    * iki fazalı snapshot (`gas_saturation is None`) → sıfırlar: modeldə
+      qaz fazası yoxdur, Sg ≡ 0 fiziki olaraq DƏQİQDİR;
+    * üç fazalı → mühərrikin öz dəyərləri, dəyişdirilmədən.
+    """
+    if snapshot is None:
+        return np.full(ncell, np.nan)
+    gas = getattr(snapshot, "gas_saturation", None)
+    if gas is None:
+        return np.zeros(ncell)
+    return np.asarray(gas, float)
+
+
+def _gas_saturation_limits(model) -> tuple:
+    """Sg rəng şkalası `(0, 1 − Swc)` — animasiya boyu SABİTDİR.
+
+    Avtomatik şkala hər kadrda dəyişərdi: qazın az olduğu erkən kadrda
+    kiçik Sg tünd qırmızı görünər, cəbhənin böyüməsi isə gözə çarpmazdı.
+    `1 − Swc` Sg-nin fiziki yuxarı həddidir (bağlı su heç vaxt çıxmır).
+    """
+    swc = float(getattr(getattr(model, "scal_parameters", None), "swc", 0.0) or 0.0)
+    high = 1.0 - swc
+    return 0.0, (high if high > 0.0 else 1.0)
 
 
 def property_label(key: str) -> str:
@@ -171,6 +206,12 @@ class MapRenderer:
             data = (np.asarray(snapshot.water_saturation).reshape(shape3d) if snapshot
                     else np.full(shape3d, model.initial_conditions.water_saturation))
             return data, SATURATION_CMAP, scal.swc, 1.0 - scal.sor
+        if key == GAS_SATURATION:
+            # AÇIQ budaq MƏCBURİDİR: aşağıdakı son `return` tanınmayan
+            # açarı SƏSSİZCƏ məsaməlilik kimi göstərir.
+            data = _gas_saturation(snapshot, model.grid.ncell).reshape(shape3d)
+            low, high = _gas_saturation_limits(model)
+            return data, GAS_SATURATION_CMAP, low, high
         if key == PRESSURE:
             data = (np.asarray(snapshot.pressure).reshape(shape3d) if snapshot
                     else np.full(shape3d, model.initial_conditions.datum_pressure))
@@ -199,6 +240,10 @@ class MapRenderer:
             data = (slice_of(snapshot.water_saturation) if snapshot
                     else np.full(shape2d, model.initial_conditions.water_saturation))
             return data, SATURATION_CMAP, scal.swc, 1.0 - scal.sor
+        if key == GAS_SATURATION:
+            data = slice_of(_gas_saturation(snapshot, model.grid.ncell))
+            low, high = _gas_saturation_limits(model)
+            return data, GAS_SATURATION_CMAP, low, high
         if key == PRESSURE:
             data = (slice_of(snapshot.pressure) if snapshot
                     else np.full(shape2d, model.initial_conditions.datum_pressure))

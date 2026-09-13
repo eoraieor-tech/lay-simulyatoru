@@ -2889,3 +2889,80 @@ təsirlənmiş ola bilər. ⏳ ölçülməyib.
 3. **Seans nömrələməsi** iki maşında paralel işdə toqquşur — hər
    seansdan əvvəl `git fetch` qaydası CLAUDE.md-yə əlavə olunsunmu?
 4. Seans 16-dan qalan: **bu nüsxə hansı maşındır?**
+
+---
+
+## 13 sentyabr 2026 — Seans 20: git işləri + Sg xassəsi görüntüyə əlavə olundu
+
+### 1 · Git
+
+* `git pull --ff-only` → lokal `main` `8a85e64` → **`3e357bb`** (ikinci
+  nüsxənin Seans 19 qeydi gəldi, kod dəyişikliyi yoxdur).
+* **`b2a795e` XİLAS EDİLƏ BİLMƏDİ — bu kompüterdə yoxdur.** Yoxlanıldı:
+  `git cat-file -t b2a795e` → "Not a valid object name"; reflog-da da yoxdur;
+  `C:\Dev\LSM` bu kompüterdə mövcud deyil. Seans 19-a görə commit ikinci
+  maşının diskindədir (orada `.venv` / Python 3.12, burada `venv` / 3.14).
+  Xilas yalnız HƏMİN maşından mümkündür — ⏳ sahibkara əmrlər verildi.
+* Seans 19 qaçışlarının (RF 1.53 %) yenidən ölçülməsi — sahibkarın qərarı
+  ilə **təxirə salındı**.
+
+### 2 · Bildiriş
+
+Sahibkar üç fazalı mühərriki işlətdi: status sətrində GOR görünür, amma
+"Xassə" siyahısında **Qaz doyumluluğu (Sg) yox idi** — qazın cəbhəsini
+ekranda izləmək mümkün deyildi.
+
+### 3 · Səbəb
+
+Məlumat ARTIQ VAR idi: `three_phase_engine._record_snapshot` hər snapshot-a
+`gas_saturation` yazır. Çatışmayan yalnız görüntü qatı idi — iki açılan
+siyahıda (Model tabı, 3D tabı) və renderer seçicilərində Sg açarı yox idi.
+
+### 4 · GİZLİ TƏLƏ — sadəcə siyahıya əlavə etmək YANLIŞ olardı
+
+Hər iki seçicinin (`_select_volume`, `_select`) sonunda tanınmayan açar
+üçün **səssiz defolt** var:
+
+```python
+return model.rock.porosity.values.reshape(shape3d), POROSITY_CMAP, None, None
+```
+
+Yəni "Sg" yalnız siyahıya salınsaydı, ekranda **Sg adı altında məsaməlilik**
+görünərdi — heç bir xəta vermədən. Ona görə hər iki seçiciyə AÇIQ budaq
+yazıldı və bu, ayrıca testlə kilidləndi.
+
+### 5 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `rendering/theme.py` | `GAS_SATURATION_CMAP` — su/neft xəritəsindən fərqli rəng ailəsi |
+| `rendering/renderers.py` | `GAS_SATURATION = "SG"`, etiket, `_gas_saturation()`, `_gas_saturation_limits()`, iki seçici budağı |
+| `ui/main_window.py` | Sg **həm Model, həm 3D** tabının siyahısına |
+| `tests/test_gas_saturation_view.py` | **YENİ** — 10 test |
+
+### 6 · Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Sg hər İKİ taba əlavə olundu**, təkcə 3D-yə yox. Səbəb: B6-b-nin
+   oynatma düymələri **Model** tabındadır — qazın cəbhəsini kadr-kadr
+   izləmək orada mümkündür.
+2. **Snapshot yoxdursa `NaN`**, sıfır yox. Simulyasiyadan əvvəl ilkin qaz
+   papağı ola bilər; renderer onu bilmir — uydurma 0 verilmir.
+3. **İki fazalı snapshot-da sıfırlar.** Modeldə qaz fazası yoxdur, Sg ≡ 0
+   fiziki olaraq DƏQİQDİR.
+4. **Rəng şkalası sabitdir: `(0, 1 − Swc)`.** Avtomatik şkala hər kadrda
+   dəyişərdi: erkən kadrda cüzi Sg tünd qırmızı görünər, cəbhənin böyüməsi
+   gözə çarpmazdı. `1 − Swc` Sg-nin fiziki yuxarı həddidir.
+
+### 7 · Yoxlama
+
+```
+tests/test_gas_saturation_view.py + görüntü testləri   127 keçdi
+```
+
+Real üç fazalı qaçışda (Pb = 240 bar) son kadrda Sg > 0 hüceyrələr görünür
+və qaz zonası zamanla kiçilmir — testlə kilidləndi.
+
+### Açıq qalan ⏳
+
+* **`b2a795e`** — ikinci maşından xilas edilməlidir.
+* **B6-a** — interaktiv kəsik (növbəti).

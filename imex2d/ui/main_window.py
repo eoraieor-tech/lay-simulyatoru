@@ -326,7 +326,7 @@ class MainWindow(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page)
         bar = QHBoxLayout()
         self.property_box = QComboBox()
-        for key in (R.SATURATION, R.PRESSURE, R.PERMEABILITY, R.POROSITY,
+        for key in (R.SATURATION, R.GAS_SATURATION, R.PRESSURE, R.PERMEABILITY, R.POROSITY,
                     R.DEPTH):
             self.property_box.addItem(R.PROPERTY_LABELS[key], key)
         self.property_box.currentIndexChanged.connect(self.update_map)
@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
         self.volume_engine.currentIndexChanged.connect(self._on_engine_changed)
 
         self.volume_property = QComboBox()
-        for key in (R.SATURATION, R.PRESSURE, R.PERMEABILITY, R.POROSITY,
+        for key in (R.SATURATION, R.GAS_SATURATION, R.PRESSURE, R.PERMEABILITY, R.POROSITY,
                     R.DEPTH):
             self.volume_property.addItem(R.PROPERTY_LABELS[key], key)
         self.volume_property.currentIndexChanged.connect(self.update_volume)

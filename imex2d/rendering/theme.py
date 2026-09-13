@@ -34,6 +34,13 @@ PRESSURE_CMAP = "inferno"
 PERMEABILITY_CMAP = "viridis"
 POROSITY_CMAP = "cividis"
 
+#: Qaz doyumluluğu — açıq fondan (qaz yoxdur) tünd qırmızıya (çox qaz).
+#: Su/neft xəritəsindən QƏSDƏN fərqli rəng ailəsidir ki, iki xassə
+#: yan-yana baxılanda qarışdırılmasın.
+GAS_SATURATION_CMAP = LinearSegmentedColormap.from_list(
+    "sg_gas",
+    ["#F4F1E8", "#F2D16B", "#E8963C", "#C8452C", "#7E1A1A"])
+
 
 def style_axes(ax, title="", xlabel="", ylabel="", palette: Palette = PALETTE):
     ax.set_facecolor(palette.panel)
