@@ -56,8 +56,11 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         uyğun deyil (CPR-in 3×3 genişlənməsi qəsdən təxirə salınıb,
         bax `A7_PLAN.md`). Bu mühərrik həmişə öz `NewtonLinearSolver`
         nüsxəsini (kiçik-orta modellərdə birbaşa `splu`) işlədir.
-        `capillary` HƏLƏ İŞLƏDİLMİR (qaz-neft kapilyar keçidi A7-nin
-        gələcək təkmilləşdirməsidir).
+        `capillary` (su-neft Pc) B5-b-dən ETİBARƏN İŞLƏDİLİR — Nyutona
+        ötürülür. Qaz-neft Pc-si isə MODELDƏN qurulur
+        (`gas_capillary_parameters`): mühərrik imzası bütün mühərriklər
+        üçün ortaqdır və yalnız üç fazalı mühərrikin oxuduğu provider
+        ora əlavə edilmir.
         """
         if not pvt.has_gas_phase():
             raise ValueError(
@@ -86,7 +89,9 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         self.grid = TwoPointFluxDiscretization().build(model)
         self.newton = ThreePhaseNewtonSolver(
             model, relperm, pvt, self._linear_solver(),
-            self.grid, config=newton_config)
+            self.grid, config=newton_config,
+            capillary=capillary,
+            gas_capillary=self._gas_capillary(model, relperm))
         self.time_stepper = AdaptiveTimeStepper(
             self.newton, time_step_config or self._time_config(config))
 
@@ -106,6 +111,25 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
     def _linear_solver():
         from .linear import NewtonLinearSolver
         return NewtonLinearSolver()
+
+    @staticmethod
+    def _gas_capillary(model, relperm):
+        """Modeldəki Pcog parametrlərindən provider — söndürülübsə `None`.
+
+        Sgc/Sorg və Swc RELPERM provider-indən götürülür ki, kapilyar
+        əyri ilə nisbi keçiricilik əyrisi EYNİ son nöqtələrə istinad
+        etsin (fərqli dəyərlər iki uyğunsuz əyri yaradardı).
+        """
+        params = getattr(model, "gas_capillary_parameters", None)
+        if params is None or not params.enabled:
+            return None
+        from ...domain.scal import GasCoreyParameters
+        from ..capillary import BrooksCoreyGasCapillaryProvider
+        gas_scal = (getattr(relperm, "gas", None)
+                    or getattr(model, "gas_scal_parameters", None)
+                    or GasCoreyParameters())
+        swc = float(getattr(relperm, "swc", model.scal_parameters.swc))
+        return BrooksCoreyGasCapillaryProvider(params, gas_scal, swc)
 
     @staticmethod
     def _time_config(config: SimulationConfig) -> AdaptiveTimeStepConfig:

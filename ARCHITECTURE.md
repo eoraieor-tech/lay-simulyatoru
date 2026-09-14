@@ -101,6 +101,26 @@ qəbul olunmuş addımdan sonra `record()` + `update()` çağırır — bağlant
 `target`-i yerində yenilənir. Qalıq və Jakobian bu qatdan yenə xəbərsizdir.
 IMPES THP-ni rədd edir. Bax `QARARLAR.md` → Q-15.
 
+### 2.2 Kapilyar təzyiq (B5-b, 14 sentyabr 2026)
+
+İki provider, eyni Brooks-Corey ailəsi, eyni parametr dataklassı
+(`CapillaryParameters`):
+
+```
+simulation/capillary.py
+    BrooksCoreyCapillaryProvider      Pcow = Po − Pw   (Sw-dən)
+    BrooksCoreyGasCapillaryProvider   Pcog = Pg − Po   (Sg-dən)
+```
+
+Su-neft provider-i `application` qatında qurulub mühərriyə ötürülür;
+qaz-neft provider-i isə üç fazalı mühərrikin öz içində modeldən
+(`gas_capillary_parameters`) qurulur — ortaq mühərrik imzası
+genişlənmir (bax `QARARLAR.md` → Q-16).
+
+Mühərrikdə hər ikisi FLÜİD VƏZİYYƏTİ vasitəsilə daşınır
+(`ThreePhaseFluidState.pc`, `.pcog` və törəmələri) — qalıq və Jakobian
+provider-i tanımır, yalnız massivləri görür. `None` → hədd yoxdur.
+
 ---
 
 ## 3. UML — sinif diaqramı (mətn formatı)

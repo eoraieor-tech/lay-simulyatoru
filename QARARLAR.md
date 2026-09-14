@@ -573,3 +573,47 @@ yığılma sabitliyini riskə atardı.
 
 IMPES və Eclipse ixracı THP-ni tanımır. Səssiz yaxınlaşma (IMPES-də
 BHP = THP, ixracda LRAT) əvəzinə aydın xəta verilir.
+
+
+## Q-16 — Qaz-neft kapilyar təzyiqi Brooks-Corey formasındadır; Pcow düzəlişi ayrı addımdır
+
+**Tarix:** 14 sentyabr 2026 · **Kontekst:** B5-b
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 24)
+
+### Qərar 1 — Pcog su-neft modelinin GÜZGÜSÜDÜR
+
+    Pcog(Sg) = Pe · S_L,n^(−1/λ),   S_L,n = (1 − Sg − Swc − Sorg) / (1 − Swc − Sorg)
+
+Səbəb: `BrooksCoreyCapillaryProvider` (A4) eyni düsturu su-neft üçün işlədir.
+Qaz-neft üçün başqa korrelyasiya (məs. Leverett J) seçsəydik, iki əyri fərqli
+ailədən olardı və istifadəçi eyni üç parametrlə (Pe, λ, yuxarı hədd) hər ikisini
+idarə edə bilməzdi.
+
+Sg = 0-da Pcog = Pe (sabit) — qazsız hüceyrələr arasında süni axın yaranmır,
+çünki potensiala hər iki tərəfdə eyni dəyər əlavə olunur.
+
+**Alternativ rədd edildi:** "Sg = 0-da Pcog = 0 olsun" (Pe çıxılmaqla). Bu,
+giriş təzyiqi anlayışını pozardı və Brooks-Corey-nin öz formasından kənara
+çıxardı.
+
+### Qərar 2 — Pcow-un qoşulması AYRI addım kimi aparıldı
+
+B5-b-yə başlayanda məlum oldu ki, üç fazalı yolda Pcow da işləmir
+(`pc = None` sabit). Ölçüldü: Pc = 1 bar ilə və onsuz qaçış bit-bit eyni idi.
+
+Əvvəl Pcow qoşuldu və sonlu fərqlə yoxlandı, sonra Pcog əlavə edildi. Səbəb:
+ikisi bir yerdə ediləydi, Jakobian xətası çıxanda hansı həddin səhv olduğu
+bilinməzdi.
+
+### Qərar 3 — Pcog modeldən qurulur, mühərrik imzasına əlavə edilmir
+
+`SimulationService.create_engine()` bütün mühərrikləri EYNİ açar sözlərlə
+qurur. Yalnız üç fazalı mühərrikin oxuduğu bir provider üçün ortaq imzanı
+genişlətmək iki fazalı mühərriyə mənasız parametr əlavə etmək olardı. Ona görə
+Pcog provider-i `model.gas_capillary_parameters`-dan mühərrikin öz içində
+qurulur (B4-B-də lülə həndəsəsi ilə eyni yanaşma).
+
+### Qərar 4 — qaz fazası olmayan modeldə Pcog XƏBƏRDARLIQ verir
+
+Səssizcə atmaq məhz bu seansda düzəldilən səhvin təkrarı olardı: istifadəçi
+parametr verir, nəticədə heç nə dəyişmir və səbəbi heç yerdə yazılmır.

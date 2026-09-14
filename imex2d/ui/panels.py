@@ -1438,13 +1438,27 @@ class ScalPanel(QWidget):
         self.krg_end = _spin(0.80, 0.01, 1.0, 3, 0.05)
         self.ng = _spin(2.0, 1.0, 6.0, 2, 0.1)
         self.nog = _spin(2.0, 1.0, 6.0, 2, 0.1)
+        # Qaz-neft kapilyar təzyiqi (B5-b) — su-neft ilə eyni üç parametr
+        self.pcog_entry = _spin(0.0, 0.0, 20.0, 3, 0.05, "bar")
+        self.pcog_lambda = _spin(2.0, 0.2, 10.0, 2, 0.1)
+        self.pcog_max = _spin(5.0, 0.1, 100.0, 2, 1.0, "bar")
         self._gas_rows = [("Sgc (bağlı qaz)", self.sgc),
                           ("Sorg (qaza qarşı qalıq neft)", self.sorg),
                           ("krg @ 1-Swc-Sorg", self.krg_end),
-                          ("Corey ng", self.ng), ("Corey nog", self.nog)]
+                          ("Corey ng", self.ng), ("Corey nog", self.nog),
+                          ("Pcog giriş təzyiqi Pe", self.pcog_entry),
+                          ("Pcog Brooks-Corey λ", self.pcog_lambda),
+                          ("Pcog yuxarı həddi", self.pcog_max)]
         for label, widget in self._gas_rows:
             form.addRow(label, widget)
             widget.valueChanged.connect(self.changed)
+
+        pcog_note = QLabel(
+            "Pcog Pe = 0 → qaz-neft kapilyar təzyiqi söndürülür. Pcog yalnız "
+            "PVT-də qaz fazası aktiv olanda işlədilir.")
+        pcog_note.setWordWrap(True)
+        pcog_note.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
+        form.addRow(pcog_note)
 
         gas_note = QLabel(
             "Bu parametrlər simulyasiyaya TƏTBİQ OLUNUR — PVT tabında "
@@ -1474,6 +1488,15 @@ class ScalPanel(QWidget):
         return GasCoreyParameters(self.sgc.value(), self.sorg.value(),
                                   self.krg_end.value(), self.ng.value(),
                                   self.nog.value())
+
+    def gas_capillary_values(self) -> CapillaryParameters:
+        """Qaz-neft Pc parametrləri (B5-b) — qaz əyriləri söndürülübsə
+        söndürülmüş (Pe = 0) dəyər qaytarılır."""
+        if not self.gas_enabled.isChecked():
+            return CapillaryParameters()
+        return CapillaryParameters(entry_pressure=self.pcog_entry.value(),
+                                   lambda_exponent=self.pcog_lambda.value(),
+                                   max_pressure=self.pcog_max.value())
 
     def values(self) -> CoreyParameters:
         return CoreyParameters(self.swc.value(), self.sor.value(),

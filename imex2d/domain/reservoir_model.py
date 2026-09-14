@@ -50,6 +50,14 @@ class ReservoirModel:
     şərhi aşağıda).
     """
     capillary_parameters: CapillaryParameters = field(default_factory=CapillaryParameters)
+    gas_capillary_parameters: CapillaryParameters = field(
+        default_factory=CapillaryParameters)
+    """Qaz-neft kapilyar təzyiqi Pcog (B5-b) — su-neft ilə EYNİ dataklass.
+
+    `entry_pressure = 0` (defolt) → söndürülüb, provider qurulmur və
+    nəticə B5-b-dən ƏVVƏLKİ ilə bit-bit eynidir. YALNIZ üç fazalı
+    (qazlı) mühərrik oxuyur.
+    """
     pvt_table: Optional[PVTTable] = None
     scal_tables: Optional[object] = None
     """Laboratoriya SCAL cədvəlləri (`SaturationTableSet`).
@@ -174,6 +182,9 @@ class ReservoirModel:
             report.error(message, "SCAL")
         for message in self.capillary_parameters.validate():
             report.error(message, "kapilyar")
+        for message in self.gas_capillary_parameters.validate():
+            report.error(message, "qaz-neft kapilyar")
+        self._check_gas_capillary(report)
         if self.pvt_table is not None:
             for message in self.pvt_table.validate():
                 report.error(message, "PVT")
@@ -185,6 +196,22 @@ class ReservoirModel:
         return report
 
     # ------------------------------------------------------ yoxlamalar
+    def _check_gas_capillary(self, report: DiagnosticReport) -> None:
+        """Pcog YALNIZ qaz fazası modelləşdiriləndə işə düşür (B5-b).
+
+        Qaz olmayan modeldə verilən Pcog səssizcə atılardı — istifadəçi
+        onu təyin edib nəticədə heç bir dəyişiklik görməzdi.
+        """
+        if not self.gas_capillary_parameters.enabled:
+            return
+        has_gas = (self.pvt_table is not None
+                   and getattr(self.pvt_table, "has_gas_phase", False))
+        if not has_gas:
+            report.warning(
+                "Qaz-neft kapilyar təzyiqi (Pcog) verilib, lakin PVT-də qaz "
+                "fazası yoxdur — Pcog İŞLƏDİLMƏYƏCƏK.", "qaz-neft kapilyar",
+                "PVT tabında «Qaz fazasını aktivləşdir» qutusunu işarələyin")
+
     def _check_initial_saturation(self, report: DiagnosticReport) -> None:
         sw = self.initial_conditions.water_saturation
         scal = self.scal_parameters

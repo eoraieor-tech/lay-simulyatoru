@@ -3214,3 +3214,120 @@ tam dəst                         2447 keçdi, 1 buraxıldı, 1 xfailed (əvvəl
 * Növbəti bloklar: **B5-b** (Pcog — sahibkar sonraya saxladı), **B7** (yekun
   doğrulama + SPE1).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 14 sentyabr 2026 — Seans 24: B5-b — üç fazalı kapilyar təzyiq (Pcow qoşuldu, Pcog əlavə olundu)
+
+Sahibkarın tapşırığı: B4-B yoxlanıldı və təsdiqləndi; növbəti mərhələ B5-b
+(kapilyar təzyiq funksiyaları). Üç fazalı yol sabitləşdiyi üçün ehtiyatla
+davam edildi.
+
+### 1 · Gözlənilməyən tapıntı — Pcow üç fazalı rejimdə SƏSSİZCƏ ATILIRDI
+
+Plan yalnız Pcog əlavə etməyi nəzərdə tuturdu ("hazırda yalnız `pcow` var").
+Kodu oxuyanda məlum oldu ki, üç fazalı yolda **Pcow da işləmir**:
+
+* `ThreePhaseNewtonSolver.build_fluid` içində `pc = None` **SABİT** yazılmışdı;
+* servis Pc provider-ini mühərrikə ötürürdü, mühərrik isə Nyutona vermirdi;
+* `ThreePhaseFluidState.pc` sahəsi və qalıqdakı istifadəsi VAR idi — yəni
+  boşluq yalnız bu bir sətirdə idi.
+
+**Ölçmə ilə sübut olundu** (kod dəyişməzdən əvvəl): Pc = 1 bar ilə və Pc-siz
+üç fazalı qaçış **bit-bit eyni** nəticə verirdi (RF 65.871437 %, 46 addım).
+Yəni istifadəçi SCAL tabında Pc verirdi və qazlı modeldə heç nə dəyişmirdi.
+
+Ona görə B5-b iki addıma bölündü: (1) Pcow-un qoşulması, (2) Pcog.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `simulation/implicit/three_phase_newton.py` | `capillary` / `gas_capillary` qəbul edir; `_capillary_terms()` — Pcow, ∂Pcow/∂Sw, Pcog, ∂Pcog/∂Sg |
+| `simulation/implicit/three_phase_residual.py` | flüid vəziyyətinə `dpc_dsw`, `pcog`, `dpcog_dsg`; potensialda `Pg = Po + Pcog`; Jakobianda hər iki kapilyar hədd |
+| `simulation/capillary.py` | **YENİ** `BrooksCoreyGasCapillaryProvider` — `pcog`, `dpcog_dsg` |
+| `simulation/implicit/three_phase_engine.py` | Pcow Nyutona ötürülür; Pcog provider-i modeldən qurulur |
+| `domain/reservoir_model.py` | `gas_capillary_parameters` + validasiya + "qaz yoxdursa Pcog işləməyəcək" xəbərdarlığı |
+| `application/model_builder.py`, `serialization.py` | `gas_capillary` ötürücüsü və layihə faylında saxlanması |
+| `ui/panels.py`, `ui/main_window.py` | SCAL tabının qaz bölməsində üç yeni sahə: Pcog Pe, λ, yuxarı hədd |
+| `tests/test_three_phase_capillary.py` | **YENİ** — 21 test |
+
+### 3 · Riyazi tərəf
+
+```
+Pw = Po − Pcow(Sw)          (əvvəldən iki fazalı yolda var idi)
+Pg = Po + Pcog(Sg)          (YENİ)
+
+Pcog(Sg) = Pe · S_L,n^(−1/λ),   S_L,n = (1 − Sg − Swc − Sorg) / (1 − Swc − Sorg)
+```
+
+Su-neft modeli ilə eyni Brooks-Corey forması, yalnız islanan faza mayedir.
+Sg = 0-da Pcog = Pe — sabit əlavə, yəni qazsız hüceyrələr arasında SÜNİ AXIN
+YARATMIR. Jakobianda kapilyar hədlər hər iki hüceyrəyə düşür (upstream-dən
+asılı deyil):
+
+```
+∂F_su /∂Sw_a = −T·m_w,up·Pcow'_a      ∂F_su /∂Sw_b = +T·m_w,up·Pcow'_b
+∂F_qaz/∂Sg_a = +T·m_g,up·Pcog'_a      ∂F_qaz/∂Sg_b = −T·m_g,up·Pcog'_b
+```
+
+Doymamış hüceyrədə 3-cü dəyişən Rs-dir və Pcog ondan asılı deyil — ona görə
+orada törəmə **sıfırlanır**.
+
+### 4 · Ölçmələr
+
+**Jakobian (sonlu fərqə qarşı, maksimal nisbi xəta):**
+
+| Vəziyyət | Kapilyarsız | Pcow | Pcog | Hər ikisi |
+|---|---|---|---|---|
+| tam doymuş, heterogen | — | < 10⁻⁵ | < 10⁻⁵ | < 10⁻⁵ |
+| qarışıq (doymuş + doymamış) | 2.711×10⁻⁵ | 2.719×10⁻⁵ | 2.711×10⁻⁵ | 2.719×10⁻⁵ |
+
+Qarışıq vəziyyətdəki 2.7×10⁻⁵ **B5-b-dən əvvəl də var idi** (dəyişən keçidi
+olan hüceyrələrdə Rs sütununun mövcud dəqiqliyi). Kapilyarın əlavə etdiyi
+xəta ~8×10⁻⁸-dir; test məhz bu FƏRQİ yoxlayır, mütləq həddi yox.
+
+**Real 8×8 üç fazalı qaçış (600 gün):**
+
+| Qaçış | Yığılma | Addım | RF, % | p_orta, bar |
+|---|---|---|---|---|
+| kapilyarsız | ✅ | 46 | 65.871437 | 239.91583 |
+| Pcow = 1 bar | ✅ | 45 | 65.882462 | 239.92538 |
+| Pcog = 1 bar | ✅ | 46 | 65.872458 | 239.91583 |
+| Pcow = 3, Pcog = 6 bar | ✅ | 45 | 65.893475 | 239.94202 |
+
+Oxunuşu: nəticə artıq kapilyar parametrlərdən ASILIDIR (əvvəl deyildi).
+Bu bircins 5-nöqtəli modeldə təsir kiçikdir (RF-də 0.01–0.02 faiz bəndi) —
+bu, gözlənilən nəticədir: kapilyar təzyiq özünü təbəqəli/heterogen modeldə
+və keçid zonasında göstərir. Güclü kapilyarla da Nyuton yığılır, addım sayı
+praktik olaraq dəyişmir.
+
+### 5 · Öz təşəbbüsümlə verilmiş qərarlar
+
+1. **Pcow düzəlişi Pcog-dan AYRI aparıldı** — biri mövcud funksiyanın
+   qoşulması, digəri yeni fizikadır.
+2. **Pcog Pcow ilə EYNİ dataklassdan** (`CapillaryParameters`) qidalanır —
+   yeni parametr tipi yaradılmadı, UI və layihə faylı eyni üç sahəni işlədir.
+3. **Son nöqtələr relperm provider-indən götürülür** (Sgc, Sorg, Swc) — kapilyar
+   əyri ilə nisbi keçiricilik əyrisi eyni son nöqtələrə istinad etməlidir.
+4. **Qaz olmayan modeldə Pcog verilməsi XƏBƏRDARLIQDIR** — səssizcə atılsaydı,
+   istifadəçi yenə "parametr verdim, heç nə dəyişmədi" vəziyyətinə düşərdi.
+   Bu, məhz indi düzəldilən səhvin təkrarı olardı.
+
+### 6 · Yoxlama
+
+```
+tests/test_three_phase_capillary.py   21 keçdi
+tam dəst                              2468 keçdi, 1 buraxıldı, 1 xfailed (əvvəl 2447 + 21 yeni)
+```
+
+### Açıq qalan ⏳
+
+* **İlkin tarazlıqda Pcog yoxdur:** `equilibrium.py` GOC-da kəskin sərhəd
+  qurur. Qaz papağı olan modeldə ilk addımlarda kiçik süni kapilyar axın olur.
+  Keçid zonasının Pcog-dan qurulması ayrı işdir.
+* **Eclipse ixracında SGOF/Pcog yoxdur** (SWOF-da Pcow var).
+* **Cədvəldən Pcog** (`SaturationTableSet`) — hazırda yalnız Brooks-Corey
+  analitik forması var.
+* **Quyu həddində kapilyar** nəzərə alınmır (iki fazalı yolda da belədir).
+* Növbəti blok: **B7** (yekun doğrulama + SPE1).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

@@ -1583,6 +1583,8 @@ class MainWindow(QMainWindow):
                 scal=self.scal_panel.values(),
                 gas_scal=gas_scal,
                 capillary=self.scal_panel.capillary_values(),
+                gas_capillary=(self.scal_panel.gas_capillary_values()
+                               if gas_active else None),
                 initial=self.numerical_panel.initial_conditions(),
                 pvt_table=self.pvt_panel.values(),
                 scal_tables=self.scal_tables(),

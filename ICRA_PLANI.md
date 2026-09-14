@@ -418,7 +418,16 @@ qaz ayrılır və GOR əyrisi qalxır (M4-ün əsl tələbi).
 >
 > 14 yeni test. Təfərrüat: `ISH_HESABATI.md` → Seans 16.
 
-### B5-b — Pcog ⏳ NÖVBƏTİ (ayrıca commit)
+### B5-b — Pcog ✅ BİTDİ (14 sentyabr 2026)
+
+> Yol boyu TAPILDI: üç fazalı mühərrikdə **Pcow da işləmirdi**
+> (`pc = None` sabit) — ölçüldü, Pc ilə və onsuz qaçış bit-bit eyni idi.
+> Əvvəl Pcow qoşuldu, sonra Pcog əlavə edildi; hər ikisi sonlu fərqlə
+> yoxlandı. UI-də (SCAL tabı, qaz bölməsi) üç yeni sahə var.
+> İlkin tarazlıqda Pcog hələ yoxdur (GOC kəskin qalır) ⏳.
+>
+> 21 yeni test: `tests/test_three_phase_capillary.py`.
+> Təfərrüat: `ISH_HESABATI.md` → Seans 24 · `QARARLAR.md` → Q-16.
 
 Mühərriyə toxunur, ona görə sahibkarın qərarı ilə ayrılıb.
 
@@ -547,7 +556,7 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | ~~B4-A THP hesabatı~~ ✅ **BİTDİ** | orta | aşağı | **M5 (qismən)** |
 | ~~B4-B `ControlMode.THP`~~ ✅ **BİTDİ** | orta | orta | M5 (RATE-dən başqa) |
 | ~~B5-a CSV/JSON ixracı~~ ✅ **BİTDİ** | kiçik | sıfır | **M8 bağlandı** |
-| B5-b Pcog ⏳ | kiçik | orta | — |
+| ~~B5-b Pcog~~ ✅ **BİTDİ** | kiçik | orta | — |
 | B6 3D animasiya + slice | orta | aşağı | **M7** |
 | B7 yekun doğrulama | kiçik-orta | aşağı | hamısı |
 

@@ -40,7 +40,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **13 sentyabr 2026:** **B6** (kəsik, oynatma, GIF) və **B4-B** bitdi —
 > quyu artıq birbaşa **THP ilə idarə olunur** (açıq birləşmə, Q-15).
-> Qalan: **B5-b** (Pcog), **B7** (yekun doğrulama).
+>
+> **14 sentyabr 2026:** **B5-b** bitdi — üç fazalı mühərrikdə kapilyar
+> təzyiq: **Pcow qoşuldu** (əvvəl səssizcə atılırdı!) və **Pcog** əlavə
+> olundu (Q-16). Qalan: **B7** (yekun doğrulama + SPE1).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).

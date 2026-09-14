@@ -118,6 +118,21 @@ class ThreePhaseFluidState:
     bo_p: Optional[np.ndarray] = None     # ∂Bo/∂p
     bo_rs: Optional[np.ndarray] = None    # ∂Bo/∂Rs (doymuşda 0)
 
+    # ── kapilyar təzyiqin törəmələri və qaz-neft kapilyarı (B5-b) ──
+    #
+    # `pc` (Po − Pw) əvvəldən sahə kimi var idi, lakin Nyuton onu HEÇ
+    # VAXT doldurmurdu — üç fazalı rejimdə UI-dakı Pc səssizcə atılırdı
+    # (ölçüldü: Pc = 1 bar ilə və onsuz qaçış BİT-BİT eyni idi).
+    #
+    # `pcog` = Pg − Po. Doymamış hüceyrədə Sg = 0-da hesablanır (sabit),
+    # ona görə `dpcog_dsg` orada SIFIRDIR — 3-cü dəyişən Rs-dir, Pcog isə
+    # Rs-dən asılı deyil.
+    #
+    # `None` → həmin hədd yoxdur (köhnə davranış, bit-bit eyni).
+    dpc_dsw: Optional[np.ndarray] = None  # ∂Pcow/∂Sw
+    pcog: Optional[np.ndarray] = None     # qaz-neft kapilyar təzyiqi, bar
+    dpcog_dsg: Optional[np.ndarray] = None  # ∂Pcog/∂(3-cü dəyişən)
+
     @property
     def lam_w(self) -> np.ndarray:
         return self.krw / self.mu_w
@@ -226,10 +241,14 @@ class ThreePhaseFlux:
     yerə gedir. Bu, standart black-oil qaz axını formuludur (Aziz &
     Settari, Fanchi).
 
-    Qaz-neft kapilyar keçidi (Pgo) hələ MODELƏ DAXİL EDİLMƏYİB —
-    mərhələ 2-dəki eyni sadələşdirmə: GOC-da kəskin sərhəd, hamar
-    keçid gələcək təkmilləşdirmədir. Bu, axın hesablamasını
-    dəyişmir — yalnız equilibration-a təsir edir.
+    KAPİLYAR TƏZYİQ (B5-b): `fluid.pc` (Pcow) və `fluid.pcog` veriləndə
+    hər ikisi potensiala daxil olur — `Pw = Po − Pcow`, `Pg = Po + Pcog`.
+    Verilməsə (`None`) hədd YOXDUR və nəticə əvvəlki ilə bit-bit eynidir.
+
+    ⏳ İLKİN TARAZLIQ hələ Pcog-suzdur: `equilibrium.py` GOC-da KƏSKİN
+    sərhəd qurur, yəni qaz papağı olan modeldə ilk addımlarda kiçik
+    süni kapilyar axın olur. Keçid zonasının Pcog-dan qurulması ayrı
+    işdir (bax `ISH_HESABATI.md` → Seans 24, açıq qalanlar).
     """
 
     def __init__(self, model: ReservoirModel, grid: DiscretizedGrid):
@@ -269,6 +288,9 @@ class ThreePhaseFlux:
 
         if fluid.pc is not None:
             d_phi_w -= fluid.pc[conn.cell_a] - fluid.pc[conn.cell_b]
+        # B5-b: Pg = Po + Pcog (neft istinad fazasıdır, Pw = Po − Pcow ilə simmetrik)
+        if fluid.pcog is not None:
+            d_phi_g += fluid.pcog[conn.cell_a] - fluid.pcog[conn.cell_b]
 
         return d_phi_w, d_phi_o, d_phi_g
 
@@ -1108,6 +1130,26 @@ class ThreePhaseJacobianAssembler:
         gas_up_is_a = sat["gas_up"] == a
         s_block_a[gas_up_is_a, 2, 2] += sat["gas_dthird_free"][gas_up_is_a]
         s_block_b[~gas_up_is_a, 2, 2] += sat["gas_dthird_free"][~gas_up_is_a]
+
+        # ── kapilyar hədlər (B5-b) — HƏR İKİ tərəfdə, upstream-dən asılı deyil
+        #
+        #     F_su  = T·m_w,up·(Δp − (Pcow_a − Pcow_b) + …)
+        #     ∂F_su/∂Sw_a = −T·m_w,up·Pcow'_a      ∂F_su/∂Sw_b = +T·m_w,up·Pcow'_b
+        #
+        #     F_qaz = T·m_g,up·(Δp + (Pcog_a − Pcog_b) + …)
+        #     ∂F_qaz/∂Sg_a = +T·m_g,up·Pcog'_a     ∂F_qaz/∂Sg_b = −T·m_g,up·Pcog'_b
+        #
+        # Mobillik törəməsi (yuxarıdakı `sat`) ΔΦ-ni artıq kapilyarla birlikdə
+        # işlədir — bu, hasil qaydasının ikinci hissəsidir.
+        trans = self.flux.transmissibility
+        if fluid.dpc_dsw is not None:
+            m_w_up = (fluid.lam_w / fluid.bw)[sat["water_up"]]
+            s_block_a[:, 0, 1] += -trans * m_w_up * fluid.dpc_dsw[a]
+            s_block_b[:, 0, 1] += trans * m_w_up * fluid.dpc_dsw[b]
+        if fluid.dpcog_dsg is not None:
+            m_g_up = (fluid.lam_g / fluid.bg)[sat["gas_up"]]
+            s_block_a[:, 2, 2] += trans * m_g_up * fluid.dpcog_dsg[a]
+            s_block_b[:, 2, 2] += -trans * m_g_up * fluid.dpcog_dsg[b]
 
         block_a = p_block_a + s_block_a
         block_b = p_block_b + s_block_b

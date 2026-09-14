@@ -78,10 +78,17 @@ class ThreePhaseNewtonSolver:
 
     def __init__(self, model, relperm, pvt, linear_solver, grid,
                 config: Optional[NewtonConfig] = None,
-                endpoint_water_mobility: float = 0.35):
+                endpoint_water_mobility: float = 0.35,
+                capillary=None, gas_capillary=None):
+        """`capillary` — su-neft Pc provider-i (`pcow`, `dpcow_dsw`);
+        `gas_capillary` — qaz-neft Pc provider-i (`pcog`, `dpcog_dsg`), B5-b.
+        İkisi də `None` ola bilər — onda kapilyar hədd YOXDUR (köhnə davranış).
+        """
         self.model = model
         self.relperm = relperm
         self.pvt = pvt
+        self.capillary = capillary
+        self.gas_capillary = gas_capillary
         self.linear_solver = linear_solver
         self.grid = grid
 
@@ -125,7 +132,7 @@ class ThreePhaseNewtonSolver:
         pressure = state.pressure
         sw, sg = state.water_saturation, state.gas_saturation
         rs = state.solution_gor(self.pvt)
-        pc = None
+        pc, dpc_dsw, pcog, dpcog_dsg = self._capillary_terms(state)
         bo, bo_p, bo_rs = self._oil_fvf(state, rs)
         return ThreePhaseFluidState(
             mu_w=np.full(state.ncell, self.model.fluids.water_viscosity)
@@ -137,7 +144,31 @@ class ThreePhaseNewtonSolver:
             krw=self.relperm.krw(sw),
             kro=self.relperm.kro_three_phase(sw, sg),
             krg=self.relperm.krg(sg), pc=pc,
-            bo_p=bo_p, bo_rs=bo_rs)
+            bo_p=bo_p, bo_rs=bo_rs,
+            dpc_dsw=dpc_dsw, pcog=pcog, dpcog_dsg=dpcog_dsg)
+
+    def _capillary_terms(self, state: ThreePhaseState):
+        """(Pcow, ∂Pcow/∂Sw, Pcog, ∂Pcog/∂3-cü) — provider yoxdursa `None`.
+
+        B5-b-dən ƏVVƏL burada `pc = None` SABİT yazılmışdı: servis Pc
+        provider-ini mühərrikə ötürürdü, mühərrik isə onu Nyutona
+        vermirdi — üç fazalı rejimdə kapilyar təzyiq səssizcə atılırdı.
+
+        Pcog doymamış hüceyrədə Sg = 0-da oxunur və törəməsi SIFIRLANIR:
+        orada 3-cü dəyişən Rs-dir, Pcog isə Rs-dən asılı deyil.
+        """
+        pc = dpc_dsw = pcog = dpcog_dsg = None
+        sw = state.water_saturation
+        if self.capillary is not None:
+            pc = np.asarray(self.capillary.pcow(sw), float)
+            dpc_dsw = np.asarray(self.capillary.dpcow_dsw(sw), float)
+        if self.gas_capillary is not None:
+            sg = state.gas_saturation
+            pcog = np.asarray(self.gas_capillary.pcog(sg), float)
+            dpcog_dsg = np.where(state.is_saturated,
+                                 np.asarray(self.gas_capillary.dpcog_dsg(sg), float),
+                                 0.0)
+        return pc, dpc_dsw, pcog, dpcog_dsg
 
     def _oil_fvf(self, state: ThreePhaseState, rs: np.ndarray):
         """Bo və törəmələri — DOYMA VƏZİYYƏTİNƏ GÖRƏ (B3-B).

@@ -527,6 +527,8 @@ class ProjectSerializer:
                 "swc", "sor", "krw_end", "kro_end", "nw", "no"]),
             "capillary": _dataclass_to_dict(model.capillary_parameters, [
                 "entry_pressure", "lambda_exponent", "max_pressure"]),
+            "gas_capillary": _dataclass_to_dict(model.gas_capillary_parameters, [
+                "entry_pressure", "lambda_exponent", "max_pressure"]),
             "pvt": self._pvt_to_dict(model.pvt_table),
             "units": model.units.name,
             "source_geological_model": model.source_geological_model,
@@ -564,6 +566,8 @@ class ProjectSerializer:
                                 data["initial_conditions"])),
             scal_parameters=CoreyParameters(**data["scal"]),
             capillary_parameters=CapillaryParameters(**data.get("capillary", {})),
+            gas_capillary_parameters=CapillaryParameters(
+                **data.get("gas_capillary", {})),
             pvt_table=self._pvt_from_dict(data.get("pvt")),
             units=_UNIT_SYSTEMS.get(data.get("units", "METRIC"), METRIC),
             source_geological_model=data.get("source_geological_model", ""))
