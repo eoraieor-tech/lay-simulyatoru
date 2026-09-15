@@ -33,6 +33,7 @@ from .newton import NewtonConfig
 from .three_phase_newton import ThreePhaseNewtonSolver
 from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
                                     OUTER_TOLERANCE_BAR, ThpController)
+from ..well_constraints import assign_rate_shares, needs_rate_allocation
 from .three_phase_state import ThreePhaseState
 from .time_stepping import AdaptiveTimeStepConfig, AdaptiveTimeStepper
 
@@ -98,6 +99,8 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in self.newton.well_model.wells
                                   if not c.is_injector})
+        #: Çox perforasiyalı RATE quyusu varmı (Seans 27)
+        self._rate_allocation = needs_rate_allocation(self.newton.well_model.wells)
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, self.newton.well_model.wells,
                                          pvt=pvt, fluids=model.fluids)
@@ -293,6 +296,7 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         cumulative_oil = cumulative_water = cumulative_gas = 0.0
 
         while time < config.end_time - 1e-9:
+            self._update_rate_shares()
             new_state, dt, newton_result = self.time_stepper.advance(
                 self.state, time, config.end_time - time)
 
@@ -381,6 +385,15 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         LOG.info("%s  RF = %.2f %%", result.message,
                  result.final_recovery_factor)
         return result
+
+    def _update_rate_shares(self) -> None:
+        """RATE hədəfinin perforasiyalara payı — addımın ƏVVƏLİNDƏ, yığılmış
+        vəziyyətin λ-sı ilə (bax `well_constraints.py`)."""
+        if not self._rate_allocation:
+            return
+        well_model = self.newton.well_model
+        assign_rate_shares(well_model.wells, well_model.connection_mobilities(
+            self.newton.build_fluid(self.state)))
 
     def _thp_outer_loop(self, new_state, dt, newton_result):
         """Yarı-implicit THP dövrəsi — addım DAXİLİNDƏ təkrarlama (Seans 25).

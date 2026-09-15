@@ -428,7 +428,7 @@ class JacobianAssembler:
                         (fluid.mu_w[c] * fluid.bw[c]) ** 2)
                     water_p[c] += wi * (-transport + drawdown * d_transport)
                 else:
-                    rate = abs(connection.target)
+                    rate = abs(connection.target) * connection.rate_share
                     water_p[c] += -rate * dbw[c] / fluid.bw[c] ** 2
                 continue
 
@@ -448,7 +448,7 @@ class JacobianAssembler:
                 #     f = λw / (λw + λo),   λp = kr_p / μ_p(p)
                 # f həm Sw-dan, həm də TƏZYİQDƏN asılıdır, çünki lözlüklər
                 # PVT ilə təzyiqə bağlıdır.
-                total = -abs(connection.target)
+                total = -abs(connection.target) * connection.rate_share
                 lam_w, lam_o = fluid.lam_w[c], fluid.lam_o[c]
                 lam_t = max(lam_w + lam_o, 1e-30)
                 fraction = lam_w / lam_t

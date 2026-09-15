@@ -268,6 +268,15 @@ class ResidualAssembler:
         return water, oil
 
     # ══════════════════════════════════════════════════════════ quyular
+    def connection_mobilities(self, fluid: FluidState) -> list:
+        """Hər bağlantının LAY HƏCMİ mobilliyi — `well_rates`-in BHP
+        budağındakı EYNİ ifadə: vurucu `krw_end/μw`, istismarçı `λw + λo`.
+        RATE payı (`well_constraints.assign_rate_shares`) bununla verilir."""
+        endpoint = self.relperm.endpoint_water_mobility(1.0)
+        return [endpoint / fluid.mu_w[c.cell] if c.is_injector
+                else fluid.lam_w[c.cell] + fluid.lam_o[c.cell]
+                for c in self.wells]
+
     def well_rates(self, state: ReservoirState, fluid: FluidState) -> WellRates:
         """Quyu debitləri, səth həcmi. Müsbət = laya daxil olur."""
         water = np.zeros(self.ncell)
@@ -286,7 +295,7 @@ class ResidualAssembler:
                     rate = (connection.well_index * mobility
                             * (connection.target - state.pressure[cell]))
                 else:
-                    rate = abs(connection.target)
+                    rate = abs(connection.target) * connection.rate_share
                 rate = max(rate, 0.0) / fluid.bw[cell]
                 water[cell] += rate
                 per_well_water[connection.well_name] += rate
@@ -298,7 +307,7 @@ class ResidualAssembler:
                     qw = connection.well_index * lam_w * drawdown
                     qo = connection.well_index * lam_o * drawdown
                 else:
-                    total = -abs(connection.target)
+                    total = -abs(connection.target) * connection.rate_share
                     fraction = lam_w / max(lam_w + lam_o, 1e-30)
                     qw, qo = total * fraction, total * (1.0 - fraction)
                 qw = min(qw, 0.0) / fluid.bw[cell]

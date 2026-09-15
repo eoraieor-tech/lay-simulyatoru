@@ -17,6 +17,7 @@ import scipy.sparse as sp
 from ..application.config import SimulationConfig
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.wells import ControlMode
+from .well_constraints import assign_rate_shares, needs_rate_allocation
 from ..interfaces.providers import (ICapillaryPressureProvider,
                                     IInitializationProvider, IPVTProvider,
                                     IRelativePermeabilityProvider)
@@ -93,6 +94,7 @@ class ImpesEngine(ISimulationEngine):
         self._trans = self._discretization.transmissibility
         self._pv = self._discretization.pore_volume
         self._well_conn: List[WellConnection] = PeacemanWellModel().build_connections(model)
+        self._rate_allocation = needs_rate_allocation(self._well_conn)
 
         self._setup_fluid_model()
         self._setup_gravity()
@@ -329,6 +331,13 @@ class ImpesEngine(ISimulationEngine):
             np.add.at(rhs, self._face_a, -gravity_capillary_flux)
             np.add.at(rhs, self._face_b, +gravity_capillary_flux)
 
+        # RATE hədəfinin perforasiyalara payı — BHP budağındakı EYNİ
+        # mobilliklə (bax `well_constraints.assign_rate_shares`)
+        if self._rate_allocation:
+            assign_rate_shares(self._well_conn, [
+                inj_mobility[c.cell] if c.is_injector else lam_t[c.cell]
+                for c in self._well_conn])
+
         k = 4 * nf + n_active
         for c, cell_active in zip(self._well_conn, self._well_cells):
             lam = inj_mobility[c.cell] if c.is_injector else lam_t[c.cell]
@@ -338,8 +347,8 @@ class ImpesEngine(ISimulationEngine):
                 k += 1
                 rhs[cell_active] += a * c.target
             else:
-                rhs[cell_active] += (abs(c.target) if c.is_injector
-                                     else -abs(c.target))
+                rate = abs(c.target) * c.rate_share
+                rhs[cell_active] += rate if c.is_injector else -rate
 
         self._matrix.data[:] = np.bincount(self._data_index, weights=v,
                                            minlength=self._nnz)
@@ -388,7 +397,7 @@ class ImpesEngine(ISimulationEngine):
                 if c.mode is ControlMode.BHP:
                     q = c.well_index * inj_mobility[cell] * (c.target - pressure[cell])
                 else:
-                    q = abs(c.target)
+                    q = abs(c.target) * c.rate_share
                 q = max(q, 0.0)
                 net_water[cell] += q
                 throughput[cell] += q
@@ -399,7 +408,7 @@ class ImpesEngine(ISimulationEngine):
                     qw = c.well_index * lam_w[cell] * dpw
                     qo = c.well_index * (lam_t[cell] - lam_w[cell]) * dpw
                 else:
-                    qt = -abs(c.target)
+                    qt = -abs(c.target) * c.rate_share
                     frac = lam_w[cell] / max(lam_t[cell], 1e-30)
                     qw, qo = qt * frac, qt * (1.0 - frac)
                 qw, qo = min(qw, 0.0), min(qo, 0.0)

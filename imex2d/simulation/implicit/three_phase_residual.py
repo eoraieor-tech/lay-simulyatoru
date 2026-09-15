@@ -411,6 +411,22 @@ class ThreePhaseWellModel:
         self._injector_names = sorted({c.well_name for c in wells
                                        if c.is_injector})
 
+    def connection_mobilities(self, fluid: ThreePhaseFluidState) -> list:
+        """Hər bağlantının LAY HƏCMİ mobilliyi — `well_rates`-in BHP
+        budağındakı EYNİ ifadə: vurucu vurulan fazanın son nöqtəsi
+        (`krw_end/μw` və ya `krg_end/μg`), istismarçı `λw + λo` (RATE
+        hədəfi maye debitidir). RATE payı bununla verilir."""
+        mobilities = []
+        for connection in self.wells:
+            cell = connection.cell
+            if not connection.is_injector:
+                mobilities.append(fluid.lam_w[cell] + fluid.lam_o[cell])
+            elif connection.injected_phase is Phase.GAS:
+                mobilities.append(self._endpoint_gas / fluid.mu_g[cell])
+            else:
+                mobilities.append(self._endpoint_water_mobility / fluid.mu_w[cell])
+        return mobilities
+
     def well_rates(self, state: ThreePhaseState,
                    fluid: ThreePhaseFluidState,
                    reference_pressure=None) -> ThreePhaseWellRates:
@@ -443,7 +459,7 @@ class ThreePhaseWellModel:
                     rate = (connection.well_index * mobility
                             * (connection.target - state.pressure[cell]))
                 else:
-                    rate = abs(connection.target)
+                    rate = abs(connection.target) * connection.rate_share
                 rate = max(rate, 0.0) / volume_factor
                 if gas_injector:
                     gas[cell] += rate
@@ -477,7 +493,7 @@ class ThreePhaseWellModel:
             else:
                 # RATE hədəfi MAYE debitidir (su+neft) — A6-dakı
                 # konvensiya; qaz nəticə kimi çıxır.
-                total = -abs(connection.target)
+                total = -abs(connection.target) * connection.rate_share
                 fraction = lam_w / max(lam_w + lam_o, 1e-30)
                 qw, qo = total * fraction, total * (1.0 - fraction)
                 liquid_gas_fraction = lam_g / max(lam_w + lam_o, 1e-30)
@@ -899,7 +915,7 @@ class ThreePhaseWellJacobian:
                         / (viscosity * factor) ** 2
                     blocks[c, row, 0] += wi * (-transport + drawdown * d_transport)
                 else:
-                    rate = abs(connection.target)
+                    rate = abs(connection.target) * connection.rate_share
                     blocks[c, row, 0] += -rate * b_p / factor ** 2
                 continue
 
@@ -970,7 +986,7 @@ class ThreePhaseWellJacobian:
             else:
                 # RATE rejimi: hədəf maye (su+neft) debitidir — A6-dakı
                 # fraksional axın formulu, Stone II-nin dkro/dSw ilə.
-                total = -abs(connection.target)
+                total = -abs(connection.target) * connection.rate_share
                 lam_t = max(lam_w + lam_o, 1e-30)
                 fraction = lam_w / lam_t
 

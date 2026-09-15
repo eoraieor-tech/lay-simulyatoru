@@ -529,6 +529,9 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > 2. **RATE + BHP limiti** ⏳ növbəti addım;
 > 3. **səth debiti hədəfi** ⏳ (bizdə RATE = maye, lay həcmi).
 >
+> **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi
+> düzəldildi (Q-19) — əvvəl hər perforasiya quyunun tam hədəfini alırdı.
+>
 > SPE1 modeli bu üç bənd bitəndən sonra qurulur.
 
 **Həcm:** kiçik-orta (~1-2 seans)

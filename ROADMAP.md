@@ -53,6 +53,9 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > (Q-18 — əvvəl bütün vurucular su vururdu). Qalan: RATE + BHP limiti,
 > səth debiti hədəfi, SPE1 modelinin qurulması.
 >
+> **Seans 27:** BHP limitinə hazırlıqda **səssiz səhv** tapılıb düzəldildi —
+> çox perforasiyalı RATE quyusu hədəfin N qatını hasil edirdi (Q-19).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

@@ -3516,3 +3516,85 @@ tam dəst                      2490 keçdi, 1 buraxıldı, 1 xfailed
   nəticələrlə tutuşdurulması.
 * Qaz vurucusunda mobillik SON NÖQTƏ yaxınlaşmasıdır (su vurulmasında olduğu kimi).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+## 15 sentyabr 2026 — Seans 27: RATE hədəfinin perforasiyalara bölünməsi (B7 addım 2-yə hazırlıq)
+
+B7 addım 2-yə (RATE rejimində BHP limiti) başlayarkən RATE budaqları oxundu
+və **səssiz səhv** tapıldı. BHP limiti quyunun debitindən hesablanacağı üçün
+əvvəlcə bu səhv bağlandı.
+
+### 1 · Tapıntı — RATE hədəfi HƏR perforasiyaya TAM yazılırdı
+
+Qalıqda, Jakobianda və IMPES-də RATE budağı bağlantı üzrə dövrdə
+`total = -abs(connection.target)` yazırdı — yəni hər perforasiya quyunun
+BÜTÜN hədəfini alırdı. Ölçüldü (5×5 model, istismarçı RATE = 50 m³/gün,
+lay həcmi):
+
+| Perforasiya sayı | Faktiki maye debiti | Nisbət |
+|---|---|---|
+| 1 | 50.0000 | 1.0000 |
+| 3 | 150.0000 | **3.0000** |
+
+UI-də «Perf üst/alt» boş qalanda quyu bütün təbəqələrdə perforasiya olunur,
+yəni çox təbəqəli modeldə UI-dən yaradılan hər RATE quyusu bu səhvdən
+təsirlənirdi. SPE1-ə təsiri yox idi (orada quyular tək perforasiyalıdır).
+
+Sahibkara üç variant təqdim olundu (düzəlt / yalnız sənədləşdir / açıq xəta
+ver). **Sahibkarın seçimi: əvvəl düzəlt**, sonra BHP limiti.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `simulation/well_constraints.py` | **YENİ** — `assign_rate_shares`, `needs_rate_allocation` |
+| `simulation/well_model.py` | `WellConnection.rate_share` (defolt 1.0); ilkin pay WI ilə |
+| `simulation/implicit/residual.py`, `jacobian.py` | RATE hədəfi paya vurulur; `connection_mobilities` |
+| `simulation/implicit/three_phase_residual.py` | eyni — `well_rates` və quyu Jakobianı; `connection_mobilities` |
+| `simulation/implicit/engine.py`, `three_phase_engine.py` | pay hər addımdan ƏVVƏL yığılmış vəziyyətin λ-sı ilə yenilənir |
+| `simulation/impes_engine.py` | pay təzyiq addımında, BHP budağındakı eyni mobilliklə |
+| `tests/test_rate_allocation.py` | **YENİ** — 13 test |
+
+Qayda: `pay_c = WI_c·λ_c / Σ WI·λ`, λ addımın əvvəlindən, Nyuton daxilində
+sabit (bax Q-19). Tək perforasiyada pay dəqiq 1.0-dır.
+
+### 3 · Ölçmələr
+
+**Düzəlişdən sonra** eyni ölçmə: 1 perforasiya → 50.0000, 3 perforasiya →
+50.0000 (nisbət 1.0000).
+
+**Jakobian (sonlu fərqə qarşı, maksimal nisbi xəta):**
+
+| Yol | Xəta |
+|---|---|
+| iki fazalı, iki perforasiyalı RATE istismarçısı + vurucusu, pay 0.25/0.75 və 2/7 / 5/7 | < 10⁻⁸ (dəqiq) |
+| üç fazalı RATE istismarçısı, **tək** perforasiya (düzəlişə dəxli yoxdur) | 0.4893141064217388 |
+| üç fazalı RATE istismarçısı, iki perforasiya | 0.3239019497740145 |
+
+⚠️ Üç fazalı RATE istismarçısının Jakobianı **əvvəldən** kobud təqribidir:
+tək perforasiyada da xəta 0.49-dur (RATE budağında sərbəst qazın təzyiq/Sg
+törəmələri sıfır qoyulub). Pay bunu pisləşdirmir; düzəlişi ayrıca işdir ⏳.
+
+**Uc-uca:** 3 və 1 perforasiyalı quyunun 10 gündə cəmi maye hasilatı üç
+mühərrikdə (tam implicit, IMPES, üç fazalı) ±5 % daxilində üst-üstə düşür —
+testlə kilidlənib.
+
+### 4 · Yoxlama
+
+```
+tests/test_rate_allocation.py   13 keçdi
+tam dəst                        2503 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### 5 · Nəticəsi dəyişən modellər
+
+Tək perforasiyalı quyular bit-bit eynidir (tam dəst dəyişməz keçdi). **Çox
+perforasiyalı RATE quyusu olan modellərin nəticəsi DƏYİŞİR** — düzgün
+tərəfə: quyu artıq hədəfin özünü hasil edir/vurur.
+
+### Açıq qalan ⏳
+
+* **B7 addım 2:** RATE rejimində BHP limiti — bu seansın davamı.
+* Üç fazalı RATE istismarçısının Jakobian xətası (0.49) — ayrıca iş.
+* Təbəqələr arası paylanma bir addım gecikir (λ əvvəlki addımdandır); quyunun
+  CƏMİ debiti dəqiqdir.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

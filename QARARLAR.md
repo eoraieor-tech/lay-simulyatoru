@@ -679,3 +679,45 @@ qaz üçün eyni konvensiya saxlanıldı ki, iki yol uyğunsuz olmasın.
 Qaz fazası söndürüləndə iki fazalı mühərrik seçilir və o, vurulan fazanı
 ümumiyyətlə oxumur — quyu səssizcə SU vurardı. Nəticə "parametr işləmədi"
 deyil, "tamamilə başqa flüid vuruldu" olardı, ona görə model BLOKLANIR.
+
+
+## Q-19 — RATE hədəfi perforasiyalara WI·λ nisbətində bölünür; λ əvvəlki addımdandır
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 2-yə hazırlıq
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 27)
+
+### Qərar 1 — pay Peaceman nisbətidir
+
+    pay_c = WI_c · λ_c / Σ_k WI_k · λ_k
+
+Səbəb: BHP rejimində debit perforasiyalar arasında məhz belə paylanır (hamısı
+eyni BHP-ni görür). Beləliklə RATE ↔ BHP keçidində (B7 addım 2) təbəqələrin
+payı sıçramır.
+
+**Alternativlər rədd edildi:** bərabər pay və yalnız WI ilə pay — sulanmış
+(neft mobilliyi aşağı) təbəqəyə yenə eyni debit yazardı.
+
+### Qərar 2 — λ addımın ƏVVƏLİNDƏKİ yığılmış vəziyyətdəndir
+
+Cari iterasiyanın λ-sı ilə bir perforasiyanın debiti quyunun bütün digər
+hüceyrələrinin doymuşluğundan asılı olardı — Jakobianda hüceyrələr arası yeni
+törəmələr və yeni seyrəklik strukturu yaranardı. Pay Nyuton daxilində sabit
+olanda RATE törəmələri sadəcə paya vurulur, struktur dəyişmir və Jakobian
+dəqiq qalır (iki fazalıda ölçüldü: < 10⁻⁸).
+
+Qiyməti: təbəqələr arası paylanma bir addım gecikir. Quyunun CƏMİ debiti isə
+dəqiqdir.
+
+**Alternativ təxirə salındı ⏳:** quyu BHP-sini Nyuton naməlumu etmək
+(`StandardWellModel` / `CoupledNewtonSolver` kodu var, mühərrikə qoşulmayıb) —
+paylanmanı təbii verir, lakin qalıq/Jakobian strukturunu dəyişir.
+
+### Qərar 3 — tək perforasiyada pay dəqiq 1.0, yeniləmə yalnız lazım olanda
+
+`needs_rate_allocation` çox perforasiyalı RATE quyusu yoxdursa mühərrikdə
+yeniləməni tamamilə söndürür — mövcud modellər bit-bit eyni və əlavə xərcsizdir.
+
+### Qərar 4 — çox perforasiyalı RATE modellərinin nəticəsi dəyişir
+
+Sahibkarın seçimi (Seans 27): köhnə davranışı saxlamaq və ya bloklamaq yerinə
+düzəltmək.

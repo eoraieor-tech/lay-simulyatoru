@@ -106,6 +106,14 @@ kəsişməsindən tapır, addım daxilində yarı-implicit təkrar aparır
 (`AdaptiveTimeStepper.resolve_step`) və axa bilməyən quyunu bağlayır
 (bağlantının `well_index` = 0). Qalıq/Jakobian bu qatdan yenə xəbərsizdir.
 
+**Seans 27 — `simulation/well_constraints.py`.** Nyuton həlləri ARASINDA
+tətbiq olunan quyu qaydaları üçün ortaq modul. İlk qayda — RATE hədəfinin
+perforasiyalara payı (`WellConnection.rate_share`, `assign_rate_shares`).
+Tam implicit mühərriklər payı hər addımdan əvvəl yığılmış vəziyyətin
+mobilliyi ilə yeniləyir (`connection_mobilities` — `ResidualAssembler` və
+`ThreePhaseWellModel`), IMPES isə təzyiq addımında. Qalıq və Jakobian yalnız
+RATE hədəfini paya vurur, yeni asılılıq tanımır. Bax `QARARLAR.md` → Q-19.
+
 ### 2.2 Kapilyar təzyiq (B5-b, 14 sentyabr 2026)
 
 İki provider, eyni Brooks-Corey ailəsi, eyni parametr dataklassı

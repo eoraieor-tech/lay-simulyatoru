@@ -14,6 +14,7 @@ import numpy as np
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.wells import ControlMode, Phase, WellType
 from ..logging_setup import get_logger
+from .well_constraints import assign_rate_shares
 
 LOG = get_logger(__name__)
 
@@ -36,6 +37,10 @@ class WellConnection:
     #: `mode = BHP` ilə qurulur — qalıq/Jakobian yalnız BHP tanıyır —
     #: `target` isə `ThpController` tərəfindən hər addımda yenilənir.
     thp_target: Optional[float] = None
+    #: RATE hədəfinin bu perforasiyaya düşən PAYI (Seans 27). Quyunun
+    #: bağlantıları üzrə cəmi 1-dir; tək perforasiyada dəqiq 1.0. Mühərrik
+    #: onu hər addımın əvvəlində yeniləyir — bax `well_constraints.py`.
+    rate_share: float = 1.0
 
 
 class PeacemanWellModel:
@@ -106,6 +111,8 @@ class PeacemanWellModel:
                 thp_target=(well.control.target
                             if well.control.mode is ControlMode.THP else None),
             ))
+        # İlkin pay yalnız WI ilə — mühərrik λ-nı bilən kimi yeniləyir
+        assign_rate_shares(out)
         return out
 
     @staticmethod

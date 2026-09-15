@@ -26,6 +26,7 @@ from ...interfaces.discretization import IFluxDiscretization
 from ...logging_setup import get_logger
 from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
+from ..well_constraints import assign_rate_shares, needs_rate_allocation
 from ..well_model import PeacemanWellModel
 from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
                                     OUTER_TOLERANCE_BAR, ThpController)
@@ -86,6 +87,9 @@ class FullyImplicitEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in wells
                                   if not c.is_injector})
+        #: Çox perforasiyalı RATE quyusu varmı (Seans 27) — yoxdursa pay
+        #: heç vaxt yenilənmir və qaçış əvvəlki kimidir
+        self._rate_allocation = needs_rate_allocation(wells)
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, wells, pvt=pvt,
                                          fluids=model.fluids)
@@ -170,6 +174,7 @@ class FullyImplicitEngine(ISimulationEngine):
         cumulative_oil = cumulative_water = 0.0
 
         while time < config.end_time - 1e-9:
+            self._update_rate_shares()
             new_state, dt, newton_result = self.time_stepper.advance(
                 self.state, time, config.end_time - time)
 
@@ -256,6 +261,16 @@ class FullyImplicitEngine(ISimulationEngine):
         LOG.info("%s  RF = %.2f %%", result.message,
                  result.final_recovery_factor)
         return result
+
+    def _update_rate_shares(self) -> None:
+        """RATE hədəfinin perforasiyalara payı — addımın ƏVVƏLİNDƏ, yığılmış
+        vəziyyətin λ-sı ilə; Nyuton daxilində sabit qalır (bax
+        `well_constraints.py`)."""
+        if not self._rate_allocation:
+            return
+        fluid = self.residual_assembler.fluid_state(self.state)
+        assign_rate_shares(self.residual_assembler.wells,
+                           self.residual_assembler.connection_mobilities(fluid))
 
     def _thp_outer_loop(self, new_state, dt, newton_result):
         """Yarı-implicit THP dövrəsi — addım DAXİLİNDƏ təkrarlama (Seans 25).
