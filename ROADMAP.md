@@ -70,7 +70,12 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **16 sentyabr 2026 (Seans 32):** **G6** ✅ — süxur sıxılmasının istinad
 > təzyiqi ayrıca verilə bilir (Eclipse `ROCK`); mövcud modellər bit-bit eyni
-> qaldı, Jakobian toxunulmadı (Q-25). Növbəti boşluq: **G4** (SGOF cədvəli).
+> qaldı, Jakobian toxunulmadı (Q-25).
+>
+> **16 sentyabr 2026 (Seans 33):** **G4** ✅ — qaz relperm artıq **SGOF
+> cədvəlindən** oxuna bilir (`read_sgof`); yol boyu üç fazalı yolun SWOF
+> cədvəlini səssizcə atması düzəldildi (Q-26). Növbəti: **G1 + G2** (PVT
+> cədvəlləri və doymamış neft özlülüyü).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).

@@ -66,6 +66,14 @@ class ReservoirModel:
     Tip annotasiyası `object`-dir ki, domain qatı `scal_tables` modulundan
     məcburi asılı olmasın — köhnə layihə faylları onsuz da yüklənməlidir.
     """
+    gas_scal_tables: Optional[object] = None
+    """Qaz-neft SCAL cədvəlləri (`GasSaturationTableSet`) — G4.
+
+    Verilibsə, `gas_scal_parameters`-dəki Corey düsturunun YERİNƏ
+    işlədilir — su-neft tərəfindəki `scal_tables` ilə eyni qayda.
+    Tip annotasiyası `object`-dir (domain qatı `scal_tables`
+    modulundan məcburi asılı olmasın deyə, eyni səbəb).
+    """
     units: UnitSystem = DEFAULT_UNITS
     source_geological_model: str = ""
     #: Xassə adı -> `PropertyProvenance` — geoloji modeldən GƏTİRİLİR

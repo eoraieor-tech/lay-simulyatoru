@@ -14,6 +14,8 @@ from __future__ import annotations
 import copy
 from typing import Optional
 
+import numpy as np
+
 from ..domain.reservoir_model import ReservoirModel
 from ..logging_setup import get_logger
 from ..interfaces.providers import (ICapillaryPressureProvider,
@@ -315,8 +317,21 @@ class ModelAwareSimulationService(SimulationService):
             gas_scal = GasCoreyParameters()
             LOG.info("Qaz-neft SCAL verilməyib — defolt "
                      "GasCoreyParameters() işlədilir.")
-        self.relperm_provider = StoneRelativePermeabilityProvider.from_corey(
-            model.scal_parameters, gas_scal)
+        # G4: qaz əyrisi — CƏDVƏL varsa o, yoxsa Corey.
+        gas_tables = getattr(model, "gas_scal_tables", None)
+        if gas_tables is not None and len(gas_tables):
+            gas_scal = gas_tables
+
+        # TAPILAN SƏSSİZ SƏHV (G4): burada su-neft üçün HƏMİŞƏ Corey
+        # işlədilirdi — modeldə SWOF cədvəli olsa belə, üç fazalı
+        # qaçışda o, SƏSSİZCƏ atılırdı (iki fazalı yolda isə
+        # `_relative_permeability` onu düzgün seçir). İndi eyni seçim
+        # qaydası üç fazalı yolda da işləyir.
+        water_oil = self._relative_permeability(model)
+        swc, _ = water_oil.saturation_limits()
+        kro_end = float(water_oil.kro(np.asarray([swc]))[0])
+        self.relperm_provider = StoneRelativePermeabilityProvider(
+            water_oil, gas_scal, swc, kro_end)
 
         previous_factory = self.engine_factory
         self.engine_factory = ThreePhaseSimulationEngine

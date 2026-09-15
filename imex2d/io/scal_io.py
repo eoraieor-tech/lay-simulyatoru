@@ -23,6 +23,17 @@ ECLIPSE SWOF (deck-in `PROPS` bölməsindən)
     /
 
 Hər `/` yeni regionu bitirir — Eclipse-in öz qaydası.
+
+ECLIPSE SGOF (qaz-neft, G4 — SPE1 etalonu tələb edir)
+
+    SGOF
+    -- Sg     krg     krog    Pcog
+      0.00   0.000   1.000   0.0
+      0.80   1.000   0.000   0.0
+    /
+
+Sütun sırası SWOF ilə eynidir, lakin arqument `Sg`-dir: `krg` ARTIR,
+`krog` AZALIR.
 """
 
 from __future__ import annotations
@@ -33,7 +44,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ..domain.scal_tables import SaturationTable, SaturationTableSet
+from ..domain.scal_tables import (GasSaturationTable,
+                                  GasSaturationTableSet,
+                                  SaturationTable, SaturationTableSet)
 
 REGION_KEYS = ("region", "satnum", "zona", "zone")
 SW_KEYS = ("sw", "s_w", "water_saturation", "su")
@@ -188,3 +201,71 @@ def write_scal_csv(path: str, tables: SaturationTableSet) -> str:
                                  f"{table.kro[index]:.6f}",
                                  f"{pc[index]:.5f}"])
     return path
+
+
+def read_sgof(path: str) -> GasSaturationTableSet:
+    """Eclipse deck-dən `SGOF` açar sözünü oxuyur — G4.
+
+    `read_swof` ilə EYNİ quruluş: şərhlər atılır, `/` regionu bitirir,
+    dördüncü sütun (Pcog) varsa saxlanılır.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+
+    match = re.search(r"^\s*SGOF\s*$", text, re.MULTILINE | re.IGNORECASE)
+    if match is None:
+        raise ScalFormatError("Faylda SGOF açar sözü tapılmadı.")
+
+    body = text[match.end():]
+    stop = re.search(r"^\s*[A-Z][A-Z0-9_]{2,}\s*$", body, re.MULTILINE)
+    if stop is not None:
+        body = body[:stop.start()]
+
+    buckets: Dict[int, Dict[str, list]] = {}
+    region = 1
+    for raw_line in body.splitlines():
+        line = re.sub(r"--.*", "", raw_line).strip()
+        if not line:
+            continue
+        if line.startswith("/"):
+            if region in buckets:
+                region += 1
+            continue
+
+        terminated = line.endswith("/")
+        numbers = [float(token) for token in
+                   re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?",
+                              line.rstrip("/"))]
+        if len(numbers) >= 3:
+            bucket = buckets.setdefault(region,
+                                        {"sg": [], "krg": [], "krog": [],
+                                         "pcog": []})
+            bucket["sg"].append(numbers[0])
+            bucket["krg"].append(numbers[1])
+            bucket["krog"].append(numbers[2])
+            bucket["pcog"].append(numbers[3] if len(numbers) > 3 else None)
+        if terminated and region in buckets:
+            region += 1
+
+    if not buckets:
+        raise ScalFormatError("SGOF bölməsində rəqəm tapılmadı.")
+    return _build_gas(buckets, path)
+
+
+def _build_gas(buckets: Dict[int, dict], source: str) -> GasSaturationTableSet:
+    table_set = GasSaturationTableSet()
+    for region, bucket in sorted(buckets.items()):
+        order = np.argsort(np.asarray(bucket["sg"], float))
+        capillary = bucket["pcog"]
+        pcog = (np.asarray([capillary[index] for index in order], float)
+                if all(value is not None for value in capillary) else None)
+        table_set.add(region, GasSaturationTable(
+            sg=np.asarray(bucket["sg"], float)[order],
+            krg=np.asarray(bucket["krg"], float)[order],
+            krog=np.asarray(bucket["krog"], float)[order],
+            pcog=pcog, name=f"Region {region}"))
+
+    issues = table_set.validate()
+    if issues:
+        raise ScalFormatError("; ".join(issues))
+    return table_set

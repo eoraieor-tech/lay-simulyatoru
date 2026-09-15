@@ -4061,3 +4061,82 @@ tam dəst                                       2563 keçdi, 1 buraxıldı, 1 xf
   səviyyəsində, mühərrik seçimi məlum olanda) ayrıca kiçik iş kimi qalır.
 * Növbəti boşluq: **G4** — SGOF cədvəli ilə qaz nisbi keçiriciliyi.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 33: SPE1 boşluğu G4 — SGOF cədvəli ilə qaz relperm
+
+Sahibkarın tapşırığı: G6-dan sonra birbaşa G4 — **deck-dəki SGOF oxuyucusu da
+daxil olmaqla**, çünki SPE1 cədvəllərini oxuya bilmədən modeli qurmaq mümkün deyil.
+
+### 1 · Problem
+
+Qaz-neft əyriləri yalnız Corey düsturundan (`GasCoreyParameters`) gəlirdi.
+SPE1CASE2 isə qaz əyrisini `SGOF` cədvəli ilə verir (15 sətir). Su-neft tərəfdə
+cədvəl dəstəyi ARTIQ var idi (`SaturationTable` + `read_swof`), qaz tərəfdə yox.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `domain/scal_tables.py` | **YENİ** `GasSaturationTable` və `GasSaturationTableSet` — `Sg`, `krg`, `krog`, `Pcog` sütunları; dəqiq parçalı-xətti törəmə (`slope`); `validate` |
+| `io/scal_io.py` | **YENİ** `read_sgof()` — `read_swof` ilə eyni quruluş (şərhlər, `/` ilə region) |
+| `domain/reservoir_model.py` | `gas_scal_tables` sahəsi (su-neft `scal_tables` ilə eyni qayda) |
+| `application/model_builder.py` | `gas_scal_tables` ötürücüsü |
+| `application/simulation_service.py` | qaz əyrisi: **cədvəl varsa cədvəl**, yoxsa Corey; **+ aşağıdakı səssiz səhvin düzəlişi** |
+| `ui/panels.py`, `ui/main_window.py` | «Eclipse SGOF yüklə…» düyməsi; qaz cədvəli ayrıca saxlanılır |
+| `tests/test_gas_scal_tables.py` | **YENİ** — 22 test |
+
+### 3 · Yol boyu tapılan SƏSSİZ SƏHV — üç fazalı yol SWOF cədvəlini ATIRDI
+
+`_create_three_phase_engine` su-neft provider-ini HƏMİŞƏ Corey-dən qururdu:
+
+```python
+self.relperm_provider = StoneRelativePermeabilityProvider.from_corey(
+    model.scal_parameters, gas_scal)      # ← scal_tables burada İTİRDİ
+```
+
+İki fazalı yolda `_relative_permeability()` cədvəli düzgün seçir, üç fazalı yolda
+isə istifadəçinin yüklədiyi SWOF cədvəli **heç bir xəbərdarlıq olmadan** atılırdı.
+SPE1-də həm SWOF, həm SGOF var — yəni bu, G4-ün tərkib hissəsidir.
+
+İndi hər iki yol eyni seçim qaydasından keçir. Ölçüldü (SWOF + SGOF verilmiş model):
+`water_oil` artıq `TableRelativePermeabilityProvider`, `gas` isə
+`GasSaturationTableSet`-dir.
+
+### 4 · Dizayn qeydləri
+
+* **Ayrı sinif**, su-neft cədvəlinə əlavə sütun deyil: orada arqument `Sw`-dir və
+  `kro` AZALIR; burada arqument `Sg`-dir, `krg` ARTIR. Bir sinfə sığışdırmaq
+  sütun adlarını yalan edərdi.
+* **Müqavilə duck-typing-dir:** Stone provider-i qaz obyektindən yalnız `krg`,
+  `krog`, törəmələri, `sgc`/`sorg`/`krg_end` və `validate(swc)` istəyir. Cədvəl
+  `swc`/`kro_end` arqumentlərini QƏBUL edir, lakin İŞLƏTMİR — cədvəl onsuz da
+  Swc-də ölçülüb və öz son nöqtəsini daşıyır.
+* **Törəmə cədvəlin ÖZ meylidir** (`np.gradient` deyil) — su-neft tərəfdəki eyni
+  qayda; əks halda Jakobian qalıqdan uzaqlaşardı.
+* **Pcog sütunu itirilmir** — saxlanılır; B5-b-nin Pcog provider-inə bağlanması
+  ⏳ ayrı işdir.
+
+### 5 · Yoxlama
+
+```
+tests/test_gas_scal_tables.py   22 keçdi
+tam dəst                        2585 keçdi, 1 buraxıldı, 1 xfailed (baza 2563 + 22 yeni)
+```
+
+Ölçüldü: Corey-dən qurulan cədvəl ÖZ düyünlərində Corey ilə bit-bit eynidir,
+düyünlər arasında isə fərq ~10⁻³ səviyyəsindədir (parçalı-xətti interpolyasiyanın
+gözlənilən xətası).
+
+### Açıq qalan ⏳
+
+* **Regionlu qaz əyriləri:** Stone müqaviləsi qaz əyrisini region arqumenti
+  olmadan çağırır, ona görə hazırda yalnız DEFOLT region işlədilir. Su-neft
+  tərəfdə region dəstəyi tamdır.
+* **SCAL cədvəlləri layihə faylında SAXLANMIR** — nə su-neft, nə qaz. Bu,
+  G4-dən ƏVVƏLKİ vəziyyətdir (yoxlandı: `serialization.py`-də cədvəl yoxdur);
+  qaz üçün asimmetrik davranış icad edilmədi.
+* **SGOF üçün CSV oxuyucusu yoxdur** (su-neftdə var) — deck kifayət etdi.
+* Növbəti boşluqlar: **G1 + G2 (+G3)** — PVTO/PVDG/PVTW köçürücüsü və doymamış
+  neft özlülüyü; sonra SPE1CASE2 modeli.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

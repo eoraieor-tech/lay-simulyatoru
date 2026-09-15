@@ -910,3 +910,41 @@ IMPES məsamə həcmini təzyiqlə miqyaslamır (ümumi sıxılma `ct` yanaşmas
 bu, G6-dan əvvəlki sadələşdirmədir. Yeni sahəni orada "bir az" tətbiq etmək
 iki fərqli modeli qarışdırardı. Sahənin sənədində açıq yazılıb; istifadəçi
 xəbərdarlığı ⏳ ayrıca iş kimi qeyd olundu.
+
+
+## Q-26 — Qaz-neft cədvəli AYRI sinifdir; üç fazalı yol artıq SWOF cədvəlini atmır
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G4
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 33, [SPE1.md](SPE1.md) → §4)
+
+### Qərar 1 — `GasSaturationTable` ayrı sinifdir
+
+Su-neft cədvəlinə sütun əlavə etmək əvəzinə ayrı sinif yazıldı: arqument `Sg`-dir,
+`krg` artır, `krog` azalır — yoxlama qaydaları da tərsdir. Eyni sinifdə saxlamaq
+sütun adlarını və monotonluq yoxlamasını yanıldıcı edərdi.
+
+### Qərar 2 — modeldə AYRI sahə (`gas_scal_tables`)
+
+Cədvəl `gas_scal_parameters` sahəsinə "sıxışdırılmadı" (o, Corey parametrləri
+üçündür). Su-neft tərəfdə artıq `scal_parameters` + `scal_tables` cütü var —
+qaz tərəf eyni konvensiyanı təkrarlayır, yəni oxuyan adam üçün sürpriz yoxdur.
+
+### Qərar 3 — Stone ilə əlaqə duck-typing-lə qalır
+
+`StoneRelativePermeabilityProvider` dəyişdirilmədi: o, qaz obyektindən yalnız bir
+neçə metod istəyir və cədvəl həmin müqaviləni ödəyir. Beləliklə üç fazalı
+qalıq/Jakobian G4-dən XƏBƏRSİZDİR.
+
+### Qərar 4 — üç fazalı yol su-neft CƏDVƏLİNİ işlədir (səssiz səhvin düzəlişi)
+
+`_create_three_phase_engine` su-neft provider-ini həmişə Corey-dən qururdu və
+modeldəki SWOF cədvəli səssizcə atılırdı. İndi hər iki mühərrik eyni seçim
+qaydasından (`_relative_permeability`) keçir. SPE1 həm SWOF, həm SGOF tələb edir,
+ona görə bu, seçim deyil, zərurət idi.
+
+### Qərar 5 — regionlar və layihə faylı
+
+Qaz cədvəlində hazırda yalnız defolt region işlədilir (Stone müqaviləsində region
+arqumenti yoxdur) ⏳. SCAL cədvəlləri (su-neft də daxil) layihə faylında
+saxlanmır — bu, G4-dən əvvəlki vəziyyətdir və qaz üçün fərqli davranış icad
+edilmədi; backlog-a yazıldı.

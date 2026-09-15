@@ -5,7 +5,8 @@ davranmır: əyrilər asimmetrik olur, son nöqtələr ayrıca ölçülür,
 bəzən orta hissədə əyilmə görünür. Laboratoriya cədvəli birbaşa
 işlədilməlidir.
 
-Format Eclipse `SWOF` ilə eynidir:
+Su-neft üçün format Eclipse `SWOF`, qaz-neft üçün `SGOF` ilə eynidir
+(`GasSaturationTable`, G4 — SPE1 etalonu bu cədvəlləri tələb edir):
 
     Sw      krw       kro       Pc
     0.20    0.000     0.800     0.00
@@ -211,3 +212,240 @@ class SaturationTableSet:
     def summary(self) -> str:
         return "\n".join(f"  Region {region}: {table.summary()}"
                          for region, table in sorted(self.tables.items()))
+
+
+@dataclass
+class GasSaturationTable:
+    """Bir region üçün QAZ-NEFT nisbi keçiricilik cədvəli — G4.
+
+    Eclipse `SGOF` sütunları: `Sg`, `krg`, `krog`, `Pcog`.
+
+    NİYƏ AYRI SİNİF: su-neft cədvəlində arqument `Sw`-dir və `kro`
+    AZALIR; burada arqument `Sg`-dir və `krg` ARTIR, `krog` AZALIR.
+    Eyni sinfə sığışdırmaq sütun adlarını yalan edərdi.
+
+    MÜQAVİLƏ: bu sinif `GasCoreyParameters`-in YERİNƏ keçir —
+    `StoneRelativePermeabilityProvider` yalnız `krg(sg, swc)`,
+    `krog(sg, swc, kro_end)`, onların törəmələri, `sgc`/`sorg`/`krg_end`
+    və `validate(swc)` çağırır. `swc`/`kro_end` arqumentləri QƏBUL
+    EDİLİR, lakin İŞLƏDİLMİR: cədvəl onsuz da Swc-də ölçülüb və öz
+    son nöqtəsini daşıyır (Corey düsturunda isə onlar hesaba girir).
+    """
+
+    sg: np.ndarray
+    krg: np.ndarray
+    krog: np.ndarray
+    pcog: Optional[np.ndarray] = None
+    name: str = ""
+
+    def __post_init__(self):
+        self.sg = np.asarray(self.sg, dtype=float).ravel()
+        self.krg = np.asarray(self.krg, dtype=float).ravel()
+        self.krog = np.asarray(self.krog, dtype=float).ravel()
+        if self.pcog is not None:
+            self.pcog = np.asarray(self.pcog, dtype=float).ravel()
+
+    # ─────────────────────────────────────────── son nöqtələr
+    @property
+    def sgc(self) -> float:
+        """Bağlı (hərəkətsiz) qaz: krg sıfırdan çıxan son nöqtədən əvvəlki."""
+        moving = np.nonzero(self.krg > 0.0)[0]
+        return float(self.sg[0] if moving.size == 0
+                     else self.sg[max(moving[0] - 1, 0)])
+
+    @property
+    def sorg(self) -> float:
+        """Qaza qarşı qalıq neft: krog sıfıra çatandan sonrası.
+
+        `Sg + So + Swc = 1` olduğundan cədvəldəki ən böyük axan `Sg`-dən
+        çıxarılır. Cədvəldə `Swc` açıq yazılmır, ona görə bu, ancaq
+        `Sorg`-un cədvəldən görünən hissəsidir — Stone düsturunda
+        yalnız `gas_saturation_limits` üçün işlədilir.
+        """
+        moving = np.nonzero(self.krog > 0.0)[0]
+        if moving.size == 0:
+            return 0.0
+        index = min(moving[-1] + 1, self.sg.size - 1)
+        return float(max(1.0 - self.sg[index], 0.0))
+
+    @property
+    def krg_end(self) -> float:
+        return float(self.krg.max())
+
+    @property
+    def krog_end(self) -> float:
+        return float(self.krog.max())
+
+    @property
+    def has_capillary(self) -> bool:
+        return self.pcog is not None and bool(np.any(np.abs(self.pcog) > 1e-12))
+
+    # ─────────────────────────────────────────── interpolyasiya
+    def interpolate_krg(self, sg) -> np.ndarray:
+        return np.interp(sg, self.sg, self.krg)
+
+    def interpolate_krog(self, sg) -> np.ndarray:
+        return np.interp(sg, self.sg, self.krog)
+
+    def interpolate_pcog(self, sg) -> np.ndarray:
+        sg = np.asarray(sg, float)
+        if self.pcog is None:
+            return np.zeros_like(sg)
+        return np.interp(sg, self.sg, self.pcog)
+
+    def slope(self, values: np.ndarray, sg) -> np.ndarray:
+        """Parçalı xətti cədvəlin DƏQİQ törəməsi — `SaturationTable.slope`
+        ilə eyni qayda (Jakobian qalıqla uyğun qalsın deyə)."""
+        sg = np.atleast_1d(np.asarray(sg, float))
+        if self.sg.size < 2:
+            return np.zeros_like(sg)
+        slopes = np.diff(values) / np.diff(self.sg)
+        index = np.clip(np.searchsorted(self.sg, sg, side="right") - 1,
+                        0, self.sg.size - 2)
+        result = slopes[index]
+        outside = (sg < self.sg[0]) | (sg > self.sg[-1])
+        return np.where(outside, 0.0, result)
+
+    # ──────────────────── `GasCoreyParameters` müqaviləsi (duck-typing)
+    def krg_at(self, sg, swc=None) -> np.ndarray:
+        return self.interpolate_krg(sg)
+
+    def krog_at(self, sg, swc=None, kro_end=None) -> np.ndarray:
+        return self.interpolate_krog(sg)
+
+    # ─────────────────────────────────────────── yoxlama
+    def validate(self, swc: float = 0.0) -> List[str]:
+        label = self.name or "qaz cədvəli"
+        issues = []
+        if not (self.sg.size == self.krg.size == self.krog.size):
+            issues.append(f"{label}: sütun uzunluqları fərqlidir.")
+            return issues
+        if self.sg.size < 2:
+            issues.append(f"{label}: ən azı iki sətir lazımdır.")
+            return issues
+        if self.pcog is not None and self.pcog.size != self.sg.size:
+            issues.append(f"{label}: Pcog sütununun uzunluğu uyğun deyil.")
+        # NaN/sonsuz AYRICA tutulur — `np.diff` müqayisələri NaN üçün
+        # həmişə False qaytarır və səhv SƏSSİZCƏ keçərdi (su-neft
+        # cədvəlindəki eyni dərs).
+        for name in ("sg", "krg", "krog"):
+            column = getattr(self, name)
+            if np.any(~np.isfinite(column)):
+                issues.append(f"{label}: '{name}' sütununda NaN/sonsuz dəyər var.")
+        if self.pcog is not None and self.pcog.size == self.sg.size \
+                and np.any(~np.isfinite(self.pcog)):
+            issues.append(f"{label}: 'pcog' sütununda NaN/sonsuz dəyər var.")
+        if np.any(np.diff(self.sg) <= 0):
+            issues.append(f"{label}: Sg artan sıralı olmalıdır.")
+        if self.sg[0] < -1e-9 or self.sg[-1] > 1.0 + 1e-9:
+            issues.append(f"{label}: Sg [0, 1] intervalından kənardadır.")
+        if np.any(self.krg < -1e-12) or np.any(self.krog < -1e-12):
+            issues.append(f"{label}: nisbi keçiricilik mənfi ola bilməz.")
+        if np.any(self.krg > 1.0 + 1e-9) or np.any(self.krog > 1.0 + 1e-9):
+            issues.append(f"{label}: nisbi keçiricilik 1-dən böyükdür.")
+        if np.any(np.diff(self.krg) < -1e-9):
+            issues.append(f"{label}: krg azalır — Sg artdıqca artmalıdır.")
+        if np.any(np.diff(self.krog) > 1e-9):
+            issues.append(f"{label}: krog artır — Sg artdıqca azalmalıdır.")
+        return issues
+
+    def check_query_range(self, sg_values) -> List[str]:
+        if self.sg.size < 2:
+            return []
+        return check_extrapolation_range(
+            sg_values, float(self.sg[0]), float(self.sg[-1]),
+            f"{self.name or 'SGOF'}: Sg sorğusu")
+
+    def summary(self) -> str:
+        return (f"{self.name or 'SGOF'}: {self.sg.size} sətir, "
+                f"Sgc {self.sgc:.3f}, Sorg {self.sorg:.3f}, "
+                f"krg_end {self.krg_end:.3f}, krog_end {self.krog_end:.3f}"
+                f"{', Pcog var' if self.has_capillary else ''}")
+
+    @classmethod
+    def from_corey(cls, parameters, swc: float, kro_end: float,
+                   points: int = 21, name: str = "Corey (qaz)"):
+        """`GasCoreyParameters`-dən cədvəl — köhnə modellərin körpüsü."""
+        sg = np.linspace(parameters.sgc, 1.0 - swc - parameters.sorg, points)
+        return cls(sg=sg,
+                   krg=np.asarray(parameters.krg(sg, swc), float),
+                   krog=np.asarray(parameters.krog(sg, swc, kro_end), float),
+                   name=name)
+
+
+@dataclass
+class GasSaturationTableSet:
+    """Region → qaz-neft cədvəli (su-neft `SaturationTableSet`-in yoldaşı).
+
+    ⏳ REGION MƏHDUDİYYƏTİ: `StoneRelativePermeabilityProvider` qaz
+    əyrisini region arqumenti OLMADAN çağırır (`self.gas.krg(sg, swc)`),
+    ona görə hazırda yalnız DEFOLT region işlədilir. Regionlu qaz
+    əyriləri Stone müqaviləsinin genişləndirilməsini tələb edir.
+    """
+
+    tables: Dict[int, GasSaturationTable] = field(default_factory=dict)
+    default_region: int = 1
+
+    def __len__(self) -> int:
+        return len(self.tables)
+
+    @property
+    def regions(self) -> List[int]:
+        return sorted(self.tables)
+
+    def get(self, region: Optional[int] = None) -> GasSaturationTable:
+        if region is not None and region in self.tables:
+            return self.tables[region]
+        if self.default_region in self.tables:
+            return self.tables[self.default_region]
+        if not self.tables:
+            raise ValueError("Qaz-neft SCAL cədvəli yoxdur.")
+        return self.tables[self.regions[0]]
+
+    def add(self, region: int, table: GasSaturationTable) -> None:
+        self.tables[int(region)] = table
+
+    def validate(self, swc: float = 0.0) -> List[str]:
+        if not self.tables:
+            return ["Heç bir qaz-neft SCAL cədvəli yüklənməyib."]
+        issues = []
+        for region, table in sorted(self.tables.items()):
+            for message in table.validate(swc):
+                issues.append(f"Region {region}: {message}")
+        return issues
+
+    def summary(self) -> str:
+        return "\n".join(f"  Region {region}: {table.summary()}"
+                         for region, table in sorted(self.tables.items()))
+
+    # ──────────────────── `GasCoreyParameters` müqaviləsi (duck-typing)
+    #
+    # `StoneRelativePermeabilityProvider` bu obyekti Corey parametrləri
+    # kimi işlədir. `swc`/`kro_end` qəbul edilir, lakin cədvəl onları
+    # işlətmir (bax `GasSaturationTable` sənədi).
+    @property
+    def sgc(self) -> float:
+        return self.get().sgc
+
+    @property
+    def sorg(self) -> float:
+        return self.get().sorg
+
+    @property
+    def krg_end(self) -> float:
+        return self.get().krg_end
+
+    def krg(self, sg, swc: float = 0.0) -> np.ndarray:
+        return self.get().interpolate_krg(sg)
+
+    def krog(self, sg, swc: float = 0.0, kro_end: float = 1.0) -> np.ndarray:
+        return self.get().interpolate_krog(sg)
+
+    def krg_derivative(self, sg, swc: float = 0.0) -> np.ndarray:
+        table = self.get()
+        return table.slope(table.krg, sg)
+
+    def krog_derivative(self, sg, swc: float = 0.0,
+                        kro_end: float = 1.0) -> np.ndarray:
+        table = self.get()
+        return table.slope(table.krog, sg)

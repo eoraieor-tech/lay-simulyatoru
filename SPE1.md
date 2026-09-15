@@ -78,7 +78,7 @@ köçürüləcək.
 | G1 | PVT cədvəlləri PVTO/PVDG/PVTW (FIELD) | `PVTTable` tək təzyiq şəbəkəsidir; PVDG (9014.7-yə qədər) və PVTO doymuş qolu (5014.7-yə qədər) fərqli təzyiqlərdədir | köçürücü lazımdır |
 | G2 | Doymamış neft özlülüyü μo(p, Rs) — PVTO-da 0.51 → 0.74 cP | `mu_o = pvt.oil_viscosity(p)` — yalnız doymuş əyri (`three_phase_newton.py:145`) | **fizika boşluğu** (qalıq + Jakobian) |
 | G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | tək `c_o`, cədvəlin Pb-dən yuxarı hissəsindən (`black_oil.py::_build_undersaturated_branch`) | təqribi — ölçülməlidir |
-| G4 | SGOF cədvəli (krg, krog) | qaz əyrisi yalnız Corey (`GasCoreyParameters`) | **provider boşluğu** |
+| G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
 | G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | OPM-in ekstrapolyasiya qaydası mənbədən yoxlanılmalıdır ⏳ |
@@ -91,7 +91,7 @@ köçürüləcək.
 1. **G5 — səth debiti hədəfi** (istismarçıda neft, vurucuda qaz). ✅ Seans 30 (Q-24).
 2. **G6 — süxur sıxılmasının istinad təzyiqi** ✅ Seans 32 (Q-25) — mövcud
    modellər bit-bit eyni qaldı; flüidin öz istinadı toxunulmadı.
-3. **G4 — SGOF cədvəli** ilə qaz relperm provider-i.
+3. **G4 — SGOF cədvəli** ilə qaz relperm provider-i. ✅ Seans 33 (Q-26).
 4. **G1 + G2 (+G3 ölçmə)** — PVTO/PVDG köçürücüsü və doymamış özlülük.
 5. **SPE1CASE2 modeli** + etalonla müqayisə (FOPR, FGOR, WBHP, BPR), `tests/golden/`-da reqressiya.
 6. ⏳ G7 və CASE1 (`DRSDT 0`) — müqayisə nəticəsinə görə.

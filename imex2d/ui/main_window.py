@@ -1588,6 +1588,7 @@ class MainWindow(QMainWindow):
                 initial=self.numerical_panel.initial_conditions(),
                 pvt_table=self.pvt_panel.values(),
                 scal_tables=self.scal_tables(),
+                gas_scal_tables=self.gas_scal_tables(),
                 fault_references=self.fault_panel.values(),
                 rock_compressibility=self.rock_panel.rock_compressibility_value(),
                 rock_compressibility_reference=(
@@ -1666,6 +1667,11 @@ class MainWindow(QMainWindow):
             for key, label in wanted:
                 if key not in existing:
                     combo.addItem(label, key)
+
+    def gas_scal_tables(self):
+        """Qaz-neft SCAL cədvəlləri (G4) — seçilməyibsə `None`."""
+        return (self.scal_source_panel.gas_tables
+                if self.scal_source_panel.gas_tables_enabled() else None)
 
     def scal_tables(self):
         """Yüklənmiş SCAL cədvəlləri (yoxdursa None)."""

@@ -36,7 +36,8 @@ from ..geology.layer_availability import LayerDataPolicy
 from ..domain.structure import FaultReference
 from ..io.fault_io import (FaultFormatError, read_eclipse_faults,
                           read_faults_csv)
-from ..io.scal_io import ScalFormatError, read_scal_csv, read_swof
+from ..io.scal_io import (ScalFormatError, read_scal_csv, read_sgof,
+                          read_swof)
 from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
 from ..domain.properties import FluidProperties
@@ -1205,6 +1206,9 @@ class ScalSourcePanel(QWidget):
     def __init__(self):
         super().__init__()
         self.tables = None
+        #: Qaz-neft cədvəlləri (SGOF) — G4; ayrıca saxlanılır, çünki
+        #: su-neft cədvəli olmadan da yüklənə bilər.
+        self.gas_tables = None
         layout = QVBoxLayout(self)
 
         self.mode = QComboBox()
@@ -1217,10 +1221,13 @@ class ScalSourcePanel(QWidget):
         buttons = QHBoxLayout()
         self.load_csv = QPushButton("CSV yüklə…")
         self.load_swof = QPushButton("Eclipse SWOF yüklə…")
+        self.load_sgof = QPushButton("Eclipse SGOF yüklə…")
         self.load_csv.clicked.connect(self._load_csv)
         self.load_swof.clicked.connect(self._load_swof)
+        self.load_sgof.clicked.connect(self._load_sgof)
         buttons.addWidget(self.load_csv)
         buttons.addWidget(self.load_swof)
+        buttons.addWidget(self.load_sgof)
         layout.addLayout(buttons)
 
         self.info = QLabel("Cədvəl yüklənməyib.")
@@ -1243,6 +1250,7 @@ class ScalSourcePanel(QWidget):
         by_table = self.mode.currentData() == "TABLE"
         self.load_csv.setEnabled(by_table)
         self.load_swof.setEnabled(by_table)
+        self.load_sgof.setEnabled(by_table)
 
     def _load(self, reader, title, filter_text):
         path, _ = QFileDialog.getOpenFileName(self, title, "", filter_text)
@@ -1271,8 +1279,35 @@ class ScalSourcePanel(QWidget):
         self._load(read_swof, "Eclipse deck (SWOF)",
                    "Eclipse (*.DATA *.data *.inc);;Bütün fayllar (*)")
 
+    def _load_sgof(self):
+        """Qaz-neft cədvəli (G4) — AYRI saxlanılır, `self.tables`-ı əvəz
+        etmir: model hər ikisini eyni vaxtda işlədə bilər."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Eclipse deck (SGOF)", "",
+            "Eclipse (*.DATA *.data *.inc);;Bütün fayllar (*)")
+        if not path:
+            return
+        try:
+            self.gas_tables = read_sgof(path)
+        except ScalFormatError as error:
+            QMessageBox.warning(self, "Cədvəl oxunmadı", str(error))
+            return
+        except Exception as error:
+            QMessageBox.critical(self, "Cədvəl oxunmadı",
+                                 f"Gözlənilməz xəta: {error}")
+            return
+        self.info.setText(f"{os.path.basename(path)} (SGOF)\n"
+                          f"{len(self.gas_tables)} region\n"
+                          + self.gas_tables.summary())
+        self.mode.setCurrentIndex(1)
+        self.changed.emit()
+
     def is_enabled(self) -> bool:
         return self.mode.currentData() == "TABLE" and self.tables is not None
+
+    def gas_tables_enabled(self) -> bool:
+        return (self.mode.currentData() == "TABLE"
+                and self.gas_tables is not None)
 
 
 class RockFluidPanel(QWidget):
