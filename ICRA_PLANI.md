@@ -522,6 +522,15 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 
 ## B7 — Yekun doğrulama və sənədləşdirmə
 
+> **Vəziyyət (15 sentyabr 2026):** SPE1-in tələbləri mühərriklə
+> tutuşduruldu, üç boşluq tapıldı:
+> 1. **qaz vurulması** ✅ BİTDİ (Seans 26, Q-18) — əvvəl vurucular
+>    yalnız su vururdu, `injected_phase` oxunmurdu;
+> 2. **RATE + BHP limiti** ⏳ növbəti addım;
+> 3. **səth debiti hədəfi** ⏳ (bizdə RATE = maye, lay həcmi).
+>
+> SPE1 modeli bu üç bənd bitəndən sonra qurulur.
+
 **Həcm:** kiçik-orta (~1-2 seans)
 
 1. **Uc-uca ssenari:** 3D corner-point + anizotrop tenzor + **MPFA-O** +

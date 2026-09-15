@@ -25,7 +25,7 @@ from .scal import CapillaryParameters, CoreyParameters
 from .structure import FaultReference, HorizonReference, RegionSet
 from .units import DEFAULT_UNITS, UnitSystem
 from .validation import validate_query_range
-from .wells import ControlMode, Well
+from .wells import ControlMode, Phase, Well
 
 
 @dataclass
@@ -185,6 +185,7 @@ class ReservoirModel:
         for message in self.gas_capillary_parameters.validate():
             report.error(message, "qaz-neft kapilyar")
         self._check_gas_capillary(report)
+        self._check_gas_injection(report)
         if self.pvt_table is not None:
             for message in self.pvt_table.validate():
                 report.error(message, "PVT")
@@ -196,6 +197,29 @@ class ReservoirModel:
         return report
 
     # ------------------------------------------------------ yoxlamalar
+    def _check_gas_injection(self, report: DiagnosticReport) -> None:
+        """Qaz vuran quyu QAZ FAZASI olmayan modeldə işləyə bilməz (B7).
+
+        Qaz vurulmasını YALNIZ üç fazalı mühərrik bilir. Qaz fazası
+        söndürülübsə, iki fazalı mühərrik seçilir və o, vurulan fazanı
+        ÜMUMİYYƏTLƏ oxumur — quyu səssizcə SU vurardı. Bu, istifadəçinin
+        seçdiyindən tamamilə fərqli bir hesab olardı.
+        """
+        names = [w.name for w in self.active_wells()
+                 if w.is_injector
+                 and w.control.injected_phase is Phase.GAS]
+        if not names:
+            return
+        has_gas = (self.pvt_table is not None
+                   and getattr(self.pvt_table, "has_gas_phase", False))
+        if not has_gas:
+            report.error(
+                f"Qaz vuran quyu ({', '.join(names)}) üçün PVT-də qaz "
+                f"fazası yoxdur — iki fazalı mühərrik qaz vura bilmir.",
+                "quyular",
+                "PVT tabında «Qaz fazasını aktivləşdir» qutusunu işarələyin "
+                "və ya vurulan fazanı SU seçin")
+
     def _check_gas_capillary(self, report: DiagnosticReport) -> None:
         """Pcog YALNIZ qaz fazası modelləşdiriləndə işə düşür (B5-b).
 

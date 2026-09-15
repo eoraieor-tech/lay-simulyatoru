@@ -3441,3 +3441,78 @@ tam dəst                                  2475 keçdi, 1 buraxıldı, 1 xfailed
 * Sürüşmə (Beggs-Brill), VFPPROD idxalı, RATE quyusunda THP — dəyişmədi.
 * Növbəti blok: **B7** (yekun doğrulama + SPE1).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 15 sentyabr 2026 — Seans 26: B7 addım 1 — QAZ VURULMASI
+
+B7 (SPE1 etalonu) üçün mühərrikin imkanları tələblərlə tutuşduruldu və
+**üç boşluq** tapıldı:
+
+| SPE1 tələbi | Vəziyyət |
+|---|---|
+| künc quyusuna 100 MMscf/gün **qaz vurulması** | ❌ vurucular yalnız su vururdu → **BU SEANSDA BAĞLANDI** |
+| istismarçıda **debit + BHP limiti** (20 000 STB/gün, min 1000 psia) | ❌ rejim keçidi yoxdur → növbəti addım |
+| **səth** neft debiti hədəfi | ⚠️ bizdə RATE = maye, lay həcmi |
+
+Sahibkarın seçimi: ardıcıl getmək — əvvəl qaz vurulması, ölçmək, commit etmək;
+sonra BHP limiti; sonra SPE1. Səbəb: iki yeni xüsusiyyət eyni anda üç fazalı
+qalıq/Jakobiana girsəydi, səhv çıxanda mənbəyi ayırmaq çətinləşərdi.
+
+### 1 · Tapıntı — `injected_phase` VAR İDİ, lakin OXUNMURDU
+
+`WellControl.injected_phase` domendə mövcud idi və layihə faylında saxlanılırdı,
+lakin heç bir simulyasiya kodu ona baxmırdı: `ThreePhaseWellModel.well_rates`
+vurucunu həmişə su kimi işlədirdi (`endpoint_water_mobility / mu_w` → `water[cell]`).
+Yəni istifadəçi qaz seçsə belə, quyu SU vururdu və heç bir xəbərdarlıq yox idi.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `simulation/well_model.py` | `WellConnection.injected_phase` — faza bağlantıya çıxarıldı |
+| `simulation/implicit/three_phase_residual.py` | qaz vurucusu **qaz tənliyinə** yazır; mobillik = `krg_end / μ_g`, həcm `Bg`; Jakobianda vurulan fazaya görə SƏTİR seçilir (su → 0, qaz → 2) |
+| `simulation/implicit/three_phase_newton.py` | qazın son nöqtəsi relperm provider-indən (`gas.krg_end`) |
+| `domain/reservoir_model.py` | qaz fazası olmayan modeldə qaz vurulması — **bloklayıcı XƏTA** |
+| `ui/panels.py` | quyular cədvəlində «Vurulan faza» sütunu (SU / QAZ), layihə faylında saxlanılır |
+| `tests/test_gas_injection.py` | **YENİ** — 15 test |
+
+### 3 · Ölçmələr
+
+**Jakobian (sonlu fərqə qarşı, maksimal nisbi xəta):**
+
+| Yol | Xəta |
+|---|---|
+| qaz vurucusu, BHP rejimi | < 10⁻⁵ |
+| qaz vurucusu, RATE rejimi | < 10⁻⁵ |
+| su vurucusu (TOXUNULMAYIB) | 1.343141869382806×10⁻⁵ |
+
+Su yolunun xətası **B7-dən əvvəlki kodda ÖLÇÜLDÜ** (HEAD-dən ayrıca iş nüsxəsi
+qurularaq) və rəqəm **rəqəminə eynidir** — yəni su vurulması ədədi cəhətdən
+zərrə qədər dəyişməyib. Həmin 1.34×10⁻⁵ vurucu mobilliyinin doyumluluq
+törəməsinin nəzərə alınmamasından gəlir (köhnə sadələşdirmə, açıq sənədlənib).
+
+**Uc-uca:** qaz vuran 5×5 model yığılır, vurucunun ətrafında qaz doymuşluğu
+0.1-dən yuxarı qalxır və lay təzyiqi vurulmayan haldan YÜKSƏK qalır.
+
+### 4 · Öz təşəbbüsümlə verilmiş qərar
+
+**Qaz fazası olmayan modeldə qaz vurulması XƏTADIR** (xəbərdarlıq deyil).
+Səbəb: iki fazalı mühərrik vurulan fazanı ümumiyyətlə oxumur, yəni quyu
+səssizcə su vurardı. Bu, Pcog-dakı (Q-16) eyni prinsipin davamıdır, lakin
+orada nəticə "parametr işləmir", burada isə "TAMAMİLƏ BAŞQA flüid vurulur" —
+ona görə xəbərdarlıq kifayət etmir.
+
+### 5 · Yoxlama
+
+```
+tests/test_gas_injection.py   15 keçdi
+tam dəst                      2490 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### Açıq qalan ⏳
+
+* **B7 addım 2:** RATE rejimində **BHP limiti** və rejim keçidi (SPE1-in istismarçısı).
+* **B7 addım 3:** səth debiti hədəfi + SPE1 modelinin qurulması və nəşr olunmuş
+  nəticələrlə tutuşdurulması.
+* Qaz vurucusunda mobillik SON NÖQTƏ yaxınlaşmasıdır (su vurulmasında olduğu kimi).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

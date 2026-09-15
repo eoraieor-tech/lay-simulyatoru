@@ -34,6 +34,7 @@ from typing import Optional
 import numpy as np
 
 from ...domain.reservoir_model import ReservoirModel
+from ...domain.wells import Phase
 from ...domain.wells import ControlMode
 from ..discretization import DiscretizedGrid
 from ..well_model import WellConnection
@@ -378,10 +379,12 @@ class ThreePhaseWellRates:
 class ThreePhaseWellModel:
     """Quyu mənbə həddləri — A7, mərhələ 6b.
 
-    VURUCULAR hələ yalnız su vurur — A6-dakı davranış dəyişməyib. Qaz
-    vurma (WAG, gas injector) EOR-un öz mövzusudur (CO₂ vurma) və bu
-    modulun əhatəsindən kənardadır; `WellType`-a yeni qaz-injektor
-    tipi əlavə olunanda buraya qoşulacaq.
+    VURUCULAR su və ya QAZ vura bilər (B7 — SPE1 etalonu qaz vurur).
+    Faza bağlantıdan oxunur (`WellConnection.injected_phase`). Vurulan
+    fazanın mobilliyi SON NÖQTƏ mobilliyidir: vurulan faza öz doyma
+    həddində quyu dibini doldurur, ona görə qarışıq nisbi keçiricilik
+    deyil, həmin fazanın son nöqtəsi işlədilir — su vurulmasında
+    əvvəldən belə idi (`relperm_endpoint_water_mobility`).
 
     İSTİSMARÇILARDA qaz İKİ mənbədən çıxır — axın modulundakı (mərhələ
     6a) eyni məntiq:
@@ -396,11 +399,13 @@ class ThreePhaseWellModel:
     """
 
     def __init__(self, model: ReservoirModel, wells: list,
-                relperm_endpoint_water_mobility: float):
+                relperm_endpoint_water_mobility: float,
+                relperm_endpoint_gas: float = 0.8):
         self.model = model
         self.wells = wells
         self.ncell = model.ncell
         self._endpoint_water_mobility = relperm_endpoint_water_mobility
+        self._endpoint_gas = float(relperm_endpoint_gas)
         self._producer_names = sorted({c.well_name for c in wells
                                        if not c.is_injector})
         self._injector_names = sorted({c.well_name for c in wells
@@ -427,15 +432,25 @@ class ThreePhaseWellModel:
         for connection in self.wells:
             cell = connection.cell
             if connection.is_injector:
-                mobility = self._endpoint_water_mobility / fluid.mu_w[cell]
+                gas_injector = connection.injected_phase is Phase.GAS
+                if gas_injector:
+                    mobility = self._endpoint_gas / fluid.mu_g[cell]
+                    volume_factor = fluid.bg[cell]
+                else:
+                    mobility = self._endpoint_water_mobility / fluid.mu_w[cell]
+                    volume_factor = fluid.bw[cell]
                 if connection.mode is ControlMode.BHP:
                     rate = (connection.well_index * mobility
                             * (connection.target - state.pressure[cell]))
                 else:
                     rate = abs(connection.target)
-                rate = max(rate, 0.0) / fluid.bw[cell]
-                water[cell] += rate
-                per_well_water[connection.well_name] += rate
+                rate = max(rate, 0.0) / volume_factor
+                if gas_injector:
+                    gas[cell] += rate
+                    per_well_gas[connection.well_name] += rate
+                else:
+                    water[cell] += rate
+                    per_well_water[connection.well_name] += rate
                 continue
 
             wi = connection.well_index
@@ -863,19 +878,29 @@ class ThreePhaseWellJacobian:
             wi = connection.well_index
 
             if connection.is_injector:
-                endpoint = self.well_model._endpoint_water_mobility
-                transport = endpoint / (fluid.mu_w[c] * fluid.bw[c])
+                # Vurulan fazaya görə SƏTİR də dəyişir: su → 0-cı tənlik,
+                # qaz → 2-ci tənlik (B7). Törəmənin forması eynidir.
+                if connection.injected_phase is Phase.GAS:
+                    row = 2
+                    endpoint = self.well_model._endpoint_gas
+                    viscosity, factor = fluid.mu_g[c], fluid.bg[c]
+                    mu_p, b_p = mu_g_p[c], bg_p[c]
+                else:
+                    row = 0
+                    endpoint = self.well_model._endpoint_water_mobility
+                    viscosity, factor = fluid.mu_w[c], fluid.bw[c]
+                    mu_p, b_p = mu_w_p[c], bw_p[c]
+                transport = endpoint / (viscosity * factor)
                 drawdown = connection.target - state.pressure[c]
                 if connection.mode is ControlMode.BHP:
                     if wi * transport * drawdown <= 0.0:
                         continue
-                    d_transport = -endpoint * (mu_w_p[c] * fluid.bw[c]
-                                               + fluid.mu_w[c] * bw_p[c]) \
-                        / (fluid.mu_w[c] * fluid.bw[c]) ** 2
-                    blocks[c, 0, 0] += wi * (-transport + drawdown * d_transport)
+                    d_transport = -endpoint * (mu_p * factor + viscosity * b_p) \
+                        / (viscosity * factor) ** 2
+                    blocks[c, row, 0] += wi * (-transport + drawdown * d_transport)
                 else:
                     rate = abs(connection.target)
-                    blocks[c, 0, 0] += -rate * bw_p[c] / fluid.bw[c] ** 2
+                    blocks[c, row, 0] += -rate * b_p / factor ** 2
                 continue
 
             # ── istismarçı ────────────────────────────────────────

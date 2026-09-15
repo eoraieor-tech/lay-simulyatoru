@@ -654,3 +654,28 @@ drawdown ədədi cəhətdən ən pis haldır, Δt 0.003 günə düşdü. Quyu in
 sıfırlamaq isə quyunu tənlikdən tamamilə çıxarır — qalıq və Jakobian kodu
 dəyişmir, onlar sadəcə WI = 0 görür. Yenidən açılma 2 barlıq ehtiyatla
 (histerezis) olur.
+
+
+## Q-18 — Qaz vurulması: faza bağlantıya çıxarılır, qazsız modeldə isə XƏTADIR
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 1
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 26)
+
+### Qərar 1 — vurulan faza `WellConnection`-a çıxarılır
+
+Qalıq və Jakobian quyunun özünü deyil, yalnız bağlantını görür (B4-B-də THP
+üçün seçilmiş eyni yanaşma). Ona görə `injected_phase` bağlantıya köçürüldü —
+`well_rates` və `ThreePhaseWellJacobian` modelə müraciət etmir.
+
+### Qərar 2 — vurulan fazanın mobilliyi SON NÖQTƏ mobilliyidir
+
+`krg_end / μ_g` (qaz) və `krw_end / μ_w` (su). Səbəb: vurulan faza quyu dibini
+öz doyma həddində doldurur, ona görə qarışığın nisbi keçiriciliyi deyil, həmin
+fazanın son nöqtəsi işlədilir. Su vurulmasında bu, A6-dan bəri belədir —
+qaz üçün eyni konvensiya saxlanıldı ki, iki yol uyğunsuz olmasın.
+
+### Qərar 3 — qazsız modeldə qaz vurulması XƏTADIR, xəbərdarlıq deyil
+
+Qaz fazası söndürüləndə iki fazalı mühərrik seçilir və o, vurulan fazanı
+ümumiyyətlə oxumur — quyu səssizcə SU vurardı. Nəticə "parametr işləmədi"
+deyil, "tamamilə başqa flüid vuruldu" olardı, ona görə model BLOKLANIR.

@@ -44,7 +44,8 @@ from ..domain.scal import (CapillaryParameters, CoreyParameters,
                            GasCoreyParameters)
 from ..domain.unit_conversions import convert, to_engine_units
 from ..domain.tubing import TubingGeometry
-from ..domain.wells import ControlMode, Well, WellControl, WellType, Perforation
+from ..domain.wells import (ControlMode, Perforation, Phase, Well,
+                            WellControl, WellType)
 from ..rendering.theme import PALETTE
 from .geology_map import GeologyMapWidget
 
@@ -1646,7 +1647,7 @@ class WellPanel(QWidget):
     changed = pyqtSignal()
 
     COLUMNS = ["Ad", "i", "j", "Perf üst, m", "Perf alt, m", "k",
-              "Tip", "İdarə", "Qiymət", "rw"]
+              "Tip", "İdarə", "Qiymət", "rw", "Vurulan faza"]
     COL_NAME = 0
     COL_I = 1
     COL_J = 2
@@ -1657,6 +1658,7 @@ class WellPanel(QWidget):
     COL_MODE = 7
     COL_TARGET = 8
     COL_RW = 9
+    COL_PHASE = 10
 
     def __init__(self):
         super().__init__()
@@ -1719,6 +1721,8 @@ class WellPanel(QWidget):
                 self._add_row(well.name, {
                     "kind": well.well_type.value, "mode": well.control.mode.value,
                     "target": well.control.target, "rw": well.radius,
+                    "phase": ("QAZ" if well.control.injected_phase is Phase.GAS
+                              else "SU"),
                     "perf_top": well.perf_top, "perf_bottom": well.perf_bottom})
         finally:
             self.table.blockSignals(False)
@@ -1797,11 +1801,16 @@ class WellPanel(QWidget):
                 continue
             target = self._to_float(self.table.item(row, self.COL_TARGET).text()) or 0.0
             rw = self._to_float(self.table.item(row, self.COL_RW).text()) or 0.1
+            phase_widget = self.table.cellWidget(row, self.COL_PHASE)
+            phase = (Phase.GAS
+                     if phase_widget is not None
+                     and phase_widget.currentText() == "QAZ" else Phase.WATER)
 
             i, j, first, last = self._resolve_ijk(name, perf_top, perf_bottom)
             wells.append(Well(
                 name=name, well_type=WellType(kind),
-                control=WellControl(ControlMode(mode), target),
+                control=WellControl(ControlMode(mode), target,
+                                    injected_phase=phase),
                 perforations=[Perforation(i, j, k) for k in range(first, last + 1)],
                 radius=rw, perf_top=perf_top, perf_bottom=perf_bottom,
                 tubing=(tubing if WellType(kind) is WellType.PRODUCER else None)))
@@ -1821,7 +1830,7 @@ class WellPanel(QWidget):
     @staticmethod
     def _default_state() -> dict:
         return {"kind": "PROD", "mode": "BHP", "target": 150.0, "rw": 0.1,
-                "perf_top": None, "perf_bottom": None}
+                "phase": "SU", "perf_top": None, "perf_bottom": None}
 
     def _find_row(self, name: str) -> Optional[int]:
         for row in range(self.table.rowCount()):
@@ -1836,6 +1845,8 @@ class WellPanel(QWidget):
             "mode": self.table.cellWidget(row, self.COL_MODE).currentText(),
             "target": self._to_float(self.table.item(row, self.COL_TARGET).text()),
             "rw": self._to_float(self.table.item(row, self.COL_RW).text()),
+            "phase": (self.table.cellWidget(row, self.COL_PHASE).currentText()
+                      if self.table.cellWidget(row, self.COL_PHASE) else "SU"),
             "perf_top": self._to_float(self.table.item(row, self.COL_PERF_TOP).text()),
             "perf_bottom": self._to_float(self.table.item(row, self.COL_PERF_BOTTOM).text()),
         }
@@ -1870,6 +1881,13 @@ class WellPanel(QWidget):
         mode_box.setCurrentText(state.get("mode", "BHP"))
         mode_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
         self.table.setCellWidget(r, self.COL_MODE, mode_box)
+
+        # Vurulan faza — YALNIZ vurucu quyuda mənalıdır (B7)
+        phase_box = QComboBox()
+        phase_box.addItems(["SU", "QAZ"])
+        phase_box.setCurrentText(state.get("phase", "SU"))
+        phase_box.currentIndexChanged.connect(lambda *_: self.changed.emit())
+        self.table.setCellWidget(r, self.COL_PHASE, phase_box)
 
         self.table.setItem(r, self.COL_TARGET,
                            QTableWidgetItem(f"{state.get('target') or 150.0:g}"))

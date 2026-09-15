@@ -96,8 +96,13 @@ class ThreePhaseNewtonSolver:
         self.flux = ThreePhaseFlux(model, grid)
         from ..well_model import PeacemanWellModel
         wells = PeacemanWellModel().build_connections(model)
+        # Qaz vurulmasında (B7) son nöqtə kimi krg_end işlədilir —
+        # relperm provider-i veribsə ondan, yoxsa mühafizəkar defolt.
+        endpoint_gas = float(getattr(getattr(relperm, "gas", None),
+                                     "krg_end", 0.8))
         self.well_model = ThreePhaseWellModel(model, wells,
-                                              endpoint_water_mobility)
+                                              endpoint_water_mobility,
+                                              endpoint_gas)
         self.jacobian = ThreePhaseJacobianAssembler(
             model, self.accumulator, self.flux, self.well_model, relperm, pvt)
 

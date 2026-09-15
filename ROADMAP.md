@@ -47,7 +47,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **15 sentyabr 2026:** THP idarəsi **nodal analizə** keçirildi (Q-17) —
 > real modeldə Δt medianı 38 dəfə yaxşılaşdı, quyular isə süni bağlanmadan
-> hasilat verir. Qalan: **B7** (yekun doğrulama + SPE1).
+> hasilat verir.
+>
+> **B7 başladı:** SPE1 üçün üç boşluq tapıldı; **qaz vurulması** ✅ bitdi
+> (Q-18 — əvvəl bütün vurucular su vururdu). Qalan: RATE + BHP limiti,
+> səth debiti hədəfi, SPE1 modelinin qurulması.
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).

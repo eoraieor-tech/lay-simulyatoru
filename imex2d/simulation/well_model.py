@@ -12,7 +12,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode, WellType
+from ..domain.wells import ControlMode, Phase, WellType
 from ..logging_setup import get_logger
 
 LOG = get_logger(__name__)
@@ -27,6 +27,11 @@ class WellConnection:
     is_injector: bool
     mode: ControlMode
     target: float
+    #: Vurucu quyunun VURDUĞU faza (B7). `WellControl.injected_phase`
+    #: domendə əvvəldən var idi, lakin MÜHƏRRİK ONU OXUMURDU — bütün
+    #: vurucular su vururdu. SPE1 etalonu qaz vurur, ona görə bağlantıya
+    #: çıxarıldı: qalıq və Jakobian yalnız bağlantını görür.
+    injected_phase: Phase = Phase.WATER
     #: THP idarəli quyuda istifadəçinin THP hədəfi (B4-B). Belə quyu
     #: `mode = BHP` ilə qurulur — qalıq/Jakobian yalnız BHP tanıyır —
     #: `target` isə `ThpController` tərəfindən hər addımda yenilənir.
@@ -97,6 +102,7 @@ class PeacemanWellModel:
                 mode=(ControlMode.BHP if well.control.mode is ControlMode.THP
                       else well.control.mode),
                 target=well.control.target,
+                injected_phase=well.control.injected_phase,
                 thp_target=(well.control.target
                             if well.control.mode is ControlMode.THP else None),
             ))
