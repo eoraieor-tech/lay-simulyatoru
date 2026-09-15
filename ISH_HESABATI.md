@@ -3811,3 +3811,76 @@ tam dəst                                     2535 keçdi, 1 buraxıldı, 1 xfai
 * İki fazalı mühərrikdə qaz seriyaları yoxdur (qaz fazası yoxdur — gözlənilən).
 * Qeyd: sahibkarın «sonra BHP limitli debit idarəsinə keçək» göstərişi — B7
   addım 2 artıq Seans 27-də bitib (`a76c8b2`); qalan B7 addım 3-dür.
+
+## 15 sentyabr 2026 — Seans 29: B7 addım 3 — SPE1 parametrlərinin mənbədən yoxlanması
+
+Sahibkar B7 addım 3-ə icazə verdi və iki göstəriş əlavə etdi: (1) üç fazalı RATE
+istismarçısının Jakobian xətası (0.49, Seans 27) **texniki borc** siyahısına
+yazılsın, indi ona vaxt sərf olunmasın; (2) orijinal SPE1 parametrləri yoxlansın.
+
+Bu seans YALNIZ yoxlama və planlamadır — kod dəyişməyib. Təfərrüat: `SPE1.md`.
+
+### 1 · Mənbə
+
+OPM `opm-tests/spe1` deck faylları endirildi (`SPE1CASE1.DATA` 436 sətir, sha256
+`7e30d000…cccb1e`; `SPE1CASE2.DATA` sha256 `f3de3d06…c4249`). Lisenziya
+yoxlanılmadığı üçün repoya əlavə edilməyib — URL və checksum `SPE1.md`-dədir.
+
+### 2 · Təhvil sənədindəki (§6.2) dəyərlərin tutuşdurulması
+
+Hamısı deck ilə **üst-üstə düşür** (grid, DZ, keçiricilik, məsaməlilik, quyu
+yerləri və hədləri, 4800 psia @ 8400 ft, Pb ≈ 4014.7, Sw = 0.12, 10 il). Əlavə
+tapılanlar (sənəddə yox idi): `TOPS 8325` ft, PERMZ = PERMX, `ROCK 14.7 3E-6`,
+`RSVD` 1.270 Mscf/STB, WOC 8450 / GOC 8300 (lay tamamilə neftli), rw = 0.25 ft,
+BHP istinad dərinlikləri perforasiya mərkəzləri ilə eyni.
+
+### 3 · Tapıntı — CASE1 ilə CASE2 yalnız `DRSDT 0` ilə fərqlənir
+
+Şərhlər çıxarılaraq `diff` edildi: yalnız başlıq və `DRSDT 0` sətri. CASE1-də
+vurulan qaz doymamış neftdə həll ola bilmir, CASE2-də həll olur. Mühərrikimiz
+`DRSDT`-ni dəstəkləmir və qazı həmişə həll edir — yəni **CASE2 mühərrikin
+fizikasına uyğundur**. Hədəf CASE2 seçildi (Q-23).
+
+### 4 · Etalon nəticə oxundu — `resdata` olmadan
+
+`resdata` qurulmayıb. OPM Flow-un `SPE1CASE2.SMSPEC/.UNSMRY` faylları
+(big-endian Fortran qeydləri) müvəqqəti qovluqda yazılmış ~90 sətirlik oxuyucu
+ilə oxundu. Ölçülən əsas nöqtələr:
+
+* FOPR 20 000 STB/gün, ilk dəfə **1550-ci gündə** aşağı düşür (BHP limitinə keçid);
+  3650-ci gündə 5732.65;
+* FGOR 1.27-dən 3650-ci gündə 22.1403 Mscf/STB-yə;
+* BPR(1,1,1) 4101.32 – 7534.16 psia, WBHP INJ maksimumu 8081.86 psia;
+* 123 hesabat addımı.
+
+Oxuyucu hələ repoda deyil — müqayisə testi yazılanda `imex2d/io/`-ya köçürüləcək ⏳.
+
+### 5 · Mühərrik ilə fərqlər (`SPE1.md` §4)
+
+| # | Boşluq |
+|---|---|
+| G1 | PVTO/PVDG/PVTW köçürücüsü yoxdur (fərqli təzyiq şəbəkələri) |
+| G2 | doymamış neft özlülüyü μo(p, Rs) yoxdur — `three_phase_newton.py:145` yalnız doymuş əyri |
+| G3 | doymamış Bo tək `c_o` ilə — ölçülməlidir |
+| G4 | SGOF cədvəli ilə qaz relperm yoxdur (yalnız Corey) |
+| G5 | səth debiti hədəfi (ORAT, qaz RATE) yoxdur |
+| G6 | süxur sıxılmasının istinad təzyiqi = datum (SPE1: 14.7 psia) — məsamə həcmində ~1.4 % |
+| G7 | doymuş qol 5014.7 psia-dan yuxarı (etalonda 7534 psia) — ekstrapolyasiya qaydası ⏳ |
+| G8 | `DRSDT 0` (yalnız CASE1) |
+
+Üç fazalı kro modeli (Stone II) SPE1-də fərq yaratmır: su hərəkətsizdir
+(Sw = Swc), orada Stone II və Eclipse defolt modeli eyni `kro = krog` verir.
+
+**Yan tapıntı:** `stone_relperm.py` modul sənədində "Stone II … Eclipse-in
+defoltu" yazılıb. Eclipse-in üç fazalı neft relperm defoltu Stone II deyil
+(`STONE1`/`STONE2` açar sözü ilə seçilir) — iddia yanlışdır, düzəldilməlidir ⏳.
+
+### 6 · Texniki borc
+
+`ROADMAP.md`-də yeni **«Texniki borc»** bölməsi açıldı; ilk bənd — üç fazalı RATE
+istismarçısının Jakobian xətası 0.49 (sahibkarın göstərişi).
+
+### Açıq qalan ⏳ — plan (`SPE1.md` §5)
+
+1. G5 səth debiti → 2. G6 süxur istinadı → 3. G4 SGOF → 4. G1+G2 PVT →
+5. SPE1CASE2 modeli və etalonla müqayisə → 6. G7, CASE1.

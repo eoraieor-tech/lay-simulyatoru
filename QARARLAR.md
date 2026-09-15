@@ -808,3 +808,35 @@ perforasiyası olsa yenə qarışardı.
 Qaz sm³/gün maye m³/gündən 2–3 tərtib böyükdür. Ayrıca panel 2×2 düzümü
 pozardı (mövcud çağırışlar və testlər 2×2 gözləyir), eyni ox isə maye
 xətlərini oxunmaz edərdi.
+
+
+## Q-23 — SPE1 hədəfi CASE2-dir; etalon OPM Flow nəticəsidir, öz oxuyucumuzla oxunur
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 3
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 29, [SPE1.md](SPE1.md))
+
+### Qərar 1 — əvvəl SPE1CASE2 (dəyişən doyma təzyiqi)
+
+İki OPM deck-i yalnız `DRSDT 0` ilə fərqlənir. Mühərrik vurulan qazı həmişə
+doymamış neftdə həll edir, yəni CASE2-nin fizikasını daşıyır. CASE1 üçün yeni
+fizika (Rs-in artımını qadağan edən qayda — qalıq və Jakobiana toxunur) lazım
+olardı.
+
+**Alternativ təxirə salındı ⏳:** CASE1 — CASE2 müqayisəsi bitəndən sonra.
+
+### Qərar 2 — etalon: OPM Flow-un `SPE1CASE2` summary faylı
+
+Odeh (1981) məqaləsinin cədvəl rəqəmləri əlimizdə deyil; OPM Flow-un nəticəsi
+açıq, rəqəmsaldır və məhz eyni deck-dən alınıb.
+
+### Qərar 3 — `resdata` asılılığı əlavə edilmir
+
+Summary formatı sadədir (big-endian Fortran qeydləri); oxumaq üçün ~90 sətir
+kifayət etdi. Ağır native kitabxana (bax `OPM_IMPORT.md` — natamam faylda
+SIGABRT) yalnız iki massiv üçün əsaslandırılmır.
+
+### Qərar 4 — iş sırası: səth debiti → süxur istinadı → SGOF → PVT → model
+
+Ən kiçik və ən az riskli boşluqlar əvvəl; fizikaya (qalıq/Jakobian) toxunan
+G2 sona yaxın, hər biri ayrıca sonlu fərq testi ilə — Seans 26-dakı "iki yeni
+xüsusiyyəti eyni anda qalığa salma" prinsipi.

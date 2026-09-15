@@ -229,6 +229,17 @@ hərəkətini izləyir və dashboard-da bütün göstəriciləri görür.
 
 ---
 
+## Texniki borc
+
+Bilinən, lakin hazırda proqramı çökdürməyən qeyri-dəqiqliklər — sahibkarın
+qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
+
+| # | Nə | Ölçülüb | Mənbə |
+|---|---|---|---|
+| TB-1 | Üç fazalı RATE istismarçısının quyu Jakobianı: sərbəst qazın təzyiq/Sg törəmələri sıfır qoyulub | sonlu fərqə qarşı nisbi xəta **0.4893** (tək perforasiya), 0.3239 (iki) | Seans 27, `three_phase_residual.py` RATE budağı |
+
+---
+
 ## Gələcək ideyalar (backlog)
 
 Hələ mərhələyə salınmayan, amma unudulmaması lazım olan fikirlər:
