@@ -33,8 +33,8 @@ from ..domain.scal import CapillaryParameters, CoreyParameters
 from ..domain.structure import FaultReference, HorizonReference, RegionSet
 from ..domain.units import FIELD, METRIC
 from ..domain.tubing import TubingGeometry
-from ..domain.wells import (ControlMode, Perforation, Phase, Well, WellControl,
-                            WellType)
+from ..domain.wells import (ControlMode, Perforation, Phase, RateBasis, Well,
+                            WellControl, WellType)
 from ..geology.facies import FaciesVariogramParams
 from ..geology.sgs import (DEFAULT_MIN_HARD_DATA_FOR_OWN_MODEL, FaciesPropertyConfig,
                            PropertyVariogramParams)
@@ -581,7 +581,8 @@ class ProjectSerializer:
             "control": {"mode": well.control.mode.value,
                         "target": well.control.target,
                         "injected_phase": well.control.injected_phase.value,
-                        "bhp_limit": well.control.bhp_limit},
+                        "bhp_limit": well.control.bhp_limit,
+                        "rate_basis": well.control.rate_basis.value},
             "perforations": [{"i": p.i, "j": p.j, "k": p.k,
                               "open": p.open, "skin": p.skin,
                               "direction": p.direction}
@@ -607,7 +608,10 @@ class ProjectSerializer:
                                 _phase_or_water(control.get("injected_phase")),
                                 # B7-dən əvvəlki fayllarda açar yoxdur → hədd yox
                                 bhp_limit=(None if control.get("bhp_limit") is None
-                                           else float(control["bhp_limit"]))),
+                                           else float(control["bhp_limit"])),
+                                # B7 addım 3-dən əvvəlki fayllar → lay həcmi
+                                rate_basis=RateBasis(control.get("rate_basis",
+                                                                "RESERVOIR"))),
             perforations=[Perforation(**p) for p in data.get("perforations", [])],
             radius=data.get("radius", 0.1),
             active=data.get("active", True),

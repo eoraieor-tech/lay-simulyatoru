@@ -29,6 +29,18 @@ class Phase(Enum):
     GAS = "GAS"
 
 
+class RateBasis(Enum):
+    """RATE hədəfinin HANSI həcmdə verildiyi (B7 addım 3)."""
+    #: Lay həcmi: istismarçıda maye (su+neft), vurucuda vurulan faza.
+    #: Mövcud bütün modellərin davranışı.
+    RESERVOIR = "RESERVOIR"
+    #: Səth həcmi: istismarçıda NEFT debiti (Eclipse `ORAT`), vurucuda
+    #: vurulan fazanın debiti (Eclipse `WCONINJE 'RATE'`). Mühərrik onu
+    #: addımlar arasında lay həcminə çevirir — bax
+    #: `simulation/well_constraints.py::SurfaceRateController`.
+    SURFACE = "SURFACE"
+
+
 @dataclass
 class Perforation:
     """Bir hüceyrədə açılmış interval."""
@@ -58,6 +70,8 @@ class WellControl:
     #: `None` — hədd yoxdur (köhnə davranış). BHP/THP rejimində işləmir —
     #: diaqnostika bunu xəbərdarlıq kimi göstərir.
     bhp_limit: Optional[float] = None
+    #: RATE hədəfinin həcm bazası (B7 addım 3) — bax `RateBasis`.
+    rate_basis: RateBasis = RateBasis.RESERVOIR
 
     def _target_check(self):
         if self.mode is ControlMode.BHP:

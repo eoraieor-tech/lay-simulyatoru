@@ -26,8 +26,9 @@ from ...interfaces.discretization import IFluxDiscretization
 from ...logging_setup import get_logger
 from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
-from ..well_constraints import (BhpLimitController, assign_rate_shares,
-                                needs_rate_allocation)
+from ..well_constraints import (MAX_SURFACE_ITERATIONS, SURFACE_RATE_TOLERANCE,
+                                BhpLimitController, SurfaceRateController,
+                                assign_rate_shares, needs_rate_allocation)
 from ..well_model import PeacemanWellModel
 from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
                                     OUTER_TOLERANCE_BAR, ThpController)
@@ -94,9 +95,15 @@ class FullyImplicitEngine(ISimulationEngine):
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, wells, pvt=pvt,
                                          fluids=model.fluids)
+        # B7 addım 3: SƏTH bazalı RATE hədəfi — addımlar arasında lay həcminə
+        # çevrilir (bax `_surface_rate_loop`)
+        self.surface_rate = SurfaceRateController(wells, self._surface_factors)
+        #: səth debiti düzəlişinə görə addımın ƏLAVƏ həllərinin sayı
+        self.surface_rate_resolves = 0
         # B7 addım 2: RATE quyularının BHP həddi — rejim addımlar arasında
         # dəyişir (bax `_bhp_limit_loop`)
-        self.bhp_limit = BhpLimitController(wells, self._connection_mobilities)
+        self.bhp_limit = BhpLimitController(wells, self._connection_mobilities,
+                                            self.surface_rate.rate_target)
         #: BHP limiti keçidlərinə görə addımın ƏLAVƏ həllərinin sayı
         self.bhp_limit_resolves = 0
 
@@ -181,6 +188,8 @@ class FullyImplicitEngine(ISimulationEngine):
 
         while time < config.end_time - 1e-9:
             self._update_rate_shares()
+            if self.surface_rate.active:
+                self.surface_rate.predict(self.state)
             new_state, dt, newton_result = self.time_stepper.advance(
                 self.state, time, config.end_time - time)
 
@@ -195,6 +204,8 @@ class FullyImplicitEngine(ISimulationEngine):
             # (bax `_thp_outer_loop`). `self.state` HƏLƏ köhnə vəziyyətdir —
             # təkrar məhz ondan başlamalıdır.
             new_state, newton_result = self._thp_outer_loop(
+                new_state, dt, newton_result)
+            new_state, newton_result = self._surface_rate_loop(
                 new_state, dt, newton_result)
             new_state, newton_result = self._bhp_limit_loop(
                 new_state, dt, newton_result)
@@ -285,6 +296,34 @@ class FullyImplicitEngine(ISimulationEngine):
         """Bağlantıların lay həcmi mobillikləri — RATE payı və BHP limiti üçün."""
         assembler = self.residual_assembler
         return assembler.connection_mobilities(assembler.fluid_state(state))
+
+    def _surface_factors(self, state) -> list:
+        """Lay həcmi → səth debiti əmsalları (bax `SurfaceRateController`)."""
+        assembler = self.residual_assembler
+        return assembler.connection_surface_factors(assembler.fluid_state(state))
+
+    def _surface_rate_loop(self, new_state, dt, newton_result):
+        """SƏTH debiti hədəfi — addım DAXİLİNDƏ düzəliş (B7 addım 3).
+
+        Əldə olunan səth debiti hədəfdən `SURFACE_RATE_TOLERANCE`-dan çox
+        fərqlənirsə lay hədəfi miqyaslanır və addım eyni Δt ilə yenidən həll
+        olunur. Təkrar yığılmasa əvvəlki həll saxlanılır; düzəldilmiş hədəf
+        növbəti addımın proqnozu ilə onsuz da yenilənir.
+        """
+        controller = self.surface_rate
+        if not controller.active:
+            return new_state, newton_result
+        for _ in range(MAX_SURFACE_ITERATIONS):
+            if controller.correct(newton_result.rates) <= SURFACE_RATE_TOLERANCE:
+                break
+            retry = self.time_stepper.resolve_step(self.state, dt)
+            if retry is None:
+                LOG.warning("Səth debiti: düzəldilmiş hədəflə addım yenidən "
+                            "yığılmadı — əvvəlki həll saxlanıldı.")
+                break
+            new_state, dt, newton_result = retry
+            self.surface_rate_resolves += 1
+        return new_state, newton_result
 
     def _bhp_limit_loop(self, new_state, dt, newton_result):
         """RATE quyularının BHP həddi — addım DAXİLİNDƏ rejim keçidi (B7 addım 2).

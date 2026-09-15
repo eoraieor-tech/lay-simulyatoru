@@ -533,6 +533,8 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > **Seans 29:** SPE1 parametrləri OPM deck-indən yoxlandı, hədəf **SPE1CASE2**
 > (Q-23), etalon OPM Flow nəticəsi oxundu; 8 boşluq və iş sırası — [SPE1.md](SPE1.md).
 >
+> **Seans 30:** səth debiti hədəfi (G5) ✅ bitdi (Q-24).
+>
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi
 > düzəldildi (Q-19) — əvvəl hər perforasiya quyunun tam hədəfini alırdı.
 >

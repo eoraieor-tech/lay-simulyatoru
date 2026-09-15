@@ -120,6 +120,13 @@ pozulanda bağlantının `mode`/`target`-i dəyişir və addım `resolve_step` i
 yenidən həll olunur. Nəticəyə `well_bhp` və `well_control_mode` yazılır. IMPES
 limiti rədd edir. Bax `QARARLAR.md` → Q-21.
 
+Üçüncü qayda — **`SurfaceRateController`** (B7 addım 3): SƏTH bazalı RATE
+hədəfi (`WellControl.rate_basis`). Addımdan əvvəl `predict` səth hədəfini
+`connection_surface_factors` (qalığın RATE budağındakı `(1−f)/Bo`, `1/B`) ilə lay
+həcminə çevirir; `_surface_rate_loop` (THP dövrəsindən sonra, BHP limitindən
+əvvəl) sapma 10⁻³-dən böyükdürsə hədəfi miqyaslayıb addımı yenidən həll edir.
+`BhpLimitController` cari lay hədəfini ondan alır. Bax `QARARLAR.md` → Q-24.
+
 ### 2.2 Kapilyar təzyiq (B5-b, 14 sentyabr 2026)
 
 İki provider, eyni Brooks-Corey ailəsi, eyni parametr dataklassı

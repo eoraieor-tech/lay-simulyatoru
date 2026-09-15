@@ -16,7 +16,7 @@ import scipy.sparse as sp
 
 from ..application.config import SimulationConfig
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode
+from ..domain.wells import ControlMode, RateBasis
 from .well_constraints import assign_rate_shares, needs_rate_allocation
 from ..interfaces.providers import (ICapillaryPressureProvider,
                                     IInitializationProvider, IPVTProvider,
@@ -77,6 +77,20 @@ def _reject_bhp_limit_impes(model) -> None:
             "keçidi yalnız tam implicit mühərrikin addım dövrəsindədir.")
 
 
+def _reject_surface_rate_impes(model) -> None:
+    """SƏTH bazalı RATE hədəfi ilə AÇIQ imtina — B7 addım 3.
+
+    Çevirmə yalnız tam implicit mühərrikin addım dövrəsindədir. IMPES-də səth
+    rəqəmi səssizcə LAY həcmi kimi işlənərdi (neftdə ~Bo qədər səhv).
+    """
+    if any(well.control.mode is ControlMode.RATE
+           and well.control.rate_basis is RateBasis.SURFACE
+           for well in model.active_wells()):
+        raise NotImplementedError(
+            "ImpesEngine SƏTH debiti hədəfi ilə İŞLƏMİR (B7): lay həcminə "
+            "çevirmə yalnız tam implicit mühərrikin addım dövrəsindədir.")
+
+
 class ImpesEngine(ISimulationEngine):
 
     def __init__(self,
@@ -104,6 +118,7 @@ class ImpesEngine(ISimulationEngine):
         _reject_multipoint_impes(self.flux_discretization)
         _reject_thp_impes(model)
         _reject_bhp_limit_impes(model)
+        _reject_surface_rate_impes(model)
         self._discretization = self.flux_discretization.build(model)
         self._connections = self._discretization.connections
         self._trans = self._discretization.transmissibility

@@ -25,7 +25,7 @@ from .scal import CapillaryParameters, CoreyParameters
 from .structure import FaultReference, HorizonReference, RegionSet
 from .units import DEFAULT_UNITS, UnitSystem
 from .validation import validate_query_range
-from .wells import ControlMode, Phase, Well
+from .wells import ControlMode, Phase, RateBasis, Well
 
 
 @dataclass
@@ -440,6 +440,13 @@ class ReservoirModel:
                             report: DiagnosticReport) -> None:
         if well.control.bhp_limit is not None:
             self._check_bhp_limit(well, reference, report)
+        if (well.control.rate_basis is RateBasis.SURFACE
+                and well.control.mode is not ControlMode.RATE):
+            # SƏSSİZ ATILMIR (B7 addım 3): baza yalnız debit hədəfinə aiddir
+            report.warning(
+                f"{well.name}: debit bazası SƏTH yalnız RATE rejimində işləyir — "
+                f"{well.control.mode.value} rejimində nəzərə alınmır.", well.name,
+                "Bazanı LAY-a qaytarın və ya quyunu RATE rejiminə keçirin")
         if well.control.mode is ControlMode.THP:
             self._check_thp_control(well, reference, report)
             return

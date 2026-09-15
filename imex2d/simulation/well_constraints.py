@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 from typing import Callable, Dict, List, Optional, Sequence
 
-from ..domain.wells import ControlMode
+from ..domain.wells import ControlMode, Phase, RateBasis
 from ..logging_setup import get_logger
 
 LOG = get_logger(__name__)
@@ -127,10 +127,18 @@ class BhpLimitController:
     təbəqələr arasında təzyiq fərqi böyük olanda qiymət təqribidir.
     """
 
-    def __init__(self, connections: Sequence, mobility: Callable):
-        """`mobility(state)` — bağlantılarla EYNİ sırada lay həcmi mobillikləri."""
+    def __init__(self, connections: Sequence, mobility: Callable,
+                 rate_target: Optional[Callable] = None):
+        """`mobility(state)` — bağlantılarla EYNİ sırada lay həcmi mobillikləri.
+
+        `rate_target(ad)` — quyunun CARİ lay həcmi RATE hədəfi (`None` →
+        qurulma anındakı `connection.target`). SƏTH bazalı quyuda hədəf
+        addım-addım dəyişir (`SurfaceRateController.rate_target`); onsuz
+        RATE-ə qayıdan quyu səth rəqəmini lay hədəfi kimi bərpa edərdi.
+        """
         self._connections = list(connections)
         self._mobility = mobility
+        self._rate_lookup = rate_target
         self._positions: Dict[str, List[int]] = {}
         for position, connection in enumerate(self._connections):
             if (connection.mode is ControlMode.RATE
@@ -165,6 +173,14 @@ class BhpLimitController:
         """Yeni zaman addımı — hər quyuya yenidən bir keçid hüququ verilir."""
         self._switched_this_step = set()
 
+    def _rate(self, name: str) -> float:
+        """Quyunun cari lay həcmi RATE hədəfi."""
+        if self._rate_lookup is not None:
+            value = self._rate_lookup(name)
+            if value is not None:
+                return float(value)
+        return self._rate_target[name]
+
     def implied_bhp(self, name: str, pressure, mobility) -> float:
         """Hədəf debiti verən BHP, bar; mobillik sıfırdırsa `nan`."""
         weight = weighted = 0.0
@@ -175,7 +191,7 @@ class BhpLimitController:
             weighted += value * float(pressure[connection.cell])
         if not weight > 0.0:
             return float("nan")
-        rate = self._rate_target[name]
+        rate = self._rate(name)
         if self._injector[name]:
             return (weighted + rate) / weight
         return (weighted - rate) / weight
@@ -219,7 +235,7 @@ class BhpLimitController:
         for position in self._positions[name]:
             connection = self._connections[position]
             connection.mode = ControlMode.BHP if limited else ControlMode.RATE
-            connection.target = self._limit[name] if limited else self._rate_target[name]
+            connection.target = self._limit[name] if limited else self._rate(name)
         LOG.info("Quyu '%s': %s (hədəf debit üçün tələb olunan BHP %.1f bar, "
                  "limit %.1f bar).", name,
                  "BHP LİMİTİNƏ keçdi" if limited else "RATE rejiminə QAYITDI",
@@ -231,3 +247,105 @@ class BhpLimitController:
             result.well_bhp.setdefault(name, []).append(float(value))
             result.well_control_mode.setdefault(name, []).append(
                 self.mode_used[name])
+
+
+#: Səth debitinin hədəfdən icazə verilən nisbi sapması — bundan kiçik
+#: sapmada addım təkrarlanmadan qəbul olunur.
+SURFACE_RATE_TOLERANCE = 1e-3
+
+#: Addım daxilində səth debiti düzəlişinin maksimal təkrar sayı.
+MAX_SURFACE_ITERATIONS = 3
+
+
+class SurfaceRateController:
+    """SƏTH debiti hədəfi — addımlar arasında lay həcmi hədəfinə çevrilir (B7 addım 3).
+
+    Qalıq RATE hədəfini LAY həcmində tanıyır (istismarçıda maye, vurucuda
+    vurulan faza). SPE1 isə neftin SƏTH debitini (`ORAT`) və qazın SƏTH vurma
+    debitini verir. Qalığa yeni hədd əlavə etmək əvəzinə (Q-15/Q-21 yanaşması)
+    nəzarətçi `connection.target`-i addım-addım yenidən hesablayır.
+
+    RATE budağının öz düsturları ilə, L lay həcmi hədəfində:
+
+        istismarçı:  q_neft,səth = L · Σ_c pay_c · (1 − f_c) / Bo_c,   f = λw/(λw+λo)
+        vurucu:      q_səth      = L · Σ_c pay_c / B_c
+
+    * **Proqnoz** (`predict`, addımdan əvvəl): yığılmış vəziyyətin əmsalları ilə
+      `L = q_səth / Σ pay·k` — B və f addım boyu az dəyişdiyi üçün adətən
+      kifayətdir.
+    * **Düzəliş** (`correct`, addımdan sonra): əldə olunan səth debiti hədəfdən
+      `SURFACE_RATE_TOLERANCE`-dan çox fərqlənirsə `L ← L · hədəf / əldə olunan`
+      və mühərrik addımı yenidən həll edir.
+
+    BHP limitində olan (`mode = BHP`) quyunun hədəfinə toxunulmur.
+    """
+
+    def __init__(self, connections: Sequence, surface_factors: Callable):
+        """`surface_factors(state)` — bağlantılarla EYNİ sırada `k_c` əmsalları."""
+        self._connections = list(connections)
+        self._factors = surface_factors
+        self._positions: Dict[str, List[int]] = {}
+        for position, connection in enumerate(self._connections):
+            if (connection.mode is ControlMode.RATE
+                    and getattr(connection, "rate_basis", RateBasis.RESERVOIR)
+                    is RateBasis.SURFACE):
+                self._positions.setdefault(connection.well_name, []).append(position)
+        first = {name: self._connections[positions[0]]
+                 for name, positions in self._positions.items()}
+        #: istifadəçinin səth hədəfi (müsbət böyüklük)
+        self.surface_target = {name: abs(float(c.target)) for name, c in first.items()}
+        self._injector = {name: bool(c.is_injector) for name, c in first.items()}
+        self._phase = {name: c.injected_phase for name, c in first.items()}
+        #: qalığın gördüyü CARİ lay həcmi hədəfi
+        self.reservoir_target: Dict[str, float] = {}
+
+    @property
+    def active(self) -> bool:
+        return bool(self._positions)
+
+    def rate_target(self, name: str) -> Optional[float]:
+        """`BhpLimitController` üçün — səth bazalı olmayan quyuda `None`."""
+        return self.reservoir_target.get(name)
+
+    def predict(self, state) -> None:
+        """Addımdan ƏVVƏL: yığılmış vəziyyətin əmsalları ilə lay hədəfi."""
+        factors = self._factors(state)
+        for name, positions in self._positions.items():
+            total = sum(float(self._connections[p].rate_share) * float(factors[p])
+                        for p in positions)
+            if math.isfinite(total) and total > 0.0:
+                self._set(name, self.surface_target[name] / total)
+
+    def correct(self, rates) -> float:
+        """Addımdan SONRA: əldə olunan səth debitinə görə düzəliş.
+
+        Qaytarır: RATE rejimindəki quyular üzrə ƏN BÖYÜK nisbi sapma.
+        """
+        worst = 0.0
+        for name, positions in self._positions.items():
+            if self._connections[positions[0]].mode is not ControlMode.RATE:
+                continue                          # BHP limitindədir
+            achieved = self.achieved(name, rates)
+            target = self.surface_target[name]
+            if not (achieved > 0.0 and target > 0.0):
+                continue
+            error = abs(achieved - target) / target
+            worst = max(worst, error)
+            if error > SURFACE_RATE_TOLERANCE and name in self.reservoir_target:
+                self._set(name, self.reservoir_target[name] * target / achieved)
+        return worst
+
+    def achieved(self, name: str, rates) -> float:
+        """Həll olunmuş addımda quyunun səth debiti (müsbət böyüklük)."""
+        if not self._injector[name]:
+            return -float(rates.per_well_oil.get(name, 0.0))
+        if self._phase[name] is Phase.GAS:
+            return float((getattr(rates, "per_well_gas", None) or {}).get(name, 0.0))
+        return float(rates.per_well_water.get(name, 0.0))
+
+    def _set(self, name: str, value: float) -> None:
+        self.reservoir_target[name] = float(value)
+        for position in self._positions[name]:
+            connection = self._connections[position]
+            if connection.mode is ControlMode.RATE:
+                connection.target = float(value)

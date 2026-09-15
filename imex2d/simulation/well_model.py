@@ -12,7 +12,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode, Phase, WellType
+from ..domain.wells import ControlMode, Phase, RateBasis, WellType
 from ..logging_setup import get_logger
 from .well_constraints import assign_rate_shares
 
@@ -45,6 +45,9 @@ class WellConnection:
     #: vurucuda maksimal; yalnız RATE rejimli quyuda doldurulur. Qalıq onu
     #: OXUMUR: `BhpLimitController` addımlar arasında `mode`/`target`-i dəyişir.
     bhp_limit: Optional[float] = None
+    #: RATE hədəfinin həcm bazası (B7 addım 3). Qalıq onu OXUMUR: SƏTH
+    #: bazalı quyuda `SurfaceRateController` `target`-i lay həcminə çevirir.
+    rate_basis: RateBasis = RateBasis.RESERVOIR
 
 
 class PeacemanWellModel:
@@ -116,6 +119,7 @@ class PeacemanWellModel:
                             if well.control.mode is ControlMode.THP else None),
                 bhp_limit=(well.control.bhp_limit
                            if well.control.mode is ControlMode.RATE else None),
+                rate_basis=well.control.rate_basis,
             ))
         # İlkin pay yalnız WI ilə — mühərrik λ-nı bilən kimi yeniləyir
         assign_rate_shares(out)

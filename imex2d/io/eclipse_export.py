@@ -19,7 +19,7 @@ from typing import List
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode, Phase, WellType
+from ..domain.wells import ControlMode, Phase, RateBasis, WellType
 from ..logging_setup import get_logger
 from ..version import VERSION
 
@@ -287,6 +287,13 @@ class EclipseDeckWriter:
                 if well.control.mode is ControlMode.BHP:
                     parts.append(f"  '{well.name}' 'OPEN' 'BHP' 5* "
                                  f"{well.control.target:.2f} /")
+                elif well.control.rate_basis is RateBasis.SURFACE:
+                    # SƏTH neft debiti (B7 addım 3) — Eclipse ORAT: debit
+                    # 4-cü, minimal BHP 9-cu sütunda
+                    limit = (well.control.bhp_limit
+                             if well.control.bhp_limit is not None else 1.0)
+                    parts.append(f"  '{well.name}' 'OPEN' 'ORAT' "
+                                 f"{abs(well.control.target):.2f} 4* {limit:.2f} /")
                 else:
                     # WCONPROD sütunları: 4 ORAT · 5 WRAT · 6 GRAT · 7 LRAT ·
                     # 8 RESV · 9 BHP. ƏVVƏL `'LRAT' 2* debit` yazılırdı — debit
@@ -314,6 +321,13 @@ class EclipseDeckWriter:
                 if well.control.mode is ControlMode.BHP:
                     parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'BHP' 2* "
                                  f"{well.control.target:.2f} /")
+                elif well.control.rate_basis is RateBasis.SURFACE:
+                    # SƏTH vurma debiti (B7 addım 3) — Eclipse RATE: debit
+                    # 5-ci, maksimal BHP 7-ci sütunda
+                    limit = (well.control.bhp_limit
+                             if well.control.bhp_limit is not None else 1000.0)
+                    parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'RATE' "
+                                 f"{abs(well.control.target):.2f} 1* {limit:.2f} /")
                 else:
                     # WCONINJE sütunları: 5 səth debiti · 6 RESV · 7 BHP.
                     # Bizim RATE hədəfi LAY HƏCMİDİR — RESV rejimi.

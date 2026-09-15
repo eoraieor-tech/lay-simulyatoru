@@ -64,6 +64,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > cəmlənib sıfırlanırdı) düzəldildi; **vurulan qaz** qrafikə və ixraca əlavə
 > olundu (Q-22).
 >
+> **Seans 29–30:** SPE1 parametrləri mənbədən yoxlandı, hədəf SPE1CASE2 (Q-23);
+> **səth debiti hədəfi** (`ORAT`, qaz `RATE`) əlavə olundu (Q-24). Qalan
+> boşluqlar və sıra — [SPE1.md](SPE1.md).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

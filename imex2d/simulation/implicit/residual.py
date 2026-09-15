@@ -277,6 +277,21 @@ class ResidualAssembler:
                 else fluid.lam_w[c.cell] + fluid.lam_o[c.cell]
                 for c in self.wells]
 
+    def connection_surface_factors(self, fluid: FluidState) -> list:
+        """Lay həcmi RATE hədəfinin SƏTH debitinə çevrilmə əmsalı — bağlantı
+        üzrə, `well_rates`-in RATE budağındakı EYNİ ifadə: istismarçıda
+        neft `(1 − f)/Bo`, vurucuda su `1/Bw` (B7 addım 3)."""
+        factors = []
+        for c in self.wells:
+            cell = c.cell
+            if c.is_injector:
+                factors.append(1.0 / fluid.bw[cell])
+                continue
+            lam_w, lam_o = fluid.lam_w[cell], fluid.lam_o[cell]
+            fraction = lam_w / max(lam_w + lam_o, 1e-30)
+            factors.append((1.0 - fraction) / fluid.bo[cell])
+        return factors
+
     def well_rates(self, state: ReservoirState, fluid: FluidState) -> WellRates:
         """Quyu debitləri, səth həcmi. Müsbət = laya daxil olur."""
         water = np.zeros(self.ncell)

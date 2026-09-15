@@ -840,3 +840,39 @@ SIGABRT) yalnız iki massiv üçün əsaslandırılmır.
 Ən kiçik və ən az riskli boşluqlar əvvəl; fizikaya (qalıq/Jakobian) toxunan
 G2 sona yaxın, hər biri ayrıca sonlu fərq testi ilə — Seans 26-dakı "iki yeni
 xüsusiyyəti eyni anda qalığa salma" prinsipi.
+
+
+## Q-24 — Səth debiti hədəfi ayrıca parametrdir və addımlar arasında lay həcminə çevrilir
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 3, SPE1 boşluğu G5
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 30)
+
+### Qərar 1 — `ControlMode` deyil, `WellControl.rate_basis`
+
+Yeni `ControlMode` dəyəri Q-15-də sənədlənmiş təhlükəni yaradardı (bütün
+`mode is BHP` yoxlamaları onu səssizcə RATE kimi işlədərdi). Baza RATE-in
+mənasını dəqiqləşdirir, rejimin özünü dəyişmir; defolt `RESERVOIR` — mövcud
+modellər bit-bit eynidir.
+
+### Qərar 2 — proqnoz + düzəliş, qalıq/Jakobian toxunulmur
+
+Addımdan əvvəl yığılmış vəziyyətin `(1−f)/Bo`, `1/B` əmsalları ilə səth hədəfi
+lay həcminə çevrilir; addımdan sonra əldə olunan səth debitinə görə miqyaslanıb
+addım təkrarlanır. Qiymət ölçüldü (Seans 30): iki fazalıda 6, üç fazalı qaz
+vurmada 21 əlavə həll (300 gün); dəqiqlik 10⁻³ daxilində.
+
+**Alternativ rədd edildi:** neftin səth debitini birbaşa qalığa yazmaq
+(`q_neft = −hədəf`, su `q_neft·(Bo/Bw)·λw/λo`). Dəqiqdir, lakin iki mühərrikin
+RATE Jakobianını dəyişir, `λo → 0`-da təkil olur və üç fazalı RATE Jakobianı
+onsuz da təqribidir (TB-1).
+
+### Qərar 3 — BHP limiti cari lay hədəfini callback ilə alır
+
+Səth bazalı quyuda lay hədəfi addım-addım dəyişir; limitdən RATE-ə qayıdan quyu
+qurulma anındakı (səth) rəqəmi bərpa etsəydi hədəf ~Bo qədər səhv olardı.
+`BhpLimitController(..., rate_target=SurfaceRateController.rate_target)`.
+
+### Qərar 4 — IMPES-də xəta, RATE olmayan rejimdə xəbərdarlıq
+
+IMPES-də səth rəqəmi səssizcə lay həcmi kimi işlənərdi. BHP/THP rejimində
+baza sadəcə işləmir — Q-21, Qərar 5 ilə eyni prinsip.

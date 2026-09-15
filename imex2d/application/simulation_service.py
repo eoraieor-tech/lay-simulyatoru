@@ -152,6 +152,17 @@ class SimulationService:
                 f"mühərriklə işləyir ({', '.join(limited)}). Ədədi parametrlər "
                 "tabında hesablama sxemini «Fully implicit» edin və ya limiti "
                 "silin."])
+        # B7 addım 3: SƏTH debiti hədəfi də yalnız tam implicit mühərrikdədir
+        from ..domain.wells import RateBasis
+        surface = [well.name for well in model.active_wells()
+                   if well.control.mode is ControlMode.RATE
+                   and well.control.rate_basis is RateBasis.SURFACE]
+        if surface:
+            raise ModelValidationError([
+                "Səth debiti hədəfi yalnız tam implicit (Nyuton) mühərriklə "
+                f"işləyir ({', '.join(surface)}). Ədədi parametrlər tabında "
+                "hesablama sxemini «Fully implicit» edin və ya debit bazasını "
+                "LAY həcminə qaytarın."])
 
     @staticmethod
     def _flux_discretization(config: SimulationConfig):

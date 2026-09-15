@@ -3884,3 +3884,71 @@ istismarçısının Jakobian xətası 0.49 (sahibkarın göstərişi).
 
 1. G5 səth debiti → 2. G6 süxur istinadı → 3. G4 SGOF → 4. G1+G2 PVT →
 5. SPE1CASE2 modeli və etalonla müqayisə → 6. G7, CASE1.
+
+## 15 sentyabr 2026 — Seans 30: B7 addım 3 (G5) — SƏTH debiti hədəfi
+
+`SPE1.md` planının 1-ci bəndi. SPE1 istismarçıya neftin SƏTH debitini (`ORAT`
+20 000 STB/gün), vurucuya qazın SƏTH debitini (100 000 Mscf/gün) verir;
+mühərrikin RATE hədəfi isə LAY həcmi idi.
+
+### 1 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `domain/wells.py` | `RateBasis` (`RESERVOIR` — defolt, `SURFACE`); `WellControl.rate_basis` |
+| `application/serialization.py` | `.imx`-də `rate_basis`; açarı olmayan köhnə fayl → `RESERVOIR` |
+| `simulation/well_model.py` | `WellConnection.rate_basis` |
+| `simulation/well_constraints.py` | **`SurfaceRateController`** (`predict` / `correct`), `SURFACE_RATE_TOLERANCE = 1e-3`, `MAX_SURFACE_ITERATIONS = 3`; `BhpLimitController` cari lay hədəfini callback-dən alır |
+| `simulation/implicit/residual.py`, `three_phase_residual.py` | `connection_surface_factors` — RATE budağının öz `(1−f)/Bo` və `1/B` ifadələri |
+| `simulation/implicit/engine.py`, `three_phase_engine.py` | proqnoz addımdan əvvəl, `_surface_rate_loop` THP dövrəsindən sonra, BHP limitindən əvvəl |
+| `simulation/impes_engine.py`, `application/simulation_service.py` | IMPES + SƏTH bazası — açıq imtina |
+| `domain/reservoir_model.py` | SƏTH bazası RATE olmayan rejimdə — xəbərdarlıq |
+| `io/eclipse_export.py` | istismarçı `ORAT` (debit 4-cü, BHP 9-cu), vurucu `RATE` (debit 5-ci, BHP 7-ci sütun) |
+| `ui/panels.py` | quyular cədvəlində «Debit bazası» sütunu (LAY / SƏTH) |
+| `tests/test_surface_rate.py` | **YENİ** — 14 test |
+
+### 2 · Necə işləyir (bax Q-24)
+
+RATE budağında L lay həcmi hədəfi ilə səth debiti:
+`q_neft,səth = L · Σ pay·(1−f)/Bo`, `q_vurulan,səth = L · Σ pay/B`.
+
+* **proqnoz** — addımdan əvvəl yığılmış vəziyyətin əmsalları ilə `L = q_səth / Σ pay·k`;
+* **düzəliş** — addımdan sonra əldə olunan səth debiti hədəfdən 10⁻³-dən çox
+  fərqlənirsə `L ← L·hədəf/əldə olunan` və addım yenidən həll olunur (ən çox 3 dəfə).
+
+Proqnoz başlanğıc vəziyyətində dəqiqdir (testdə nisbi fərq < 10⁻¹²).
+
+### 3 · Ölçmələr (300 gün; neft 30 sm³/gün, qaz 20 000 sm³/gün)
+
+İki fazalı: 7×7×2, su vurucusu BHP 320. Üç fazalı: 7×7×1, qaz vurucusu SƏTH RATE,
+istismarçıda BHP limiti 50 bar. "Yalnız proqnoz" — düzəliş söndürülərək ölçüldü.
+
+| Qaçış | Addım | Δt medianı | Δt kəsilməsi | Əlavə həll | Neftin maks. sapması | Qazın maks. sapması |
+|---|---|---|---|---|---|---|
+| iki fazalı, yalnız proqnoz | 22 | 20.00 | 0 | 0 | 2.72×10⁻³ | — |
+| iki fazalı, proqnoz + düzəliş | 22 | 20.00 | 0 | 6 | 5.16×10⁻⁴ | — |
+| üç fazalı, yalnız proqnoz | 91 | 1.19 | 1 | 0 | 2.42×10⁻² | 5.40×10⁻² |
+| üç fazalı, proqnoz + düzəliş | 96 | 1.19 | 0 | 21 | 7.84×10⁻⁴ | 9.21×10⁻⁴ |
+
+* Üç fazalı qaçışın kiçik Δt-si (medianı 1.19 gün) **qaz vurma fizikasındandır** —
+  düzəliş söndürüləndə də eynidir; düzəlişin qiyməti 5 addım + 21 əlavə həll.
+* Müqayisə üçün: eyni iki fazalı model LAY bazası ilə (hədəf 30 lay m³/gün)
+  səthdə 24.440 – 24.726 sm³/gün neft verir — yəni SƏTH hədəfi olmadan SPE1-in
+  `ORAT`-ı Bo qədər (~18.5 %) səhv təkrarlanardı.
+
+### 4 · Yoxlama
+
+```
+tests/test_surface_rate.py + əlaqəli fayllar   14 + 173 keçdi
+tam dəst                                       2549 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### Açıq qalan ⏳
+
+* `validate_well_rate` 100 000 m³/gündən böyük debitə "qeyri-adi yüksək"
+  xəbərdarlığı verir — SPE1-in qaz vurma debiti (100 000 Mscf/gün ≈ 2.83·10⁶ sm³/gün)
+  üçün yanıldıcıdır; SPE1 modelindən əvvəl baxılmalıdır.
+* İki fazalı mühərrikdə SƏTH bazalı **su vurucusu** uc-uca sınanmayıb (əmsal `1/Bw`
+  kod baxımından eynidir, testi yoxdur).
+* `well_control_mode` hələ də CSV/JSON ixracında yoxdur (Seans 27-dən).
+* Növbəti: `SPE1.md` planı — G6 süxur sıxılmasının istinad təzyiqi.

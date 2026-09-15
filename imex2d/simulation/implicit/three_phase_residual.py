@@ -427,6 +427,23 @@ class ThreePhaseWellModel:
                 mobilities.append(self._endpoint_water_mobility / fluid.mu_w[cell])
         return mobilities
 
+    def connection_surface_factors(self, fluid: ThreePhaseFluidState) -> list:
+        """Lay həcmi RATE hədəfinin SƏTH debitinə çevrilmə əmsalı — bağlantı
+        üzrə, `well_rates`-in RATE budağındakı EYNİ ifadə: istismarçıda neft
+        `(1 − f)/Bo`, vurucuda vurulan faza `1/Bg` və ya `1/Bw` (B7 addım 3)."""
+        factors = []
+        for connection in self.wells:
+            cell = connection.cell
+            if connection.is_injector:
+                volume = (fluid.bg[cell] if connection.injected_phase is Phase.GAS
+                          else fluid.bw[cell])
+                factors.append(1.0 / volume)
+                continue
+            lam_w, lam_o = fluid.lam_w[cell], fluid.lam_o[cell]
+            fraction = lam_w / max(lam_w + lam_o, 1e-30)
+            factors.append((1.0 - fraction) / fluid.bo[cell])
+        return factors
+
     def well_rates(self, state: ThreePhaseState,
                    fluid: ThreePhaseFluidState,
                    reference_pressure=None) -> ThreePhaseWellRates:
