@@ -3331,3 +3331,113 @@ tam dəst                              2468 keçdi, 1 buraxıldı, 1 xfailed (ə
 * **Quyu həddində kapilyar** nəzərə alınmır (iki fazalı yolda da belədir).
 * Növbəti blok: **B7** (yekun doğrulama + SPE1).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 15 sentyabr 2026 — Seans 25: THP idarəsinin SABİTLİYİ — nodal analiz
+
+Sahibkar 41×41×3 heterogen, üç fazalı modeldə qeyri-stabillik bildirdi: qaz və
+su sıçrayışından sonra təzyiq/debit şiddətli rəqs edir, Δt 0.03 günə düşür.
+İlkin diaqnoz "açıq THP birləşməsi çökür" idi. **Ölçmə bunu qismən təkzib etdi**
+və əsl səbəbi üzə çıxardı.
+
+### 1 · Ölçmə ilə səbəbin ayrılması
+
+Əvvəlcə sintetik 8×8×3 modeldə dörd variant müqayisə olundu (900 gün):
+
+| Variant | Kəsilmə | Addım |
+|---|---|---|
+| THP + kapilyar | 27 | 131 |
+| sabit BHP + kapilyar | 47 | 174 |
+| THP, kapilyarsız | 42 | 135 |
+| sabit BHP, kapilyarsız | **61** | 196 |
+
+Yəni THP çıxarılanda vəziyyət PİSLƏŞİRDİ — sintetik modeldə THP günahkar deyildi.
+
+Sonra sahibkarın öz `layihe.imx` faylı yükləndi. İlk tapıntı: **faylda qaz fazası
+söndürülüb** (PVT-də Bg/qaz lözlüyü yoxdur), yəni saxlanmış model iki fazalıdır və
+Pcog işləmir; sahibkar faylı fərqli testlər apararkən saxlamışdı. O fayl olduğu kimi
+1000 gün qaçırıldı: **65 addım, kəsilmə yoxdur, 46 saniyə** — problem görünmür.
+
+Eyni grid üzərində qaz fazası aktivləşdirildikdə simptom TAM təkrarlandı:
+**300 addım, 125 uğursuz cəhd, Δt medianı 0.104 gün, minimum 0.0048** (sahibkarın
+gördüyü 0.03 ilə eyni diapazon), 3575 saniyə.
+
+### 2 · Kök səbəb — VLP əyrisi debitdən asılıdır, nəzarətçi isə bunu bilmirdi
+
+Addım-addım jurnal göstərdi ki, PROD-1-in BHP-si iki dəyər arasında gedib-gəlir:
+**183.8 bar** (durğun NEFT sütunu) və **~130 bar** (axan, qazlı yüngül sütun).
+
+Ölçülmüş VLP əyrisi (PROD-1, 2015 m, THP = 20 bar):
+
+| neft debiti, m³/gün | tələb olunan BHP, bar |
+|---|---|
+| 0 (durğun, qazsız) | 183.8 |
+| 5 (qazla) | 71.4 |
+| 125 | 79.6 |
+| 500 | 144.6 |
+| 1000 | 244.8 |
+
+Nəzarətçi BHP-ni "keçən addımın debiti" ilə hesablayırdı, halbuki debitin özü
+BHP-dən asılıdır. Nəticədə VLP əyrisi boyunca sıçrayış: quyu bağlanır → debit
+sıfır → sütun ağırlaşır → BHP qalxır → quyu daha da bağlanır.
+
+### 3 · Həll — üç addım (heç biri qalıq/Jakobiana toxunmur)
+
+1. **NODAL ANALİZ.** İş nöqtəsi IPR ∩ VLP kəsişməsindən tapılır:
+   `q(BHP) = J·(p_lay − BHP)` düz xətti ilə traverse birləşdirilir və
+   `THP(BHP, q(BHP)) = THP_hədəf` tənliyi BHP üzrə ikiqat bölmə ilə həll olunur.
+   BHP artdıqca debit azalır və sürtünmə düşür — alınan THP monotondur, ona görə
+   kəsişmə yeganədir. Xərc əvvəlki ilə eynidir (~40 traverse).
+2. **YARI-İMPLİCİT TƏKRAR.** Addım həll olunandan sonra BHP həmin addımın öz
+   debitləri ilə yenilənir; fərq 1 bardan böyükdürsə addım eyni Δt ilə yenidən
+   həll olunur (ən çox 2 təkrar). Təkrar yığılmasa əvvəlki həll saxlanılır —
+   dövrə nəticəni heç vaxt pisləşdirə bilməz.
+3. **AVTOMATİK BAĞLANMA.** Quyu HEÇ BİR debitdə THP hədəfinə çatmırsa, bağlantıların
+   quyu indeksi sıfırlanır — hasilat dəqiq sıfır olur və quyu həddi Jakobiandan
+   çıxır. Şərait düzələndə 2 barlıq ehtiyatla yenidən açılır (aç/bağla rəqsinə qarşı).
+
+### 4 · Yol boyu tapılan iki SƏHV (hər ikisi ölçmə ilə)
+
+* **Başlanğıcda səhv bağlanma.** İlk variantda PROD-1 t = 0-da bağlandı, çünki
+  qərar DURĞUN (ən ağır) sütuna əsaslanırdı. Real quyu işə düşüb qaz verəndə
+  sütun yüngülləşir. İndi bağlanma qərarı yalnız HƏQİQİ axan tərkib məlum
+  olandan sonra verilir; başlanğıcda BHP lay təzyiqinin 5 bar altına qoyulur ki,
+  quyu işə düşsün (`STARTUP_DRAWDOWN_BAR`).
+* **Yalnız sıxma (clamp) kifayət etmir.** BHP-ni lay təzyiqində saxlamaq rəqsi
+  dayandırsa da, sıfıra yaxın drawdown ədədi cəhətdən ən pis vəziyyətdir —
+  ölçüldü: Δt 0.003 günə düşdü. Bağlanma məhz buna görə lazım oldu.
+
+### 5 · Nəticə — sahibkarın modeli, 400 gün, qaz aktiv, THP = 20 bar
+
+| | Köhnə | Yeni (nodal) |
+|---|---|---|
+| addım | 300 | **93** |
+| uğursuz cəhd | 125 | **23** |
+| Δt medianı | 0.104 gün | **3.958 gün** |
+| Δt minimumu | 0.0048 gün | **0.125 gün** |
+| vaxt | 3575 san | **421 san** |
+| bağlanan quyu | — | yoxdur |
+
+Hasilat: PROD-1 296.8 m³/gün (BHP 122.6), W-1 427.9 m³/gün (BHP 117.0),
+kumulyativ neft 386 937 m³, RF 19.24 %, GOR 370.5, su payı 0 %, p_orta 180.3 bar.
+Yarı-implicit dövrə 33 əlavə həll aparıb.
+
+**Ən vacib cəhət:** köhnə qaçış "sürətli" görünən yerlərdə quyunu faktiki olaraq
+bağlı saxlayırdı (fizika dayanmışdı). Yeni qaçışda hər iki quyu real hasilat verir
+VƏ hesablama 8.5 dəfə sürətlidir.
+
+### 6 · Yoxlama
+
+```
+tests/test_thp_control.py (7 yeni test)   28 keçdi
+tam dəst                                  2475 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### Açıq qalan ⏳
+
+* **Tam implicit THP birləşməsi LAZIM OLMADI** — ölçmə göstərdi ki, problem
+  gecikmədə deyil, iş nöqtəsinin səhv tapılmasında idi. Qalıq/Jakobian toxunulmadı.
+* IPR düz xətt kimi götürülür (J son addımdan). Vogel tipli əyri IPR ⏳ gələcəyə.
+* Sürüşmə (Beggs-Brill), VFPPROD idxalı, RATE quyusunda THP — dəyişmədi.
+* Növbəti blok: **B7** (yekun doğrulama + SPE1).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

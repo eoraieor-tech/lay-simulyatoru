@@ -617,3 +617,40 @@ qurulur (B4-B-də lülə həndəsəsi ilə eyni yanaşma).
 
 Səssizcə atmaq məhz bu seansda düzəldilən səhvin təkrarı olardı: istifadəçi
 parametr verir, nəticədə heç nə dəyişmir və səbəbi heç yerdə yazılmır.
+
+
+## Q-17 — THP iş nöqtəsi NODAL ANALİZLƏ tapılır (keçən addımın debiti ilə yox)
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B4-B sabitliyi
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 25)
+
+### Qərar 1 — iş nöqtəsi IPR ∩ VLP kəsişməsidir
+
+B4-B-də BHP "keçən addımın debiti ilə tərs traverse" kimi hesablanırdı. Bu,
+PRİNSİPCƏ səhvdir: tələb olunan BHP debitdən güclü asılıdır (ölçüldü — 5 m³/gün-də
+71 bar, 1000-də 245 bar), debit isə BHP-dən. Nəzarətçi VLP əyrisi boyunca sıçrayır
+və bistabil dövrəyə düşürdü.
+
+İndi hər addımda `THP(BHP, q(BHP)) = THP_hədəf` tənliyi BHP üzrə həll olunur;
+`q(BHP) = J·(p_lay − BHP)`, J son iş nöqtəsindən yenilənir. Funksiya monotondur
+(BHP ↑ → debit ↓ → sürtünmə ↓ → THP ↑), ona görə kəsişmə yeganədir.
+
+**Alternativ rədd edildi:** tam implicit THP birləşməsi (THP tənliyi Nyuton
+sisteminə). Ölçmə göstərdi ki, problem gecikmə DEYİL — sabit BHP ilə qaçış da
+qeyri-stabil idi, nodal düzəlişdən sonra isə açıq birləşmə kifayət etdi:
+Δt medianı 38 dəfə yaxşılaşdı. Qalıq/Jakobianı riskə atmağa əsas qalmadı.
+
+### Qərar 2 — quyu YALNIZ həqiqi axan tərkibə görə bağlanır
+
+Bağlanma qərarı durğun (axınsız) sütuna əsaslana bilməz: o, ən ağır sütundur və
+işləyən quyunu da "axa bilmir" kimi göstərir (ölçüldü — PROD-1 t = 0-da səhvən
+bağlandı). Başlanğıcda BHP lay təzyiqinin `STARTUP_DRAWDOWN_BAR` = 5 bar altına
+qoyulur ki, quyu işə düşsün və nəzarətçi həqiqi tərkibi öyrənsin.
+
+### Qərar 3 — bağlanma = quyu indeksinin sıfırlanması
+
+Alternativ (BHP-ni lay təzyiqində saxlamaq) sınandı və ÖLÇÜLDÜ: sıfıra yaxın
+drawdown ədədi cəhətdən ən pis haldır, Δt 0.003 günə düşdü. Quyu indeksini
+sıfırlamaq isə quyunu tənlikdən tamamilə çıxarır — qalıq və Jakobian kodu
+dəyişmir, onlar sadəcə WI = 0 görür. Yenidən açılma 2 barlıq ehtiyatla
+(histerezis) olur.

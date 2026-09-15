@@ -43,7 +43,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **14 sentyabr 2026:** **B5-b** bitdi — üç fazalı mühərrikdə kapilyar
 > təzyiq: **Pcow qoşuldu** (əvvəl səssizcə atılırdı!) və **Pcog** əlavə
-> olundu (Q-16). Qalan: **B7** (yekun doğrulama + SPE1).
+> olundu (Q-16).
+>
+> **15 sentyabr 2026:** THP idarəsi **nodal analizə** keçirildi (Q-17) —
+> real modeldə Δt medianı 38 dəfə yaxşılaşdı, quyular isə süni bağlanmadan
+> hasilat verir. Qalan: **B7** (yekun doğrulama + SPE1).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).

@@ -268,3 +268,101 @@ def test_ui_offers_thp_mode():
     import inspect
     from imex2d.ui import panels
     assert 'mode_box.addItems(["BHP", "RATE", "THP"])' in inspect.getsource(panels)
+
+
+# ═══════════════════ stabillik düzəlişi (Seans 25) ═══════════════════
+#
+# ÖLÇÜLMÜŞ SƏHV: sahibkarın 41×41×3 modelində qaz sıçrayışından sonra
+# BHP iki dəyər arasında rəqs edirdi — 183.8 bar (durğun NEFT sütunu) və
+# ~130 bar (axan, qazlı yüngül sütun). Δt 0.03 günə düşürdü.
+# Səbəb: axın dayananda nəzarətçi sütunu təmiz neftlə hesablayıb BHP-ni
+# YUXARI atırdı, bu isə quyunu daha da bağlayırdı → dövrə qapanırdı.
+
+def test_stopped_well_does_not_raise_bhp():
+    """QAYDA 1: axmayan quyuda BHP YUXARI qaldırılmır (bistabilliyin kökü)."""
+    model = _model(thp=20.0)
+    connections = PeacemanWellModel().build_connections(model)
+    controller = ThpController(model, connections, fluids=model.fluids)
+    controller.initialize()
+    name = _producer(model).name
+
+    controller.bhp[name] = 120.0          # axan, yüngül sütun vəziyyəti
+    controller.update({name: 0.0}, {name: 0.0})    # quyu dayandı
+    assert controller.bhp[name] <= 120.0, "dayanmış quyuda BHP qaldırıldı"
+
+
+def test_stopped_well_uses_the_last_flowing_composition():
+    """QAYDA 1b: yaddaşdakı qazlı tərkib işlədilir, təmiz neft yox."""
+    model = _model(thp=20.0, with_gas=True)
+    connections = PeacemanWellModel().build_connections(model)
+    controller = ThpController(model, connections, fluids=model.fluids)
+    controller.initialize()
+    name = _producer(model).name
+
+    controller.update({name: -200.0}, {name: -50.0}, {name: -40000.0})
+    remembered = controller.bhp[name]
+    controller.update({name: 0.0}, {name: 0.0}, {name: 0.0})
+    assert controller.bhp[name] <= remembered + 1e-9
+
+
+def test_bhp_is_not_raised_above_reservoir_pressure():
+    """QAYDA 2: lay təzyiqindən yuxarı BHP quyunu əbədi bağlayardı."""
+    model = _model(thp=20.0)
+    connections = PeacemanWellModel().build_connections(model)
+    controller = ThpController(model, connections, fluids=model.fluids)
+    controller.initialize()
+    name = _producer(model).name
+    cells = [c.cell for c in connections if c.well_name == name]
+
+    pressure = np.full(model.ncell, 1000.0)
+    pressure[cells] = 90.0                 # lay təzyiqi aşağı düşüb
+    controller.bhp[name] = 80.0
+    controller.update({name: -10.0}, {name: -1.0}, pressure=pressure)
+    assert controller.bhp[name] <= 90.0 + 1e-9
+
+
+def test_update_reports_the_largest_movement():
+    """Yarı-implicit dövrə bu qiymətə görə dayanır."""
+    model = _model(thp=20.0)
+    connections = PeacemanWellModel().build_connections(model)
+    controller = ThpController(model, connections, fluids=model.fluids)
+    controller.initialize()
+    name = _producer(model).name
+    controller.bhp[name] = 100.0
+    moved = controller.update({name: -300.0}, {name: -100.0})
+    assert moved == pytest.approx(abs(controller.bhp[name] - 100.0))
+
+
+def test_resolve_step_replaces_the_last_history_record():
+    """Addımın təkrar həlli YENİ addım deyil — tarixçə şişməməlidir."""
+    from imex2d.application.config import SimulationConfig
+    model = _model(thp=20.0)
+    engine = _service().create_engine(model, SimulationConfig(end_time=50.0))
+    stepper = engine.time_stepper
+    state, dt, _ = stepper.advance(engine.state, 0.0, 50.0)
+    before = len(stepper.history)
+    next_dt = stepper.dt
+    again = stepper.resolve_step(engine.state, dt)
+    assert again is not None
+    assert len(stepper.history) == before, "tarixçəyə əlavə qeyd yazıldı"
+    assert stepper.dt == next_dt, "növbəti addımın ölçüsü dəyişdirildi"
+
+
+def test_engine_exposes_the_outer_iteration_counter():
+    from imex2d.application.config import SimulationConfig
+    model = _model(thp=20.0)
+    engine = _service().create_engine(model, SimulationConfig(end_time=100.0))
+    assert engine.thp_outer_iterations == 0
+    engine.run()
+    assert engine.thp_outer_iterations >= 0
+
+
+def test_semi_implicit_loop_keeps_thp_on_target():
+    """Düzəlişdən sonra da THP hədəfi izlənməlidir (geriyə uyğunluq)."""
+    model = _model(thp=20.0)
+    result = _service().run(model, SimulationConfig(end_time=400.0))
+    assert result.converged, result.message
+    thp = result.well_thp[_producer(model).name]
+    finite = [v for v in thp[len(thp) // 2:] if math.isfinite(v)]
+    assert finite
+    assert np.median(np.abs(np.asarray(finite) - 20.0)) < 3.0, finite[-5:]

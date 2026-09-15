@@ -27,7 +27,8 @@ from ...logging_setup import get_logger
 from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
 from ..well_model import PeacemanWellModel
-from ..wellbore.thp_control import ThpController
+from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
+                                    OUTER_TOLERANCE_BAR, ThpController)
 from .jacobian import JacobianAssembler
 from .linear import NewtonLinearSolver
 from .newton import NewtonConfig, NewtonSolver
@@ -88,8 +89,15 @@ class FullyImplicitEngine(ISimulationEngine):
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, wells, pvt=pvt,
                                          fluids=model.fluids)
-        self.thp_control.initialize()
+
+        #: Yarı-implicit THP dövrəsində edilən ƏLAVƏ həllərin sayı
+        #: (diaqnostika üçün — sıfır olması dövrənin işə düşmədiyini bildirir)
+        self.thp_outer_iterations = 0
         self.state = self._initial_state()
+        # THP nəzarətçisi ilkin BHP-ni LAY TƏZYİQİNİ bilərək qoyur
+        # (bax `ThpController.initialize`) — ona görə vəziyyət
+        # qurulandan SONRA çağırılır.
+        self.thp_control.initialize(self.state.pressure)
         # IMPES mühərriki ilə eyni atributlar — testlər və UI üçün
         self.pressure = self.state.pressure
         self.sw = self.state.water_saturation
@@ -172,6 +180,12 @@ class FullyImplicitEngine(ISimulationEngine):
                                   f"({newton_result.status.value}).")
                 break
 
+            # Yarı-implicit THP: BHP bu addımın öz debitləri ilə yenilənir
+            # (bax `_thp_outer_loop`). `self.state` HƏLƏ köhnə vəziyyətdir —
+            # təkrar məhz ondan başlamalıdır.
+            new_state, newton_result = self._thp_outer_loop(
+                new_state, dt, newton_result)
+
             self.state = new_state
             self.pressure = self.state.pressure
             self.sw = self.state.water_saturation
@@ -207,13 +221,10 @@ class FullyImplicitEngine(ISimulationEngine):
                     result.well_water_rate[name].append(
                         float(-rates.per_well_water.get(name, 0.0)))
 
-            # B4-B: THP quyuları — bu addımda işlədilən BHP qeyd olunur,
-            # sonra son debitlərlə növbəti addımın BHP-si hesablanır.
-            if self.thp_control.active:
-                if output.record_well_rates:
-                    self.thp_control.record(result)
-                self.thp_control.update(rates.per_well_oil, rates.per_well_water,
-                                        getattr(rates, "per_well_gas", None))
+            # B4-B: bu addımda İŞLƏDİLƏN BHP qeyd olunur (yenilənməsi
+            # artıq `_thp_outer_loop`-da addımın öz debitləri ilə olub).
+            if self.thp_control.active and output.record_well_rates:
+                self.thp_control.record(result)
 
             if time >= next_snapshot - 1e-9:
                 self._record_snapshot(result, time)
@@ -245,6 +256,35 @@ class FullyImplicitEngine(ISimulationEngine):
         LOG.info("%s  RF = %.2f %%", result.message,
                  result.final_recovery_factor)
         return result
+
+    def _thp_outer_loop(self, new_state, dt, newton_result):
+        """Yarı-implicit THP dövrəsi — addım DAXİLİNDƏ təkrarlama (Seans 25).
+
+        Addım həll olunandan sonra BHP həmin addımın ÖZ debitləri ilə
+        yenilənir; dəyişmə `OUTER_TOLERANCE_BAR`-dan böyükdürsə addım
+        eyni Δt ilə YENİDƏN həll olunur. Beləliklə açıq birləşmənin bir
+        addımlıq gecikməsi praktiki olaraq aradan qalxır — QALIQ və
+        JAKOBİAN isə TOXUNULMUR (tam implicit birləşmə ⏳ hələ lazım deyil).
+
+        Təkrar yığılmasa əvvəlki (artıq qəbul olunmuş) həll saxlanılır —
+        yəni bu dövrə qaçışı HEÇ VAXT pisləşdirə bilməz.
+        """
+        if not self.thp_control.active:
+            return new_state, newton_result
+        for _ in range(MAX_OUTER_ITERATIONS):
+            rates = newton_result.rates
+            moved = self.thp_control.update(
+                rates.per_well_oil, rates.per_well_water,
+                getattr(rates, "per_well_gas", None),
+                pressure=new_state.pressure)
+            if moved <= OUTER_TOLERANCE_BAR:
+                break
+            retry = self.time_stepper.resolve_step(self.state, dt)
+            if retry is None:
+                break
+            new_state, dt, newton_result = retry
+            self.thp_outer_iterations += 1
+        return new_state, newton_result
 
     def _record_snapshot(self, result: SimulationResult, time: float) -> None:
         shape = self.model.grid.shape

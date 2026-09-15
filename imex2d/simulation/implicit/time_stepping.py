@@ -200,6 +200,33 @@ class AdaptiveTimeStepper:
 
         return state, 0.0, result
 
+    # ══════════════════════════════════ addımın YENİDƏN həlli (B4-B)
+    def resolve_step(self, state: ReservoirState, dt: float):
+        """Eyni addımı DƏYİŞMİŞ quyu şərti ilə yenidən həll edir.
+
+        Yarı-implicit THP dövrəsi üçündür (bax `wellbore/thp_control.py`):
+        addım həll olunandan sonra BHP həmin addımın ÖZ debitləri ilə
+        yenilənir və addım təkrarlanır — beləliklə bir addımlıq gecikmə
+        aradan qalxır.
+
+        `self.dt` (növbəti addımın ölçüsü) DƏYİŞMİR; tarixçədə isə
+        sonuncu qeyd ƏVƏZLƏNİR, çünki bu, YENİ addım deyil, EYNİ addımın
+        daha yaxşı həllidir — əks halda addım sayı süni şişərdi.
+
+        Qaytarır: `(yeni_vəziyyət, dt, NewtonResult)` və ya uğursuzluqda
+        `None` — o zaman çağıran ƏVVƏLKİ (qəbul olunmuş) həlli saxlayır.
+        """
+        result = self.newton.solve(state, dt)
+        change = self._saturation_change(state, result.state)
+        if not result.converged or change > self.config.max_saturation_change:
+            return None
+        if self.history:
+            last = self.history[-1]
+            self.history[-1] = TimeStepRecord(
+                last.time, dt, result.iterations, last.repeats, change,
+                True, last.soft_failure)
+        return result.state, dt, result
+
     # ═══════════════════════════════════════════ növbəti addımın ölçüsü
     def _next_dt(self, dt: float, iterations: int, change: float) -> float:
         """İterasiya sayı və doyumluluq dəyişikliyinə görə tənzimləmə."""

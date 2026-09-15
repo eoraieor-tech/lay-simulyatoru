@@ -101,6 +101,11 @@ qəbul olunmuş addımdan sonra `record()` + `update()` çağırır — bağlant
 `target`-i yerində yenilənir. Qalıq və Jakobian bu qatdan yenə xəbərsizdir.
 IMPES THP-ni rədd edir. Bax `QARARLAR.md` → Q-15.
 
+**Seans 25 — nodal analiz.** `ThpController` iş nöqtəsini IPR ∩ VLP
+kəsişməsindən tapır, addım daxilində yarı-implicit təkrar aparır
+(`AdaptiveTimeStepper.resolve_step`) və axa bilməyən quyunu bağlayır
+(bağlantının `well_index` = 0). Qalıq/Jakobian bu qatdan yenə xəbərsizdir.
+
 ### 2.2 Kapilyar təzyiq (B5-b, 14 sentyabr 2026)
 
 İki provider, eyni Brooks-Corey ailəsi, eyni parametr dataklassı

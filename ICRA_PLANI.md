@@ -310,7 +310,14 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
 > 26 yeni test: `tests/test_wellbore_thp.py`.
 > Təfərrüat: `ISH_HESABATI.md` → Seans 12.
 
-### B4-B — `ControlMode.THP` ✅ BİTDİ (13 sentyabr 2026)
+### B4-B — `ControlMode.THP` ✅ BİTDİ (13 sentyabr 2026, sabitlik düzəlişi 15 sentyabr)
+
+> **Seans 25 (15 sentyabr):** sahibkarın 41×41×3 üç fazalı modelində
+> qeyri-stabillik aşkarlandı və kökü tapıldı — iş nöqtəsi keçən addımın
+> debiti ilə hesablanırdı. İndi **nodal analiz** (IPR ∩ VLP) işlədilir,
+> üstəlik yarı-implicit təkrar və avtomatik bağlanma əlavə olundu.
+> Ölçüldü: Δt medianı 0.104 → 3.958 gün, vaxt 3575 → 421 san.
+> Tam implicit birləşmə LAZIM OLMADI (bax `QARARLAR.md` → Q-17).
 
 > Açıq birləşmə: THP quyusu mühərrikdə BHP bağlantısıdır, BHP hər
 > addımdan sonra tərs traverse ilə yenilənir (relaksasiya + 25 bar
