@@ -51,23 +51,37 @@ class WellControl:
     mode: ControlMode = ControlMode.BHP
     target: float = 150.0
     injected_phase: Phase = Phase.WATER
+    #: RATE rejimində quyu dibi təzyiqinin HƏDDİ, bar (B7 addım 2):
+    #: istismarçıda MİNİMAL, vurucuda MAKSİMAL BHP. Hədəf debit bu həddi
+    #: pozmadan saxlanıla bilməyəndə mühərrik quyunu BHP idarəsinə keçirir
+    #: (bax `simulation/well_constraints.py::BhpLimitController`).
+    #: `None` — hədd yoxdur (köhnə davranış). BHP/THP rejimində işləmir —
+    #: diaqnostika bunu xəbərdarlıq kimi göstərir.
+    bhp_limit: Optional[float] = None
+
+    def _target_check(self):
+        if self.mode is ControlMode.BHP:
+            return validate_pressure([self.target], label="BHP hədəfi")
+        if self.mode is ControlMode.THP:
+            return validate_pressure([self.target], label="THP hədəfi")
+        return validate_well_rate(self.target, label="debit hədəfi")
+
+    def _limit_check(self):
+        if self.bhp_limit is None:
+            return None
+        return validate_pressure([self.bhp_limit], label="BHP limiti")
 
     def validate(self) -> List[str]:
         """`target` mənası `mode`-dan asılıdır: BHP üçün mütləq təzyiq
         (bar), RATE üçün HƏMİŞƏ müsbət debit böyüklüyü (m³/gün) — bax
-        `simulation/implicit/standard_well.py:_signed_rate_target`."""
-        if self.mode is ControlMode.BHP:
-            return validate_pressure([self.target], label="BHP hədəfi").errors
-        if self.mode is ControlMode.THP:
-            return validate_pressure([self.target], label="THP hədəfi").errors
-        return validate_well_rate(self.target, label="debit hədəfi").errors
+        `simulation/implicit/standard_well.py:_signed_rate_target`.
+        `bhp_limit` verilibsə o da mütləq təzyiq kimi yoxlanılır."""
+        limit = self._limit_check()
+        return self._target_check().errors + (limit.errors if limit else [])
 
     def validate_warnings(self) -> List[str]:
-        if self.mode is ControlMode.BHP:
-            return validate_pressure([self.target], label="BHP hədəfi").warnings
-        if self.mode is ControlMode.THP:
-            return validate_pressure([self.target], label="THP hədəfi").warnings
-        return validate_well_rate(self.target, label="debit hədəfi").warnings
+        limit = self._limit_check()
+        return self._target_check().warnings + (limit.warnings if limit else [])
 
 
 @dataclass

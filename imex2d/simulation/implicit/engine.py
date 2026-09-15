@@ -26,7 +26,8 @@ from ...interfaces.discretization import IFluxDiscretization
 from ...logging_setup import get_logger
 from ..discretization import default_flux_discretization
 from ..results import SimulationResult, Snapshot
-from ..well_constraints import assign_rate_shares, needs_rate_allocation
+from ..well_constraints import (BhpLimitController, assign_rate_shares,
+                                needs_rate_allocation)
 from ..well_model import PeacemanWellModel
 from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
                                     OUTER_TOLERANCE_BAR, ThpController)
@@ -93,6 +94,11 @@ class FullyImplicitEngine(ISimulationEngine):
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, wells, pvt=pvt,
                                          fluids=model.fluids)
+        # B7 addım 2: RATE quyularının BHP həddi — rejim addımlar arasında
+        # dəyişir (bax `_bhp_limit_loop`)
+        self.bhp_limit = BhpLimitController(wells, self._connection_mobilities)
+        #: BHP limiti keçidlərinə görə addımın ƏLAVƏ həllərinin sayı
+        self.bhp_limit_resolves = 0
 
         #: Yarı-implicit THP dövrəsində edilən ƏLAVƏ həllərin sayı
         #: (diaqnostika üçün — sıfır olması dövrənin işə düşmədiyini bildirir)
@@ -190,6 +196,8 @@ class FullyImplicitEngine(ISimulationEngine):
             # təkrar məhz ondan başlamalıdır.
             new_state, newton_result = self._thp_outer_loop(
                 new_state, dt, newton_result)
+            new_state, newton_result = self._bhp_limit_loop(
+                new_state, dt, newton_result)
 
             self.state = new_state
             self.pressure = self.state.pressure
@@ -230,6 +238,8 @@ class FullyImplicitEngine(ISimulationEngine):
             # artıq `_thp_outer_loop`-da addımın öz debitləri ilə olub).
             if self.thp_control.active and output.record_well_rates:
                 self.thp_control.record(result)
+            if self.bhp_limit.active and output.record_well_rates:
+                self.bhp_limit.record(result)
 
             if time >= next_snapshot - 1e-9:
                 self._record_snapshot(result, time)
@@ -268,9 +278,41 @@ class FullyImplicitEngine(ISimulationEngine):
         `well_constraints.py`)."""
         if not self._rate_allocation:
             return
-        fluid = self.residual_assembler.fluid_state(self.state)
         assign_rate_shares(self.residual_assembler.wells,
-                           self.residual_assembler.connection_mobilities(fluid))
+                           self._connection_mobilities(self.state))
+
+    def _connection_mobilities(self, state) -> list:
+        """Bağlantıların lay həcmi mobillikləri — RATE payı və BHP limiti üçün."""
+        assembler = self.residual_assembler
+        return assembler.connection_mobilities(assembler.fluid_state(state))
+
+    def _bhp_limit_loop(self, new_state, dt, newton_result):
+        """RATE quyularının BHP həddi — addım DAXİLİNDƏ rejim keçidi (B7 addım 2).
+
+        Yığılmış həll yoxlanılır; bir quyu rejim dəyişibsə addım eyni Δt ilə
+        yenidən həll olunur (`resolve_step` — tarixçə şişmir). Hər quyu bir
+        addımda ən çox bir dəfə keçdiyi üçün dövr ən çox `quyu sayı + 1` dəfə
+        fırlanır və SONUNCU qiymətləndirmə həmişə qəbul olunan həll üzərindədir.
+
+        Təkrar yığılmasa əvvəlki həll saxlanılır; yeni rejim isə növbəti addım
+        üçün qüvvədə qalır (limit növbəti addımda artıq pozulmur).
+        """
+        controller = self.bhp_limit
+        if not controller.active:
+            return new_state, newton_result
+        controller.begin_step()
+        for _ in range(controller.well_count + 1):
+            if not controller.update(new_state):
+                break
+            retry = self.time_stepper.resolve_step(self.state, dt)
+            if retry is None:
+                LOG.warning("BHP limiti: rejim keçidindən sonra addım yenidən "
+                            "yığılmadı — əvvəlki həll saxlanıldı, yeni rejim "
+                            "növbəti addımdan tətbiq olunur.")
+                break
+            new_state, dt, newton_result = retry
+            self.bhp_limit_resolves += 1
+        return new_state, newton_result
 
     def _thp_outer_loop(self, new_state, dt, newton_result):
         """Yarı-implicit THP dövrəsi — addım DAXİLİNDƏ təkrarlama (Seans 25).

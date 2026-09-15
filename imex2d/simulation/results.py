@@ -50,8 +50,13 @@ class SimulationResult:
     well_gas_rate: Dict[str, List[float]] = field(default_factory=dict)
     #: Quyu dibi təzyiqi, bar — B4-ə qədər HEÇ YERDƏ saxlanılmırdı.
     #: BHP rejimli quyuda bu, istifadəçinin verdiyi sabit hədəfdir;
-    #: RATE rejimində mühərrik onu hesablamır, ona görə sıra boş qalır.
+    #: RATE rejimində mühərrik onu hesablamır, ona görə sıra boş qalır —
+    #: BHP LİMİTLİ RATE quyusu istisnadır (B7 addım 2): orada hər addımda
+    #: hədəf debit üçün tələb olunan BHP, limitdə isə limitin özü yazılır.
     well_bhp: Dict[str, List[float]] = field(default_factory=dict)
+    #: BHP limitli RATE quyusunun hər addımda İŞLƏDİLƏN rejimi ("RATE" /
+    #: "BHP") — B7 addım 2. Digər quyular üçün boşdur.
+    well_control_mode: Dict[str, List[str]] = field(default_factory=dict)
     #: Quyu başı təzyiqi, bar (B4). Quyu axmayan addımda `nan` —
     #: axan traverse dayanmış quyu üçün təyin olunmayıb.
     well_thp: Dict[str, List[float]] = field(default_factory=dict)

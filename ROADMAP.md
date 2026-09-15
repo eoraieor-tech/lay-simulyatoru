@@ -56,6 +56,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > **Seans 27:** BHP limitinə hazırlıqda **səssiz səhv** tapılıb düzəldildi —
 > çox perforasiyalı RATE quyusu hədəfin N qatını hasil edirdi (Q-19).
 >
+> **B7 addım 2 ✅ bitdi:** RATE quyusunda **BHP limiti** — quyu limitə çatanda
+> BHP idarəsinə keçir, histerezislə RATE-ə qayıdır (Q-21). Yol boyu Eclipse
+> ixracında iki səssiz səhv düzəldildi (Q-20). Qalan: səth debiti hədəfi, SPE1.
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

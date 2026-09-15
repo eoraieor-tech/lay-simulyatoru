@@ -41,6 +41,10 @@ class WellConnection:
     #: bağlantıları üzrə cəmi 1-dir; tək perforasiyada dəqiq 1.0. Mühərrik
     #: onu hər addımın əvvəlində yeniləyir — bax `well_constraints.py`.
     rate_share: float = 1.0
+    #: RATE quyusunun BHP həddi, bar (B7 addım 2) — istismarçıda minimal,
+    #: vurucuda maksimal; yalnız RATE rejimli quyuda doldurulur. Qalıq onu
+    #: OXUMUR: `BhpLimitController` addımlar arasında `mode`/`target`-i dəyişir.
+    bhp_limit: Optional[float] = None
 
 
 class PeacemanWellModel:
@@ -110,6 +114,8 @@ class PeacemanWellModel:
                 injected_phase=well.control.injected_phase,
                 thp_target=(well.control.target
                             if well.control.mode is ControlMode.THP else None),
+                bhp_limit=(well.control.bhp_limit
+                           if well.control.mode is ControlMode.RATE else None),
             ))
         # İlkin pay yalnız WI ilə — mühərrik λ-nı bilən kimi yeniləyir
         assign_rate_shares(out)

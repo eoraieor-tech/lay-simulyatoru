@@ -526,7 +526,8 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > tutuşduruldu, üç boşluq tapıldı:
 > 1. **qaz vurulması** ✅ BİTDİ (Seans 26, Q-18) — əvvəl vurucular
 >    yalnız su vururdu, `injected_phase` oxunmurdu;
-> 2. **RATE + BHP limiti** ⏳ növbəti addım;
+> 2. **RATE + BHP limiti** ✅ BİTDİ (Seans 27, Q-21) — rejim keçidi addımlar
+>    arasında, histerezislə;
 > 3. **səth debiti hədəfi** ⏳ (bizdə RATE = maye, lay həcmi).
 >
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi

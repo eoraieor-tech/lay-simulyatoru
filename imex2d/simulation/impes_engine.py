@@ -63,6 +63,20 @@ def _reject_thp_impes(model) -> None:
             "çevirmə yalnız tam implicit mühərrikin addım dövrəsindədir.")
 
 
+def _reject_bhp_limit_impes(model) -> None:
+    """RATE quyusunun BHP limiti ilə AÇIQ imtina — B7 addım 2.
+
+    Rejim keçidi yalnız tam implicit mühərriklərin addım dövrəsindədir.
+    IMPES-də limit səssizcə atılardı və quyu BHP-ni pozaraq debiti saxlardı.
+    """
+    if any(well.control.mode is ControlMode.RATE
+           and well.control.bhp_limit is not None
+           for well in model.active_wells()):
+        raise NotImplementedError(
+            "ImpesEngine RATE quyusunun BHP limiti ilə İŞLƏMİR (B7): rejim "
+            "keçidi yalnız tam implicit mühərrikin addım dövrəsindədir.")
+
+
 class ImpesEngine(ISimulationEngine):
 
     def __init__(self,
@@ -89,6 +103,7 @@ class ImpesEngine(ISimulationEngine):
         self.flux_discretization = flux_discretization or default_flux_discretization()
         _reject_multipoint_impes(self.flux_discretization)
         _reject_thp_impes(model)
+        _reject_bhp_limit_impes(model)
         self._discretization = self.flux_discretization.build(model)
         self._connections = self._discretization.connections
         self._trans = self._discretization.transmissibility

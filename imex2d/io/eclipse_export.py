@@ -293,8 +293,11 @@ class EclipseDeckWriter:
                     # 6-cı (QAZ debiti) sütununa düşürdü. Həm də bizim RATE
                     # hədəfi LAY HƏCMİDİR (maye), LRAT isə səth debitidir —
                     # uyğun rejim RESV-dir (iki fazalı deck-də RESV = su+neft).
+                    # 9-cu sütun: minimal BHP — limit verilməyibsə 1.0 bar
+                    limit = (well.control.bhp_limit
+                             if well.control.bhp_limit is not None else 1.0)
                     parts.append(f"  '{well.name}' 'OPEN' 'RESV' 4* "
-                                 f"{abs(well.control.target):.2f} 1.0 /")
+                                 f"{abs(well.control.target):.2f} {limit:.2f} /")
             parts.append("/")
 
         if injectors:
@@ -314,9 +317,12 @@ class EclipseDeckWriter:
                 else:
                     # WCONINJE sütunları: 5 səth debiti · 6 RESV · 7 BHP.
                     # Bizim RATE hədəfi LAY HƏCMİDİR — RESV rejimi.
+                    # 7-ci sütun: maksimal BHP — limit verilməyibsə 1000 bar
+                    limit = (well.control.bhp_limit
+                             if well.control.bhp_limit is not None else 1000.0)
                     parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'RESV' 1* "
                                  f"{abs(well.control.target):.2f} "
-                                 f"1000.0 /")
+                                 f"{limit:.2f} /")
             parts.append("/")
 
         step = self.end_time / max(self.report_steps, 1)

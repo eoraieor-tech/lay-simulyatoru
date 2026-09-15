@@ -33,7 +33,8 @@ from .newton import NewtonConfig
 from .three_phase_newton import ThreePhaseNewtonSolver
 from ..wellbore.thp_control import (MAX_OUTER_ITERATIONS,
                                     OUTER_TOLERANCE_BAR, ThpController)
-from ..well_constraints import assign_rate_shares, needs_rate_allocation
+from ..well_constraints import (BhpLimitController, assign_rate_shares,
+                                needs_rate_allocation)
 from .three_phase_state import ThreePhaseState
 from .time_stepping import AdaptiveTimeStepConfig, AdaptiveTimeStepper
 
@@ -104,6 +105,11 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
         self.thp_control = ThpController(model, self.newton.well_model.wells,
                                          pvt=pvt, fluids=model.fluids)
+        # B7 addım 2: RATE quyularının BHP həddi (bax `_bhp_limit_loop`)
+        self.bhp_limit = BhpLimitController(self.newton.well_model.wells,
+                                            self._connection_mobilities)
+        #: BHP limiti keçidlərinə görə addımın ƏLAVƏ həllərinin sayı
+        self.bhp_limit_resolves = 0
 
         #: Yarı-implicit THP dövrəsində edilən ƏLAVƏ həllərin sayı
         #: (diaqnostika üçün — sıfır olması dövrənin işə düşmədiyini bildirir)
@@ -312,6 +318,8 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             # təkrar məhz ondan başlamalıdır.
             new_state, newton_result = self._thp_outer_loop(
                 new_state, dt, newton_result)
+            new_state, newton_result = self._bhp_limit_loop(
+                new_state, dt, newton_result)
 
             self.state = new_state
             self.pressure = self.state.pressure
@@ -356,6 +364,8 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             # artıq `_thp_outer_loop`-da addımın öz debitləri ilə olub).
             if self.thp_control.active and output.record_well_rates:
                 self.thp_control.record(result)
+            if self.bhp_limit.active and output.record_well_rates:
+                self.bhp_limit.record(result)
 
             if time >= next_snapshot - 1e-9:
                 self._record_snapshot(result, time)
@@ -391,9 +401,35 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         vəziyyətin λ-sı ilə (bax `well_constraints.py`)."""
         if not self._rate_allocation:
             return
-        well_model = self.newton.well_model
-        assign_rate_shares(well_model.wells, well_model.connection_mobilities(
-            self.newton.build_fluid(self.state)))
+        assign_rate_shares(self.newton.well_model.wells,
+                           self._connection_mobilities(self.state))
+
+    def _connection_mobilities(self, state) -> list:
+        """Bağlantıların lay həcmi mobillikləri — RATE payı və BHP limiti üçün."""
+        return self.newton.well_model.connection_mobilities(
+            self.newton.build_fluid(state))
+
+    def _bhp_limit_loop(self, new_state, dt, newton_result):
+        """RATE quyularının BHP həddi — addım DAXİLİNDƏ rejim keçidi (B7 addım 2).
+
+        `FullyImplicitEngine._bhp_limit_loop` ilə eynidir (bax onun sənədi).
+        """
+        controller = self.bhp_limit
+        if not controller.active:
+            return new_state, newton_result
+        controller.begin_step()
+        for _ in range(controller.well_count + 1):
+            if not controller.update(new_state):
+                break
+            retry = self.time_stepper.resolve_step(self.state, dt)
+            if retry is None:
+                LOG.warning("BHP limiti: rejim keçidindən sonra addım yenidən "
+                            "yığılmadı — əvvəlki həll saxlanıldı, yeni rejim "
+                            "növbəti addımdan tətbiq olunur.")
+                break
+            new_state, dt, newton_result = retry
+            self.bhp_limit_resolves += 1
+        return new_state, newton_result
 
     def _thp_outer_loop(self, new_state, dt, newton_result):
         """Yarı-implicit THP dövrəsi — addım DAXİLİNDƏ təkrarlama (Seans 25).

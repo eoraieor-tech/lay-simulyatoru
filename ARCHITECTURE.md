@@ -114,6 +114,12 @@ mobilliyi ilə yeniləyir (`connection_mobilities` — `ResidualAssembler` və
 `ThreePhaseWellModel`), IMPES isə təzyiq addımında. Qalıq və Jakobian yalnız
 RATE hədəfini paya vurur, yeni asılılıq tanımır. Bax `QARARLAR.md` → Q-19.
 
+İkinci qayda — **`BhpLimitController`** (B7 addım 2): RATE quyusunun BHP həddi.
+Mühərrik onu `_thp_outer_loop`-dan SONRA `_bhp_limit_loop`-da çağırır; limit
+pozulanda bağlantının `mode`/`target`-i dəyişir və addım `resolve_step` ilə
+yenidən həll olunur. Nəticəyə `well_bhp` və `well_control_mode` yazılır. IMPES
+limiti rədd edir. Bax `QARARLAR.md` → Q-21.
+
 ### 2.2 Kapilyar təzyiq (B5-b, 14 sentyabr 2026)
 
 İki provider, eyni Brooks-Corey ailəsi, eyni parametr dataklassı

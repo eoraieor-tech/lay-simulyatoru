@@ -743,3 +743,46 @@ səhvi düzələrdi, lakin mənaca uyğunsuzluq qalardı.
 Deck iki fazalıdır. Qaz vurucusunu `WATER` kimi yazmaq Q-18-də bağlanan
 səhvin ixracdakı təkrarı olardı; `GAS` yazmaq isə qaz fazası olmayan deck-də
 etibarsızdır. THP-də (Q-15, Qərar 3) olduğu kimi açıq imtina seçildi.
+
+
+## Q-21 — BHP limiti: rejim keçidi addımlar arasındadır, meyar Peaceman-ın tərsidir
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 2
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 27 (davamı): BHP limiti)
+
+### Qərar 1 — nəzarətçi bağlantının `mode`/`target`-ini dəyişir, qalıq/Jakobian toxunulmur
+
+`BhpLimitController` yığılmış addımdan sonra işləyir; limit pozulubsa bağlantı
+`mode = BHP`, `target = limit` olur və addım `resolve_step` ilə yenidən həll
+olunur. Qalıq və Jakobian yalnız mövcud BHP/RATE budaqlarını görür.
+
+**Alternativlər rədd edildi:**
+* yeni `ControlMode` dəyəri — Q-15-də sənədlənmiş TƏHLÜKƏ: bütün `mode is BHP`
+  yoxlamaları onu səssizcə RATE kimi işlədərdi;
+* Nyuton daxilində keçid (quyu tənliyi, `StandardWellModel`) — iterasiya
+  daxilində rejim dəyişməsi qalıqda sıçrayış yaradır, Seans 25-dəki rəqs riski.
+
+### Qərar 2 — keçid meyarı: hədəf debiti verən BHP, qalığın ÖZ mobilliyi ilə
+
+`BHP = (Σ WI·λ·p ∓ q) / Σ WI·λ`, λ — `well_rates`-in BHP budağındakı eyni
+ifadə (`connection_mobilities`). Nəticədə keçid anında cəmi debit sıçramır
+(ölçüldü: < 10⁻⁹). Mobillik sıfırdırsa (quyu axa bilmir) quyu da limitə keçir —
+RATE budağı belə halda hərəkətsiz hüceyrədən debit "yaradardı".
+
+### Qərar 3 — histerezis 2 bar + addımda ən çox bir keçid
+
+RATE-ə qayıdış yalnız hədəf limitdən `RATE_RESTORE_MARGIN_BAR` = 2 bar əlverişli
+BHP ilə əldə olunanda (THP-dəki `REOPEN_MARGIN_BAR` ilə eyni qiymət). Bir
+addımın təkrar həlləri arasında quyu ikinci dəfə keçə bilməz — dövr ən çox
+`quyu sayı + 1` dəfə fırlanır və sonuncu qiymətləndirmə qəbul olunan həll
+üzərindədir.
+
+### Qərar 4 — təkrar həll yığılmasa əvvəlki həll saxlanılır
+
+Rejim isə növbəti addım üçün qüvvədə qalır (limit növbəti addımda artıq
+pozulmur). Rejimi geri qaytarmaq eyni addımın hər dəfə təkrar uğursuz olmasına
+aparardı.
+
+### Qərar 5 — limitli RATE quyusu təzyiq idarəsi sayılır; IMPES-də xəta, BHP/THP rejimində xəbərdarlıq
+
+Bax ISH_HESABATI §5.

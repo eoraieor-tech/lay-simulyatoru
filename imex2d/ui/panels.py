@@ -1647,7 +1647,7 @@ class WellPanel(QWidget):
     changed = pyqtSignal()
 
     COLUMNS = ["Ad", "i", "j", "Perf üst, m", "Perf alt, m", "k",
-              "Tip", "İdarə", "Qiymət", "rw", "Vurulan faza"]
+              "Tip", "İdarə", "Qiymət", "rw", "Vurulan faza", "BHP limiti"]
     COL_NAME = 0
     COL_I = 1
     COL_J = 2
@@ -1659,6 +1659,8 @@ class WellPanel(QWidget):
     COL_TARGET = 8
     COL_RW = 9
     COL_PHASE = 10
+    #: RATE quyusunun BHP həddi, bar (B7 addım 2) — boş = hədd yoxdur
+    COL_BHP_LIMIT = 11
 
     def __init__(self):
         super().__init__()
@@ -1692,6 +1694,8 @@ class WellPanel(QWidget):
 
         hint = QLabel("BHP → bar,   RATE → m³/gün (rezervuar həcmi),   "
                       "THP → bar (aşağıdakı lülə qrupu açıq olmalıdır)\n"
+                      "BHP limiti → bar, yalnız RATE: istismarçıda minimal, "
+                      "vurucuda maksimal BHP (boş = limit yoxdur).\n"
                       "Ad/i/j/k geologiya cədvəlindən avtomatik gəlir. "
                       "Perf üst/alt boşdursa bütün lay perforasiya olunur.")
         hint.setStyleSheet(f"color:{PALETTE.text_dim};font-size:11px")
@@ -1723,6 +1727,7 @@ class WellPanel(QWidget):
                     "target": well.control.target, "rw": well.radius,
                     "phase": ("QAZ" if well.control.injected_phase is Phase.GAS
                               else "SU"),
+                    "bhp_limit": well.control.bhp_limit,
                     "perf_top": well.perf_top, "perf_bottom": well.perf_bottom})
         finally:
             self.table.blockSignals(False)
@@ -1805,12 +1810,15 @@ class WellPanel(QWidget):
             phase = (Phase.GAS
                      if phase_widget is not None
                      and phase_widget.currentText() == "QAZ" else Phase.WATER)
+            limit_item = self.table.item(row, self.COL_BHP_LIMIT)
+            bhp_limit = (self._to_float(limit_item.text())
+                         if limit_item is not None else None)
 
             i, j, first, last = self._resolve_ijk(name, perf_top, perf_bottom)
             wells.append(Well(
                 name=name, well_type=WellType(kind),
                 control=WellControl(ControlMode(mode), target,
-                                    injected_phase=phase),
+                                    injected_phase=phase, bhp_limit=bhp_limit),
                 perforations=[Perforation(i, j, k) for k in range(first, last + 1)],
                 radius=rw, perf_top=perf_top, perf_bottom=perf_bottom,
                 tubing=(tubing if WellType(kind) is WellType.PRODUCER else None)))
@@ -1830,7 +1838,8 @@ class WellPanel(QWidget):
     @staticmethod
     def _default_state() -> dict:
         return {"kind": "PROD", "mode": "BHP", "target": 150.0, "rw": 0.1,
-                "phase": "SU", "perf_top": None, "perf_bottom": None}
+                "phase": "SU", "bhp_limit": None,
+                "perf_top": None, "perf_bottom": None}
 
     def _find_row(self, name: str) -> Optional[int]:
         for row in range(self.table.rowCount()):
@@ -1847,7 +1856,9 @@ class WellPanel(QWidget):
             "rw": self._to_float(self.table.item(row, self.COL_RW).text()),
             "phase": (self.table.cellWidget(row, self.COL_PHASE).currentText()
                       if self.table.cellWidget(row, self.COL_PHASE) else "SU"),
-            "perf_top": self._to_float(self.table.item(row, self.COL_PERF_TOP).text()),
+            "bhp_limit": (self._to_float(self.table.item(row, self.COL_BHP_LIMIT).text())
+                          if self.table.item(row, self.COL_BHP_LIMIT) else None),
+            "perf_top":self._to_float(self.table.item(row, self.COL_PERF_TOP).text()),
             "perf_bottom": self._to_float(self.table.item(row, self.COL_PERF_BOTTOM).text()),
         }
 
@@ -1893,6 +1904,9 @@ class WellPanel(QWidget):
                            QTableWidgetItem(f"{state.get('target') or 150.0:g}"))
         self.table.setItem(r, self.COL_RW,
                            QTableWidgetItem(f"{state.get('rw') or 0.1:g}"))
+        limit = state.get("bhp_limit")
+        self.table.setItem(r, self.COL_BHP_LIMIT, QTableWidgetItem(
+            "" if limit is None else f"{limit:g}"))
 
     def _sync_rows(self, wells: List[GeologicalWell]):
         in_model_names = {w.name for w in wells if w.in_model}

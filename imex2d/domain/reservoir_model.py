@@ -311,11 +311,17 @@ class ReservoirModel:
         if not wells:
             report.error("Modeldə aktiv quyu yoxdur.", "quyular")
             return
+        # BHP limitli RATE quyusu da təzyiqi məhdudlaşdırır (B7 addım 2) —
+        # SPE1 kimi yalnız debitlə idarə olunan, lakin BHP həddi olan
+        # modellər bloklanmamalıdır.
         if not any(w.control.mode in (ControlMode.BHP, ControlMode.THP)
+                   or (w.control.mode is ControlMode.RATE
+                       and w.control.bhp_limit is not None)
                    for w in wells):
             report.error(
-                "Ən azı bir quyu BHP və ya THP ilə idarə olunmalıdır — "
-                "əks halda təzyiq səviyyəsi qeyri-müəyyəndir.", "quyular")
+                "Ən azı bir quyu BHP, THP və ya BHP limiti ilə idarə "
+                "olunmalıdır — əks halda təzyiq səviyyəsi qeyri-müəyyəndir.",
+                "quyular")
 
         seen = {}
         for well in wells:
@@ -407,8 +413,33 @@ class ReservoirModel:
                 f"hasilat verməyəcək.", well.name,
                 "Quyu başı təzyiqi həmişə quyu dibi təzyiqindən aşağıdır")
 
+    @staticmethod
+    def _check_bhp_limit(well, reference, report: DiagnosticReport) -> None:
+        """RATE quyusunun BHP limiti (B7 addım 2)."""
+        limit = well.control.bhp_limit
+        if well.control.mode is not ControlMode.RATE:
+            report.warning(
+                f"{well.name}: BHP limiti ({limit:.0f} bar) yalnız RATE "
+                f"rejimində işləyir — {well.control.mode.value} rejimində "
+                f"nəzərə alınmır.", well.name,
+                "Limiti silin və ya quyunu RATE rejiminə keçirin")
+        elif well.is_injector and limit <= reference:
+            report.warning(
+                f"{well.name}: vurucu quyunun maksimal BHP-si ({limit:.0f} bar) "
+                f"lay təzyiqindən ({reference:.0f} bar) yüksək deyil — quyu "
+                f"dərhal limitə keçib heç nə vurmayacaq.", well.name,
+                f"Limiti {reference:.0f} bardan yuxarı qaldır")
+        elif not well.is_injector and limit >= reference:
+            report.warning(
+                f"{well.name}: hasilat quyusunun minimal BHP-si ({limit:.0f} bar) "
+                f"lay təzyiqindən ({reference:.0f} bar) aşağı deyil — quyu "
+                f"dərhal limitə keçib hasilat verməyəcək.", well.name,
+                f"Limiti {reference:.0f} bardan aşağı sal")
+
     def _check_well_control(self, well, reference, fracture,
                             report: DiagnosticReport) -> None:
+        if well.control.bhp_limit is not None:
+            self._check_bhp_limit(well, reference, report)
         if well.control.mode is ControlMode.THP:
             self._check_thp_control(well, reference, report)
             return

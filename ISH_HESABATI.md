@@ -3639,3 +3639,100 @@ sonra işlədiləcək.
 
 * Deck-in üç fazalı ixracı (`GAS`, `PVDG`/`PVTO`, `SGOF`) — mövcud backlog.
 * BHP limiti ixrac sahəsi — B7 addım 2 commit-ində.
+
+## 15 sentyabr 2026 — Seans 27 (davamı): B7 addım 2 — RATE rejimində BHP LİMİTİ
+
+Təhvil sənədindəki tövsiyə olunan dizayn qəbul edildi: rejim keçidi
+**addımlar arasında**, qalıq və Jakobiana toxunulmadan (Q-15-dəki THP
+yanaşmasının təkrarı). Bu işə başlamazdan əvvəl iki səssiz səhv bağlandı
+(RATE payı — Q-19, Eclipse sütunları — Q-20), çünki limit məhz RATE debitindən
+hesablanır və ixrac məhz limit sahəsini yazır.
+
+### 1 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `domain/wells.py` | `WellControl.bhp_limit: Optional[float] = None`; mütləq təzyiq kimi doğrulanır |
+| `application/serialization.py` | `.imx`-də `bhp_limit`; açarı olmayan köhnə fayl → `None` |
+| `simulation/well_model.py` | `WellConnection.bhp_limit` — yalnız RATE rejimli quyuda |
+| `simulation/well_constraints.py` | **`BhpLimitController`**, `RATE_RESTORE_MARGIN_BAR = 2.0` |
+| `simulation/implicit/engine.py`, `three_phase_engine.py` | `_bhp_limit_loop` (THP dövrəsindən sonra), `bhp_limit_resolves`, `_connection_mobilities` |
+| `simulation/results.py` | `well_control_mode` (hər addımda "RATE"/"BHP"); limitli quyuda `well_bhp` doldurulur |
+| `simulation/impes_engine.py`, `application/simulation_service.py` | IMPES + BHP limiti — **açıq imtina** (texniki və istifadəçi dilində) |
+| `domain/reservoir_model.py` | limitli RATE quyusu "təzyiq idarəsi" sayılır; limit BHP/THP rejimində və ya lay təzyiqinin səhv tərəfində — xəbərdarlıq |
+| `io/eclipse_export.py` | limit `WCONPROD` 9-cu / `WCONINJE` 7-ci sütuna yazılır (verilməyibsə əvvəlki 1.0 / 1000.0) |
+| `ui/panels.py` | quyular cədvəlində «BHP limiti» sütunu (boş = limit yoxdur) |
+| `tests/test_bhp_limit.py` | **YENİ** — 21 test |
+
+### 2 · Qaydalar (bax Q-21)
+
+Yığılmış addımdan sonra hədəf debiti verən BHP Peaceman-ın tərsindən tapılır:
+
+    istismarçı:  BHP = (Σ WI·λ·p − q) / Σ WI·λ
+    vurucu:      BHP = (Σ WI·λ·p + q) / Σ WI·λ
+
+* RATE quyusunda bu BHP limiti pozursa (və ya quyu axa bilmirsə) → `mode = BHP`,
+  `target = limit`, addım eyni Δt ilə yenidən həll olunur;
+* limitdə olan quyu RATE-ə yalnız hədəf **2 bar ehtiyatla** əldə olunanda qayıdır;
+* hər quyu bir addımda ən çox bir dəfə rejim dəyişir.
+
+### 3 · Ölçmələr
+
+**Kəsilməzlik:** tələb olunan BHP-də BHP rejimi eyni cəmi debiti verir —
+nisbi fərq < 10⁻⁹ (testlə kilidlənib).
+
+**Tükənən lay** (8×8×2, vurucu yoxdur, istismarçı RATE = 150 m³/gün lay həcmi,
+ilkin təzyiq 250 bar, 600 gün, tam implicit):
+
+| Qaçış | Addım | Δt medianı | Δt min | Δt kəsilməsi | Əlavə həll | Keçid |
+|---|---|---|---|---|---|---|
+| iki fazalı, limit 1 bar (praktik limitsiz) | 36 | 20.000 | 1.0000 | 0 | 1 | 1 (t ≈ 69 gün) |
+| iki fazalı, limit 180 bar | 36 | 20.000 | 1.0000 | 0 | 1 | 1 (addım #5, t = 20.8 gün) |
+| üç fazalı, limit 1 bar | 228 | 0.634 | 0.1691 | 17 | 1 | 1 (t = 155.7 gün) |
+| üç fazalı, limit 180 bar | 36 | 20.000 | 1.0000 | 0 | 1 | 1 (addım #5, t = 20.8 gün) |
+
+* Limit 180 bar olan qaçışlarda keçiddən sonra BHP min = maks = **180.000000**;
+  keçiddən əvvəl tələb olunan BHP-nin minimumu 183.903 bar — yəni qeydə alınan
+  BHP heç vaxt limitdən aşağı deyil.
+* Keçid addımında səth maye debiti 120.25 → 43.64 m³/gün (addım BHP = 180 ilə
+  yenidən həll olundu), sonra lay təzyiqi limitə yaxınlaşdıqca sıfıra enir.
+* Rejim seriyada **bir dəfə** dəyişir — rəqs yoxdur; keçid Δt-ni kəsmədi.
+* Üç fazalı "limit 1 bar" qaçışının 228 addımı limitdən DEYİL: təzyiq doyma
+  təzyiqindən (140 bar) aşağı düşür və qaz ayrılır. Limit 180 bar təzyiqi Pb-dən
+  yuxarı saxladığı üçün həmin qaçış 36 addımdır — bu iki sətir mexanizmin
+  xərcini deyil, fizikanın fərqini göstərir.
+
+**Toxunulmayan limit:** vurucu (BHP 255 bar) təzyiqi 239 barda saxlayanda limit
+180 bar heç vaxt işə düşmür və nəticə limitsiz qaçışla **eynidir** (iki fazalı:
+cəmi maye 75936, orta təzyiq 238.84; üç fazalı: 76163, 238.85 — hər iki
+halda ölçüldü, testdə massivlər bərabərliklə yoxlanılır).
+
+### 4 · Yoxlama
+
+```
+tests/test_bhp_limit.py   21 keçdi
+tam dəst                  2528 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### 5 · Öz təşəbbüsümlə verilmiş qərarlar
+
+* **Limitli RATE quyusu "ən azı bir təzyiq idarəli quyu" qaydasını ödəyir.**
+  Əks halda SPE1 (iki RATE quyusu, hər ikisində BHP həddi) bloklanardı.
+* **BHP/THP rejimində verilmiş limit — xəbərdarlıq, xəta deyil.** Hesab yanlış
+  deyil, sadəcə parametr işləmir (Q-16, Qərar 4 ilə eyni prinsip). IMPES-də isə
+  limit səssizcə atılardı və quyu BHP-ni pozardı — orada **xəta**.
+
+### Açıq qalan ⏳
+
+* **B7 addım 3:** səth neft debiti hədəfi + SPE1 modeli (parametrlər mənbədən
+  yoxlanılmalıdır — təhvil sənədi §6.2).
+* Vurucu limiti yalnız vahid testlərlə yoxlanılıb; uc-uca vurucu ssenarisi yoxdur.
+* Tərs düstur BHP rejimindəki `min(q, 0)` kəsməsini nəzərə almır (çox təbəqəli
+  quyuda təbəqələr arası təzyiq fərqi böyük olanda təqribidir).
+* THP quyusu ilə BHP limitli quyu eyni modeldə olanda: limit dövrəsi addımı
+  yenidən həll edirsə, THP quyusunun BHP-si həmin yeni həllə görə yenilənmir
+  (THP dövrəsi limitdən ƏVVƏL işləyir) — bir addımlıq gecikmə, ölçülməyib.
+* `well_control_mode` CSV/JSON ixracına və dashboard-a çıxarılmayıb.
+* RATE quyusunda THP hələ hesablanmır (hidravlika yalnız BHP/THP rejimini tanıyır).
+* Üç fazalı RATE istismarçısının Jakobian xətası (0.49) — Seans 27-dən.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

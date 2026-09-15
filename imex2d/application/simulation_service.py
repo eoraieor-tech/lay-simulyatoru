@@ -141,6 +141,17 @@ class SimulationService:
                 f"({', '.join(names)}). Ədədi parametrlər tabında hesablama "
                 "sxemini «Fully implicit» edin və ya quyunu BHP rejiminə "
                 "qaytarın."])
+        # B7 addım 2: RATE quyusunun BHP limiti də yalnız tam implicit
+        # mühərrikdədir (bax `impes_engine._reject_bhp_limit_impes`)
+        limited = [well.name for well in model.active_wells()
+                   if well.control.mode is ControlMode.RATE
+                   and well.control.bhp_limit is not None]
+        if limited:
+            raise ModelValidationError([
+                "RATE quyusunun BHP limiti yalnız tam implicit (Nyuton) "
+                f"mühərriklə işləyir ({', '.join(limited)}). Ədədi parametrlər "
+                "tabında hesablama sxemini «Fully implicit» edin və ya limiti "
+                "silin."])
 
     @staticmethod
     def _flux_discretization(config: SimulationConfig):

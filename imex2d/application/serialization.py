@@ -580,7 +580,8 @@ class ProjectSerializer:
             "well_type": well.well_type.value,
             "control": {"mode": well.control.mode.value,
                         "target": well.control.target,
-                        "injected_phase": well.control.injected_phase.value},
+                        "injected_phase": well.control.injected_phase.value,
+                        "bhp_limit": well.control.bhp_limit},
             "perforations": [{"i": p.i, "j": p.j, "k": p.k,
                               "open": p.open, "skin": p.skin,
                               "direction": p.direction}
@@ -603,7 +604,10 @@ class ProjectSerializer:
             name=data["name"],
             well_type=WellType(data["well_type"]),
             control=WellControl(ControlMode(control["mode"]), control["target"],
-                                _phase_or_water(control.get("injected_phase"))),
+                                _phase_or_water(control.get("injected_phase")),
+                                # B7-dən əvvəlki fayllarda açar yoxdur → hədd yox
+                                bhp_limit=(None if control.get("bhp_limit") is None
+                                           else float(control["bhp_limit"]))),
             perforations=[Perforation(**p) for p in data.get("perforations", [])],
             radius=data.get("radius", 0.1),
             active=data.get("active", True),
