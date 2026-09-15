@@ -19,7 +19,7 @@ from typing import List
 import numpy as np
 
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.wells import ControlMode, WellType
+from ..domain.wells import ControlMode, Phase, WellType
 from ..logging_setup import get_logger
 from ..version import VERSION
 
@@ -288,19 +288,34 @@ class EclipseDeckWriter:
                     parts.append(f"  '{well.name}' 'OPEN' 'BHP' 5* "
                                  f"{well.control.target:.2f} /")
                 else:
-                    parts.append(f"  '{well.name}' 'OPEN' 'LRAT' 2* "
-                                 f"{abs(well.control.target):.2f} 2* 1.0 /")
+                    # WCONPROD sütunları: 4 ORAT · 5 WRAT · 6 GRAT · 7 LRAT ·
+                    # 8 RESV · 9 BHP. ƏVVƏL `'LRAT' 2* debit` yazılırdı — debit
+                    # 6-cı (QAZ debiti) sütununa düşürdü. Həm də bizim RATE
+                    # hədəfi LAY HƏCMİDİR (maye), LRAT isə səth debitidir —
+                    # uyğun rejim RESV-dir (iki fazalı deck-də RESV = su+neft).
+                    parts.append(f"  '{well.name}' 'OPEN' 'RESV' 4* "
+                                 f"{abs(well.control.target):.2f} 1.0 /")
             parts.append("/")
 
         if injectors:
             parts += ["", "WCONINJE"]
             for well in injectors:
+                if well.control.injected_phase is not Phase.WATER:
+                    # Deck İKİ FAZALIDIR (RUNSPEC: OIL/WATER, qaz PVT-si
+                    # yazılmır). Əks halda aşağıdakı sətir qaz vurucusunu
+                    # səssizcə SU vurucusu kimi yazardı.
+                    raise ValueError(
+                        f"{well.name}: qaz vuran quyu Eclipse deck-inə ixrac "
+                        f"olunmur — deck iki fazalıdır (OIL/WATER), qaz fazası "
+                        f"və qaz PVT-si yazılmır.")
                 if well.control.mode is ControlMode.BHP:
                     parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'BHP' 2* "
                                  f"{well.control.target:.2f} /")
                 else:
-                    parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'RATE' "
-                                 f"{abs(well.control.target):.2f} 1* "
+                    # WCONINJE sütunları: 5 səth debiti · 6 RESV · 7 BHP.
+                    # Bizim RATE hədəfi LAY HƏCMİDİR — RESV rejimi.
+                    parts.append(f"  '{well.name}' 'WATER' 'OPEN' 'RESV' 1* "
+                                 f"{abs(well.control.target):.2f} "
                                  f"1000.0 /")
             parts.append("/")
 

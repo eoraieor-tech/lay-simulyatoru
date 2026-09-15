@@ -3598,3 +3598,44 @@ tərəfə: quyu artıq hədəfin özünü hasil edir/vurur.
 * Təbəqələr arası paylanma bir addım gecikir (λ əvvəlki addımdandır); quyunun
   CƏMİ debiti dəqiqdir.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+## 15 sentyabr 2026 — Seans 27 (davamı): Eclipse ixracında quyu sətirləri
+
+Təhvil sənədi B7 addım 2 üçün `WCONPROD` BHP limit sahəsinin yoxlanılmasını
+tələb edirdi. Yoxlanıldı və **iki səssiz səhv** tapıldı. BHP limitindən ayrı
+commit kimi düzəldildi.
+
+### 1 · Tapıntılar
+
+| # | Nə yazılırdı | Niyə səhvdir |
+|---|---|---|
+| 1 | istismarçı: `'LRAT' 2* debit 2* 1.0` | WCONPROD sütunları 4 ORAT · 5 WRAT · 6 GRAT · 7 LRAT · 8 RESV · 9 BHP — `2*` iki sütunu buraxır, debit **6-cı (QAZ debiti)** sütununa düşürdü |
+| 1b | rejim `LRAT` / `RATE` | bizim RATE hədəfi **lay həcmidir** (UI: «RATE → m³/gün (rezervuar həcmi)»), LRAT və WCONINJE `RATE` isə səth debitidir |
+| 2 | qaz vurucusu: `'WATER' ...` | deck iki fazalıdır (`OIL`/`WATER`, qaz PVT-si yoxdur) — qaz vuran quyu səssizcə SU vurucusu kimi yazılırdı (B7 addım 1-dən sonra yaranan boşluq) |
+
+Repoda `WCONPROD`/`WCONINJE`-ni oxuyan kod yoxdur (idxal bu açar sözləri
+tanımır), ona görə düzəliş heç bir dövrə testinə təsir etmir.
+
+### 2 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `io/eclipse_export.py` | istismarçı `'RESV' 4* debit 1.0` (debit 8-ci, BHP 9-cu sütunda); vurucu `'RESV' 1* debit 1000.0` (debit 6-cı, BHP 7-ci sütunda); qaz vurucusu — `ValueError` |
+| `tests/test_eclipse_well_controls.py` | **YENİ** — 4 test, sətir `n*` defoltları açılaraq sütun-sütun yoxlanır |
+| `ECLIPSE_IO.md` | quyu rejimlərinin xəritəsi |
+
+### 3 · Yoxlama
+
+```
+tests/test_eclipse_well_controls.py                        4 keçdi
+test_eclipse_io.py + test_scal_tables.py + test_thp_control.py   81 keçdi
+```
+
+Tam dəst bu commit üçün ayrıca işlədilmədi — dəyişiklik yalnız ixrac
+mətnidir, simulyasiya koduna toxunmur. Tam dəst BHP limiti commit-indən
+sonra işlədiləcək.
+
+### Açıq qalan ⏳
+
+* Deck-in üç fazalı ixracı (`GAS`, `PVDG`/`PVTO`, `SGOF`) — mövcud backlog.
+* BHP limiti ixrac sahəsi — B7 addım 2 commit-ində.

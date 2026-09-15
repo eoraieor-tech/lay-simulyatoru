@@ -721,3 +721,25 @@ yeniləməni tamamilə söndürür — mövcud modellər bit-bit eyni və əlav�
 
 Sahibkarın seçimi (Seans 27): köhnə davranışı saxlamaq və ya bloklamaq yerinə
 düzəltmək.
+
+
+## Q-20 — Eclipse ixracında RATE quyusu RESV rejimi ilə yazılır; qaz vurucusu imtina edilir
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** B7 addım 2 (ixrac yoxlaması)
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 27 (davamı))
+
+### Qərar 1 — `LRAT`/`RATE` əvəzinə `RESV`
+
+Mühərrikdə RATE hədəfi lay həcmində maye (su+neft) debitidir. Eclipse-də bu
+mənanı daşıyan rejim `RESV`-dir; iki fazalı deck-də RESV məhz su+neftin lay
+həcmidir. `LRAT` səth debitidir — onu yazmaq deck-i modeldən `Bo` qədər fərqli
+edərdi.
+
+**Alternativ rədd edildi:** `LRAT`-ı düzgün (7-ci) sütunda saxlamaq — sütun
+səhvi düzələrdi, lakin mənaca uyğunsuzluq qalardı.
+
+### Qərar 2 — qaz vurucusu olan modeldə ixrac XƏTA verir
+
+Deck iki fazalıdır. Qaz vurucusunu `WATER` kimi yazmaq Q-18-də bağlanan
+səhvin ixracdakı təkrarı olardı; `GAS` yazmaq isə qaz fazası olmayan deck-də
+etibarsızdır. THP-də (Q-15, Qərar 3) olduğu kimi açıq imtina seçildi.

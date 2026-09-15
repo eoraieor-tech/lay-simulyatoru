@@ -100,6 +100,17 @@ Yazılanlar: grid həndəsəsi, `PORO`/`PERMX`/`PERMY`/`PERMZ`/`NTG`,
 (`PVDO`/`PVTW` və ya `PVCDO`), `EQUIL`, quyular (`WELSPECS`,
 `COMPDAT`, `WCONPROD`, `WCONINJE`), `TSTEP`.
 
+**Quyu rejimlərinin xəritəsi (Seans 27, Q-20):**
+
+| Model | Deck |
+|---|---|
+| istismarçı BHP | `WCONPROD 'BHP'`, 9-cu sütun |
+| istismarçı RATE (lay həcmi, maye) | `WCONPROD 'RESV'`, debit 8-ci, BHP həddi 9-cu sütun |
+| vurucu BHP | `WCONINJE 'WATER' 'BHP'`, 7-ci sütun |
+| vurucu RATE (lay həcmi) | `WCONINJE 'WATER' 'RESV'`, debit 6-cı, BHP həddi 7-ci sütun |
+| THP idarəsi | **xəta** — VFPPROD cədvəli yoxdur (Q-15) |
+| qaz vurucusu | **xəta** — deck iki fazalıdır (Q-20) |
+
 **Vahidlər: METRIC** — modelin öz sistemi ilə eynidir, ona görə heç
 bir çevirmə aparılmır və çevirmə səhvi riski yoxdur.
 
