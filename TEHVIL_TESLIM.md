@@ -1,11 +1,15 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
-**Hazırlanıb:** 15 sentyabr 2026 · **Son commit:** `6b40a88` (main, GitHub ilə sinxron)
-**Növbəti iş:** B7 addım 2 — RATE rejimində BHP limiti (bax §5)
+**Hazırlanıb:** 15 sentyabr 2026 (Seans 31) · **Son kod commit-i:** `b9ed645`
+**Növbəti iş:** SPE1 boşluğu **G6** — süxur sıxılmasının istinad təzyiqi (bax §5)
 
-Bu sənəd işi yarımçıq qaldığı yerdən götürən şəxs (insan və ya AI köməkçisi)
-üçündür. Tarixçənin tam təfərrüatı `ISH_HESABATI.md`, qərarların səbəbləri isə
-`QARARLAR.md` faylındadır — burada yalnız davam etmək üçün LAZIM olanlar var.
+Bu sənəd işi davam etdirəcək şəxs (insan və ya AI köməkçisi) üçündür.
+Tarixçənin tam təfərrüatı `ISH_HESABATI.md`, qərarların səbəbləri `QARARLAR.md`,
+SPE1-in mənbəsi və boşluqları isə **`SPE1.md`** faylındadır — burada yalnız
+davam etmək üçün LAZIM olanlar var.
+
+Bu fayl 13–15 sentyabrdakı əvvəlki təhvil sənədinin yerinə yazılıb; köhnə
+məzmun git tarixçəsindədir (`git show dd425be:TEHVIL_TESLIM.md`).
 
 ---
 
@@ -13,20 +17,22 @@ Bu sənəd işi yarımçıq qaldığı yerdən götürən şəxs (insan və ya A
 
 | | |
 |---|---|
-| Budaq | `main` = `origin/main` = `6b40a88` |
-| Test dəsti | **2490 keçdi, 1 buraxıldı, 1 xfailed** (~5.5 dəqiqə) |
-| Son hesabat bölməsi | **Seans 26** → növbəti yazılacaq: **Seans 27** |
-| Son qərar | **Q-18** → növbəti: **Q-19** |
-| Aktiv blok | **B7** (yekun doğrulama + SPE1 etalonu) |
+| Budaq | `main` = `origin/main` (bu sənədin commit-i) |
+| Test dəsti | **2549 keçdi, 1 buraxıldı, 1 xfailed** (~7 dəqiqə, bu maşında) |
+| Son hesabat bölməsi | **Seans 31** (bu təhvil) → növbəti yazılacaq: **Seans 32** |
+| Son qərar | **Q-24** → növbəti: **Q-25** |
+| Aktiv blok | **B7 addım 3** — SPE1CASE2 modelinə hazırlıq |
 
 Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 
 | Seans | İş | Commit |
 |---|---|---|
-| 23 | B4-B — quyunun THP ilə idarəsi | `3c67724` |
-| 24 | B5-b — üç fazalı kapilyar təzyiq (Pcow qoşuldu, Pcog əlavə olundu) | `60a1393` |
-| 25 | THP sabitliyi — nodal analiz (IPR ∩ VLP), yarı-implicit təkrar, avtomatik bağlanma | `372d4f4` |
-| 26 | B7 addım 1 — qaz vuran quyu | `6b40a88` |
+| 27 | **Səssiz səhv:** RATE hədəfi hər perforasiyaya TAM yazılırdı (3 perf → 3× debit) — WI·λ payı ilə bölünür (Q-19) | `1ca084c` |
+| 27 | **Səssiz səhv:** Eclipse ixracında RATE debiti GRAT sütununa düşürdü; qaz vurucusu WATER kimi yazılırdı (Q-20) | `fe09c78` |
+| 27 | **B7 addım 2:** RATE quyusunda BHP limiti, rejim keçidi, histerezis (Q-21) | `a76c8b2` |
+| 28 | **Səssiz səhv:** qaz vuran modeldə sahə GOR = 0 idi; vurulan qaz qrafikə/ixraca əlavə olundu (Q-22) | `769d245` |
+| 29 | SPE1 parametrləri OPM deck-indən yoxlandı, hədəf SPE1CASE2, texniki borc siyahısı (Q-23) | `19301bb` |
+| 30 | **B7 addım 3 / G5:** SƏTH debiti hədəfi (`ORAT`, qaz `RATE`) (Q-24) | `b9ed645` |
 
 ---
 
@@ -36,207 +42,220 @@ Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 git fetch origin
 git status                 # yerli dəyişiklik varsa ƏVVƏL onunla məşğul olun
 git pull --ff-only origin main
-git log --oneline -1       # 6b40a88 və ya daha yeni olmalıdır
+git log --oneline -3       # ən üstdə təhvil commit-i, altında b9ed645
 ```
 
 Virtual mühit: `run.bat` ardıcıllıqla `.venv`, `..\venv`, `venv` qovluqlarını
-axtarır (bax `QARARLAR.md` → Q-10, Q-13). Hazırlandığı maşında `venv` işlədilib,
-Python 3.14.3.
+axtarır (Q-10, Q-13). Bu maşında **`.venv`, Python 3.12.10** işlədilib (əvvəlki
+maşında `venv`, Python 3.14.3 idi — hər ikisində dəst keçib).
 
 ```bash
-venv\Scripts\python.exe -m pytest -q -p no:cacheprovider   # baza: 2490 keçməlidir
-venv\Scripts\python.exe app.py                              # proqramı açmaq
+.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider -o addopts=""   # baza: 2549
+.venv\Scripts\python.exe app.py                                           # proqram
 ```
 
-**Başlamazdan əvvəl baza test nəticəsini ÖZ maşınınızda alın.** 2490-dan fərqli
-çıxarsa, işə başlamadan səbəbini tapın — mühit fərqi ola bilər.
+**Başlamazdan əvvəl baza nəticəsini ÖZ maşınınızda alın.** 2549-dan fərqli
+çıxarsa, işə başlamadan səbəbini tapın.
+
+`graphify` (CLAUDE.md-də qeyd olunub) bu maşında qurulmayıb, `graphify-out/`
+yoxdur — sizdə varsa kod dəyişəndən sonra `graphify update .` işlədin.
 
 ---
 
 ## 3 · Layihə qaydaları (MÜTLƏQ — `CLAUDE.md`-dən)
 
-1. **Hər iş seansı sənədlənir:** `ISH_HESABATI.md`-ə YENİ bölmə (köhnə bölmələr
-   heç vaxt dəyişdirilmir, yalnız əlavə olunur), texniki seçim varsa
-   `QARARLAR.md`-ə Q-N, statuslar `ROADMAP.md` və `ICRA_PLANI.md`-də,
+1. **Hər iş seansı sənədlənir:** `ISH_HESABATI.md`-ə YENİ bölmə (köhnələr heç
+   vaxt dəyişdirilmir), texniki seçim varsa `QARARLAR.md`-ə Q-N, statuslar
+   `ROADMAP.md`, `ICRA_PLANI.md`, **`SPE1.md`** (§4 boşluq cədvəli, §5 plan),
    struktur dəyişibsə `ARCHITECTURE.md`.
 2. **Dil:** sənədlər Azərbaycan dilində, kod və identifikatorlar ingiliscə.
-3. **Uydurma məzmun yazılmır.** Bilinməyən yer ⏳ ilə açıq göstərilir.
-   Rəqəm yazılırsa, ÖLÇÜLMÜŞ olmalıdır.
+3. **Uydurma məzmun yazılmır.** Bilinməyən yer ⏳. Rəqəm yazılırsa ÖLÇÜLMÜŞ olmalıdır.
 4. **Sənədsiz push edilmir.** Hər mənalı addımdan sonra commit + push.
-5. **Nömrə toqquşması:** iki maşın paralel işləyib. Yeni Seans/Q nömrəsi
-   yazmazdan əvvəl `git fetch` edin və `origin/main`-dəki son nömrəni yoxlayın.
-   Toqquşma olarsa, ƏVVƏL dərc olunan nömrəsini saxlayır.
-6. **İş axını:** qısa budaq → testlər → sənədlər → `git merge --ff-only` → budağı
-   sil → push.
+5. **Nömrə toqquşması:** iki maşın paralel işləyə bilər. Yeni Seans/Q nömrəsi
+   yazmazdan əvvəl `git fetch` edib `origin/main`-dəki son nömrəni yoxlayın.
+6. **İş axını:** qısa budaq → testlər → sənədlər → `git merge --ff-only` →
+   budağı sil → push. Böyük dəyişikliyi bir commit-ə yığmayın.
+7. **Qərarı sahibkara verin** nəticəni dəyişən hər seçimdə (Seans 27-də
+   perforasiya səhvinin düzəldilməsi belə soruşulub).
 
 ---
 
-## 4 · Mühərrikin əsas fəlsəfəsi (son seansların dərsi)
+## 4 · Mühərrikin əsas fəlsəfəsi və quyu qaydalarının yeri
 
-Son dörd seansda eyni prinsip dəfələrlə təsdiqləndi — yeni işdə də gözlənilir:
+* **Qalıq və Jakobiana mümkün qədər toxunmamaq.** Quyu qaydaları bağlantı
+  obyektinin sahələrini (`mode`, `target`, `well_index`, `rate_share`) **Nyuton
+  həlləri arasında** dəyişir. Hamısı `simulation/well_constraints.py`-dadır
+  (THP isə `simulation/wellbore/thp_control.py`).
+* **Yeni `ControlMode` əlavə etməyin** — `mode is ControlMode.BHP` yoxlamaları
+  onu səssizcə RATE kimi işlədər (Q-15). Yeni mənanı ayrıca sahə ilə verin
+  (`bhp_limit`, `rate_basis` belə edilib).
+* **Addım dövrünün sırası** (`implicit/engine.py` və `three_phase_engine.py`
+  `run()` — ikisi eyni saxlanılmalıdır):
 
-* **Qalıq və Jakobiana mümkün qədər toxunmamaq.** Quyu idarəsi yeni rejimləri
-  (THP, avtomatik bağlanma) bağlantı səviyyəsində, addımlar arasında həll olunur:
-  `ThpController` bağlantının `target`/`well_index`-ini yerində dəyişir, qalıq
-  isə sadəcə yeni ədədi görür. Bax Q-15, Q-17.
-* **Hər iddia ölçmə ilə.** Sahibkarın ilkin diaqnozu ("açıq THP çökür") ölçmə
-  ilə qismən təkzib olundu və əsl səbəb başqa çıxdı (Seans 25). Düzəlişdən
-  əvvəl səbəbi variantları ayıraraq ölçün.
-* **Səssiz yanlış davranış = ən pis səhv.** Bu seanslarda tapılan boşluqların
-  hamısı səssiz idi: Pcow atılırdı, `injected_phase` oxunmurdu, THP ədədi debit
-  kimi ixrac olunardı. Dəstəklənməyən kombinasiya **açıq xəta** verməlidir.
-* **Jakobian dəyişibsə — sonlu fərq testi MÜTLƏQDİR.** Nümunələr:
-  `tests/test_three_phase_capillary.py`, `tests/test_gas_injection.py`.
+  ```
+  _update_rate_shares()          RATE payı (Q-19)
+  surface_rate.predict(state)    səth hədəfi → lay həcmi (Q-24)
+  time_stepper.advance(...)
+  _thp_outer_loop                THP (Q-15, Q-17)
+  _surface_rate_loop             səth debiti düzəlişi (Q-24)
+  _bhp_limit_loop                BHP limiti (Q-21)
+  record: thp_control / bhp_limit
+  ```
 
----
-
-## 5 · NÖVBƏTİ İŞ — B7 addım 2: RATE rejimində BHP limiti
-
-### 5.1 Niyə lazımdır
-
-SPE1 etalonunda istismarçı **debitlə** idarə olunur, lakin quyu dibi təzyiqi
-**minimal həddən aşağı düşə bilməz**; lay tükəndikcə quyu debiti saxlaya bilmir və
-**BHP idarəsinə keçir**. Bizdə RATE rejimində heç bir limit və rejim keçidi yoxdur.
-
-### 5.2 Mövcud kod — RATE budaqları harada
-
-`connection.mode is ControlMode.BHP` yoxlamasının `else` budağı RATE-dir:
-
-| Fayl | Yer |
-|---|---|
-| `simulation/implicit/three_phase_residual.py` | `ThreePhaseWellModel.well_rates` — istismarçı RATE budağı: `total = -abs(connection.target)`, su/neft mobillik payına görə bölünür |
-| `simulation/implicit/three_phase_residual.py` | `ThreePhaseWellJacobian.blocks` — eyni budağın törəmələri |
-| `simulation/implicit/residual.py` | `well_rates` (iki fazalı) |
-| `simulation/implicit/jacobian.py` | `_wells` (iki fazalı) |
-| `simulation/impes_engine.py` | bir neçə `c.mode is ControlMode.BHP` yoxlaması |
-| `simulation/implicit/standard_well.py`, `well_state.py` | birləşmiş (coupled) Nyuton yolu |
-
-⚠️ **TƏHLÜKƏ (B4-B-də tapılıb):** yeni `ControlMode` dəyəri əlavə etsəniz, yuxarıdakı
-BÜTÜN `mode is BHP` yoxlamaları onu **səssizcə RATE kimi** işlədəcək. B4-B-də THP
-bu səbəbdən bağlantıya BHP kimi ötürüldü (bax Q-15).
-
-### 5.3 Tövsiyə olunan dizayn (qəbul etmək məcburi deyil, amma əsaslandırılıb)
-
-THP-də işləyən yanaşmanın təkrarı — **Jakobiana toxunmadan**:
-
-1. **Domen:** `WellControl`-a `bhp_limit: Optional[float] = None` (istismarçıda
-   minimal, vurucuda maksimal). `None` → köhnə davranış, nəticə bit-bit eyni.
-   Layihə faylı (`application/serialization.py`), UI sütunu, diaqnostika.
-2. **Nəzarətçi** (məs. `simulation/wellbore/` altında və ya ayrıca modul):
-   bağlantının `mode`/`target`-ini **addımlar arasında** dəyişir:
-   * RATE quyusu: addımdan sonra debitə uyğun BHP qiymətləndirilir
-     (Peaceman: `q = Σ WI·λ_t·(p_hüceyrə − BHP)` → BHP üçün həll). BHP limitdən
-     aşağıdırsa → `mode = BHP`, `target = bhp_limit`.
-   * Limitdə olan quyu: limit BHP-də debit tutumu hədəfdən böyükdürsə → RATE-ə qayıt.
-   * **Histerezis mütləqdir** (THP-də `REOPEN_MARGIN_BAR` kimi) — yoxsa hər
-     addımda rejim atılır və Nyuton Seans 25-dəki kimi rəqs edər.
-3. **Gecikmə:** mühərriklərdə artıq `_thp_outer_loop` və
-   `AdaptiveTimeStepper.resolve_step` var — addımı yeni rejimlə təkrar həll etmək
-   üçün eyni mexanizmi işlədin (tarixçə şişmir).
-4. Rejim yalnız **Nyuton həlləri ARASINDA** dəyişməlidir — iterasiya daxilində
-   dəyişmək qalıqda sıçrayış yaradır.
-
-### 5.4 Qəbul meyarları
-
-* `bhp_limit = None` olan bütün mövcud modellər **bit-bit eyni** nəticə verir
-  (tam dəst 2490 keçməlidir).
-* Limitə çatan quyunun rejim keçidi testlə göstərilir; keçiddən sonra BHP limitdən
-  aşağı düşmür.
-* Histerezis testi: sərhəddə aç-qapa rəqsi yoxdur.
-* Real qaçışda Δt davranışı ölçülür (Seans 25-dəki cədvəl formatında).
-* Eclipse ixracı: `WCONPROD` BHP limit sahəsi (`io/eclipse_export.py` — hazırda
-  `'LRAT' 2* ...` yazır) yoxlanılır.
+  Təkrar həll həmişə `AdaptiveTimeStepper.resolve_step` ilədir (tarixçə şişmir).
+* **Hər iddia ölçmə ilə.** Sahibkarın diaqnozu iki dəfə ölçmə ilə dəqiqləşdi
+  (Seans 25: THP; Seans 28: "GOR PVT-dən sıfırdır" — əslində hesabat səhvi idi).
+* **Səssiz yanlış davranış = ən pis səhv.** Dəstəklənməyən kombinasiya açıq xəta
+  (IMPES + THP/BHP limiti/SƏTH bazası; ixracda THP/qaz vurucusu) və ya
+  diaqnostika xəbərdarlığı verməlidir.
+* **Qalıq/Jakobian dəyişibsə — sonlu fərq testi MÜTLƏQDİR.** Nümunələr:
+  `tests/test_implicit_jacobian.py::_max_relative_error`,
+  `tests/test_gas_injection.py::_jacobian_error`.
 
 ---
 
-## 6 · B7 addım 3 — səth debiti və SPE1 modeli
+## 5 · NÖVBƏTİ İŞLƏR — SPE1CASE2 (sıra `SPE1.md` §5, Q-23 Qərar 4)
 
-### 6.1 Səth debiti hədəfi
+Mənbə deck-ləri repoda DEYİL (lisenziya yoxlanılmayıb). Endirmək:
 
-Bizdə RATE hədəfi **maye (su+neft), LAY HƏCMİ**-dir (`well_rates` RATE budağı
-debiti `B`-yə bölməzdən əvvəl mobillik payına görə paylayır). SPE1 isə **neftin
-SƏTH debitini** (STB/gün) təyin edir. Mövcud RATE modellərinin mənasını səssizcə
-dəyişməmək üçün bunu AYRI rejim/parametr kimi etmək tövsiyə olunur — §5.2-dəki
-TƏHLÜKƏNİ nəzərə alaraq.
+```bash
+curl -sSfLO https://raw.githubusercontent.com/OPM/opm-tests/master/spe1/SPE1CASE2.DATA
+curl -sSfLO https://raw.githubusercontent.com/OPM/opm-tests/master/spe1/opm-simulation-reference/flow/SPE1CASE2.SMSPEC
+curl -sSfLO https://raw.githubusercontent.com/OPM/opm-tests/master/spe1/opm-simulation-reference/flow/SPE1CASE2.UNSMRY
+sha256sum SPE1CASE2.DATA   # f3de3d06ab5705381e14e6902a21c1af7bb6b37dbc9d6e4055fe146f50a4c249
+python tools/eclipse_summary.py SPE1CASE2 "TIME,FOPR,FGOR,WBHP:PROD,WBHP:INJ,BPR:1,BPR:300" 12
+```
 
-### 6.2 SPE1 parametrləri — ⏳ İSTİFADƏDƏN ƏVVƏL MƏNBƏDƏN YOXLANILMALIDIR
+Checksum fərqlidirsə OPM faylı dəyişib — `SPE1.md` §2/§3-dəki rəqəmləri yenidən
+yoxlayın.
 
-Aşağıdakılar ədəbiyyatda geniş yayılmış dəyərlərdir, lakin bu repoda HƏLƏ
-yoxlanılmayıb. Model qurmazdan əvvəl orijinal mənbələrlə tutuşdurun:
+### 5.1 · G6 — süxur sıxılmasının istinad təzyiqi (kiçik, ƏVVƏL bu)
 
-* Odeh, A.S. (1981), *Comparison of Solutions to a Three-Dimensional Black-Oil
-  Reservoir Simulation Problem*, JPT;
-* OPM layihəsinin `SPE1CASE1.DATA` deck faylı (açıq mənbə).
+* **Problem:** SPE1 `ROCK 14.7 3E-6` — istinad 14.7 psia. Bizdə istinad
+  `model.initial_conditions.datum_pressure`-dır: `simulation/implicit/residual.py:71`,
+  `simulation/implicit/three_phase_residual.py:182`; Jakobian törəmələri
+  `derivatives.py` (`reference_pressure`, `jacobian.py:90`-da ötürülür).
+  4800 psia-da məsamə həcmi fərqi `1 + 3e-6·(4800−14.7)` = ~1.4 %.
+* **Tövsiyə:** domendə `Optional[float]` istinad sahəsi, `None` → datum (mövcud
+  modellər bit-bit eyni). IMPES-in öz sıxılma hesabını da yoxlayın ⏳ (baxılmayıb).
+* ⏳ Diqqət: `PVTTable.rock_compressibility` və `model.rock.compressibility`
+  AYRI sahələrdir — hansının harada oxunduğunu əvvəl yoxlayın.
+* **Qəbul:** `None` ilə tam dəst dəyişməz; istinad verilən modeldə PV testlə;
+  akkumulyasiya Jakobianı sonlu fərqlə.
 
-| Parametr | Yayılmış dəyər |
-|---|---|
-| Grid | 10 × 10 × 3, DX = DY = 1000 ft |
-| Təbəqə qalınlıqları | 20 / 30 / 50 ft |
-| Keçiricilik (təbəqələr) | 500 / 50 / 200 mD |
-| Məsaməlilik | 0.3 |
-| Vurucu | (1,1,1) hüceyrəsi, **qaz**, 100 MMscf/gün |
-| İstismarçı | (10,10,3) hüceyrəsi, 20 000 STB/gün neft, minimal BHP 1000 psia |
-| İlkin təzyiq | 4800 psia (datum 8400 ft) |
-| İlkin su doymuşluğu | 0.12 |
-| Doyma təzyiqi | ~4014.7 psia |
-| Müddət | 10 il |
+### 5.2 · G4 — SGOF cədvəli ilə qaz relperm
 
-Mühərrik metrik vahidlərdədir (bar, m³/gün) — çevirmə üçün
-`domain/unit_conversions.py` mövcuddur.
+* **Problem:** qaz əyrisi yalnız `GasCoreyParameters` (`domain/scal.py`).
+  `StoneRelativePermeabilityProvider` (`simulation/stone_relperm.py`) ondan
+  `krg(sg, swc)`, `krog(sg, swc, kro_end)` və törəmələri çağırır; Jakobian
+  `relperm.gas.krg_derivative(...)` işlədir (`three_phase_residual.py`),
+  qaz vurulmasının son nöqtəsi `relperm.gas.krg_end`-dir (`three_phase_newton.py`).
+* **Tövsiyə:** eyni interfeysi verən cədvəl sinfi (su-neft üçün
+  `domain/scal_tables.py` + `simulation/scal_tables_provider.py` nümunədir —
+  parçalı xətti interpolyasiya və interval meylləri).
+* SGOF-un son sətri (0.88) OPM-in əlavəsidir ki, `Swc + Sg_maks = 1` olsun (deck şərhi).
+* **Qəbul:** törəmələr sonlu fərqlə; Corey yolu bit-bit eyni.
 
-### 6.3 B7-nin qalan bəndləri (`ICRA_PLANI.md` → B7)
+### 5.3 · G1 + G2 (+G3) — PVTO/PVDG/PVTW və doymamış neft özlülüyü (ƏN BÖYÜK iş)
 
-* uc-uca reqressiya ssenarisi `tests/golden/` altında;
-* test dəstinin sürətləndirilməsi (`pytest-xdist`).
+* **G1:** `PVTTable` (`domain/pvt.py`) BÜTÜN sütunlar üçün tək təzyiq şəbəkəsidir.
+  PVDG 14.7…9014.7, PVTO-nun doymuş qolu isə 14.7…5014.7 psia-dır — ortaq
+  şəbəkəyə köçürücü lazımdır. PVTW: Bw(p) sıxılma ilə, μw = 0.318 sabit.
+* **G2 (fizika):** üç fazalı mühərrikdə `mu_o = pvt.oil_viscosity(pressure)` —
+  yalnız doymuş əyri (`three_phase_newton.py:145`). SPE1 PVTO-da doymamış neftin
+  özlülüyü 0.51 → 0.74 cP (Rs = 1.27, 4014.7 → 9014.7 psia). μo(p, Rs) qalığa
+  (axın + quyu) və Jakobiana (∂μo/∂Rs doymamış hüceyrədə 3-cü dəyişəndir) girir
+  — **iki ayrı commit tövsiyə olunur** (Seans 26 prinsipi), hər biri sonlu fərqlə.
+* **G3:** doymamış Bo tək `c_o` ilə (`black_oil.py::_build_undersaturated_branch`,
+  cədvəlin `bubble_point`-dən yuxarı hissəsindən fit). SPE1-də Rs = 1.27 və
+  1.618 sətirlərinin sıxılması fərqlidir — əvvəl ÖLÇÜN, sonra qərar verin.
+* **G7 ⏳:** etalonda vurucu hüceyrəsinin təzyiqi 7534 psia-ya qalxır, doymuş qol
+  isə 5014.7-də bitir. `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato).
+  OPM-in bu haldakı qaydası mənbədən yoxlanılmayıb — uydurmayın.
+
+### 5.4 · SPE1CASE2 modeli və etalonla müqayisə
+
+* **Vahidlər:** mühərrik METRIC-dir; `domain/unit_conversions.py`
+  (`psi_to_bar`, `ft_to_m`, `stb_per_day_to_m3_per_day`, `convert(...)`).
+  Qaz (Mscf), Rs (Mscf/STB), Bg (rb/Mscf), sıxlıq (lb/ft³) üçün hazır funksiya
+  olub-olmadığını yoxlayın ⏳ — çevirmə əmsallarını əldən yazmazdan əvvəl
+  modulla tutuşdurun.
+* **Model:** grid, keçiricilik, quyular — `SPE1.md` §2. Perforasiyalar 0-dan
+  indeksli: istismarçı `(9, 9, 2)`, vurucu `(0, 0, 0)`; rw = 0.25 ft.
+  İstismarçı: `RATE`, `rate_basis=SURFACE`, 20 000 STB/gün, `bhp_limit` 1000 psia.
+  Vurucu: `RATE`, qaz, `rate_basis=SURFACE`, 100 000 Mscf/gün, `bhp_limit` 9014 psia.
+  İlkin: `use_equilibration`, 4800 psia @ 8400 ft, `solution_gor` = 1.27 Mscf/STB,
+  Sw = 0.12, WOC 8450 / GOC 8300 (lay xaricində).
+* **Etalon nöqtələri** (`SPE1.md` §3): FOPR 1550-ci gündə 20 000-dən aşağı;
+  3650-ci gündə FOPR 5732.65 STB/gün, FGOR 22.1403 Mscf/STB, WBHP PROD 1000 psia.
+* **Müqayisə testi:** `tools/eclipse_summary.py`-ı `imex2d/io/`-ya köçürüb testlə
+  örtün; reqressiya `tests/golden/` altında (bax `tools/golden.py`).
+* ⏳ **Əvvəlcədən bilinən maneə:** `domain/validation.py::validate_well_rate`
+  100 000 m³/gündən böyük debitə "qeyri-adi yüksək" xəbərdarlığı verir —
+  SPE1 qaz vurması ≈ 2.83·10⁶ sm³/gündür. Yanıldıcı xəbərdarlığı modeldən ƏVVƏL
+  həll edin (məs. səth qaz debiti üçün ayrı hədd).
+
+### 5.5 · Sonra (müqayisə nəticəsinə görə)
+
+* G7 (doymuş qolun ekstrapolyasiyası), CASE1 (`DRSDT 0` — Rs artımını qadağan
+  edən qayda, qalığa toxunur).
 
 ---
 
-## 7 · Açıq qalan backlog (təcili deyil)
+## 6 · Texniki borc və açıq qalan backlog
 
-* İlkin tarazlıqda Pcog yoxdur — qaz-neft sərhədi kəskin qalır (Seans 24).
-* Eclipse ixracında SGOF / Pcog sütunu yoxdur.
-* Cədvəldən Pcog (`SaturationTableSet`) — yalnız analitik Brooks-Corey var.
-* IPR düz xətdir; Vogel tipli əyri ⏳ (Seans 25).
-* Beggs-Brill sürüşməsi, VFPPROD idxalı, RATE quyusunda THP.
-* Üç fazalı mühərrikdə `soft_failure_*` tolerantlıqları verilmir
-  (`three_phase_engine.py::_time_config` sənədində qeyd var).
+**Texniki borc** (`ROADMAP.md` → «Texniki borc»):
 
-**Mövcud Jakobian qeyri-dəqiqlikləri** (yeni işin səbəbi DEYİL — müqayisə üçün baza):
+* **TB-1:** üç fazalı RATE istismarçısının quyu Jakobianı — sonlu fərqə qarşı
+  xəta 0.4893 (tək perforasiya). Sahibkarın qərarı: indi düzəldilmir.
 
-* qarışıq doyma vəziyyətində sonlu fərq xətası 2.7×10⁻⁵ (Seans 24);
-* su vurucusunda 1.343141869382806×10⁻⁵ (Seans 26, köhnə kodda da eyni ölçülüb);
-* köhnə qeyd: istismarçı hüceyrəsində qaz tənliyi ↔ Sw elementində 87 % xəta
-  (`ISH_HESABATI.md`-də "87 %" axtarın).
+**Açıq qalan ⏳ (təcili deyil):**
 
----
-
-## 8 · Bilinən tələlər (vaxt itirməmək üçün)
-
-* **Windows konsolu cp1254-dür.** Azərbaycan hərfləri çap edən ad-hoc skriptlər
-  `UnicodeEncodeError` verir. Skriptin əvvəlində:
-  `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")`.
-  Bu sarğını iki dəfə (məs. iki modul import edəndə) qurmayın — birinci obyekt
-  silinəndə axın bağlanır.
-* **Sənədlər CRLF sətir sonludur.** Faylı proqramla dəyişəndə sətir sonlarını
-  qoruyun, yoxsa `git diff` bütün faylı dəyişmiş göstərir.
-* **Uzun Python heredoc-u bash-da qırıla bilər.** Yamağı ayrıca `.py` faylına
-  yazıb işlədin.
-* **`MainWindow()` testdə yaradılsa pytest çökür.** UI məntiqini ayrıca funksiyada
-  və ya mənbə yoxlaması ilə sınayın.
-* **Proqramı arxa plan terminal əmri ilə açsanız, seans bağlananda proqram da
-  bağlanır.** Ayrıca proses kimi açın, məs. PowerShell:
-  `Start-Process -FilePath "venv\Scripts\python.exe" -ArgumentList "app.py"`.
-* **`layihe.imx` git-də DEYİL** (sahibkarın iş faylıdır, izlənmir). Seans 25-in
-  41×41×3 modeli odur və saxlanmış halda **qaz fazası söndürülüb**. Həmin
-  qaçışları təkrarlamaq lazımdırsa, faylı ayrıca köçürün və PVT-də qazı açın.
-* **Ölçmə skriptləri repoda yoxdur** (müvəqqəti qovluqda idi). Seans 25-in
-  nəticələrini təkrarlamaq üçün: `layihe.imx` yüklənir, PVT
-  `build_pvt_table(..., include_gas=True)` ilə əvəz edilir, `engine.time_stepper.history`
-  üzərindən Δt / kəsilmə sayılır.
+* `stone_relperm.py` modul sənədində "Stone II … Eclipse-in defoltu" yazılıb —
+  yanlışdır (Eclipse-də `STONE1`/`STONE2` açar sözü ilə seçilir), düzəldilməlidir.
+* Başlanğıcdakı debit titrəməsi ("mişar dişi") — sahibkarın modelində görünüb,
+  test modelində təkrarlanmayıb. Yoxlamaq üçün `layihe.imx` və ya o qaçışın CSV-si lazımdır.
+* `well_control_mode` CSV/JSON ixracına və dashboard-a çıxarılmayıb.
+* THP quyusu ilə BHP limitli quyu eyni modeldə: limit dövrəsinin təkrar həllindən
+  sonra THP-nin BHP-si yenilənmir (ölçülməyib).
+* Vurucu BHP limiti və iki fazalı SƏTH bazalı su vurucusu yalnız vahid səviyyədə sınanıb.
+* BHP limitinin tərs düsturu BHP rejimindəki `min(q, 0)` kəsməsini nəzərə almır.
+* `ui/main_window.py::export_results` (köhnə sadə CSV) qaz sütunlarını yazmır.
+* Köhnə backlog: ilkin tarazlıqda Pcog yoxdur; Eclipse ixracı iki fazalıdır
+  (SGOF/PVDG/PVTO yazılmır); cədvəldən Pcog; Vogel IPR; Beggs-Brill, VFPPROD,
+  RATE quyusunda THP; üç fazalı mühərrikdə `soft_failure_*` tolerantlıqları.
 
 ---
 
-## 9 · Toxunmamalı olan
+## 7 · Bilinən tələlər (vaxt itirməmək üçün)
+
+* **Windows konsolu cp1254-dür.** Azərbaycan hərfləri çap edən skript
+  `UnicodeEncodeError` verir (Seans 27-də sənəd skripti bir `print`-də düşdü).
+  Skriptin əvvəlində `sys.stdout = io.TextIOWrapper(sys.stdout.buffer,
+  encoding="utf-8", errors="replace")` və ya çap etməyin.
+* **Sənədlər CRLF sətir sonludur.** Proqramla dəyişəndə qoruyun (`file X.md`
+  "with CRLF line terminators" göstərməlidir, "CRLF, LF" yox). Bu seansdakı sənəd
+  skriptləri mətni `\r\n`-ə çevirib bayt kimi yazırdı.
+* **Arxa planda gedən tam dəst** test modullarını başlanğıcda import edir: sonradan
+  edilən kod dəyişikliyi həmin qaçışa təsir etmir, sonradan yaradılan test faylı
+  isə ümumiyyətlə toplanmır. Nəticəni hansı kod vəziyyətinə aid olduğunu bilərək oxuyun.
+* **Uzun Python heredoc-u bash-da qırıla bilər** — ayrıca `.py` faylına yazın.
+* **`MainWindow()` testdə yaradılsa pytest çökür.** UI-ni mənbə yoxlaması ilə sınayın
+  (`inspect.getsource(panels.WellPanel)`).
+* **Proqramı arxa plan terminal əmri ilə açsanız seans bağlananda bağlanır** —
+  PowerShell: `Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "app.py"`.
+* **`layihe.imx` git-də DEYİL** (sahibkarın iş faylı). Seans 25-in 41×41×3 modeli
+  odur; saxlanmış halda qaz fazası söndürülüb.
+* **Ölçmə skriptləri repoda yoxdur** (müvəqqəti qovluqda idi); rəqəmlər
+  `ISH_HESABATI.md`-də ölçmə şərtləri ilə yazılıb — təkrarlamaq üçün oradakı
+  model təsvirindən istifadə edin. İstisna: `tools/eclipse_summary.py`.
+* **Yalnız RATE quyulu model** servis doğrulamasından keçmir ("ən azı bir quyu
+  BHP, THP və ya BHP limiti ilə idarə olunmalıdır") — testdə ya BHP limiti verin,
+  ya mühərriki birbaşa qurun.
+
+---
+
+## 8 · Toxunmamalı olan
 
 * **`b2a795e` commit-i** yalnız digər maşındadır və onu **sahibkar özü xilas
   edəcək**. İstənilən birləşmədən əvvəl `git log --all --oneline | grep b2a795e`
@@ -244,5 +263,5 @@ Mühərrik metrik vahidlərdədir (bar, m³/gün) — çevirmə üçün
 
 ---
 
-*Bu fayl təhvil anının şəklidir. İş davam etdikcə cari vəziyyət `ISH_HESABATI.md`
-və `ROADMAP.md`-dədir; bu fayl köhnələrsə, həmin sənədlər əsasdır.*
+*Bu fayl təhvil anının şəklidir. İş davam etdikcə cari vəziyyət `ISH_HESABATI.md`,
+`ROADMAP.md` və `SPE1.md`-dədir; bu fayl köhnələrsə, həmin sənədlər əsasdır.*

@@ -3952,3 +3952,25 @@ tam dəst                                       2549 keçdi, 1 buraxıldı, 1 xf
   kod baxımından eynidir, testi yoxdur).
 * `well_control_mode` hələ də CSV/JSON ixracında yoxdur (Seans 27-dən).
 * Növbəti: `SPE1.md` planı — G6 süxur sıxılmasının istinad təzyiqi.
+
+## 15 sentyabr 2026 — Seans 31: təhvil — iş başqa kompüterdə davam edəcək
+
+Sahibkarın göstərişi: `TEHVIL_TESLIM.md` yenilənsin, növbəti işlər orada
+yazılsın; qalan işləri digər həmkar öz kompüterində görəcək.
+
+### Edilən
+
+| Fayl | Nə |
+|---|---|
+| `TEHVIL_TESLIM.md` | tam yenidən yazıldı: vəziyyət (2549 test, Seans 31 / Q-24), Seans 27–30 commit-ləri, addım dövrünün sırası, növbəti işlər G6 → G4 → G1+G2(+G3) → SPE1CASE2 modeli ətraflı, texniki borc, tələlər. Əvvəlki məzmun: `git show dd425be:TEHVIL_TESLIM.md` |
+| `tools/eclipse_summary.py` | **YENİ** — Seans 29-da müvəqqəti qovluqda yazılmış OPM summary oxuyucusu repoya köçürüldü, çünki digər kompüterdə müvəqqəti qovluq olmayacaq. Test olunmayıb ⏳ |
+
+Kod dəyişməyib (oxuyucu `imex2d` paketinə qoşulmayıb) — test dəsti işlədilmədi;
+son ölçülmüş nəticə Seans 30-dan: 2549 keçdi, 1 buraxıldı, 1 xfailed.
+
+### Açıq qalan ⏳
+
+* Növbəti iş: `SPE1.md` §5 — G6 süxur sıxılmasının istinad təzyiqi.
+* `tools/eclipse_summary.py` SPE1 müqayisə testi yazılanda `imex2d/io/`-ya
+  köçürülüb testlə örtülməlidir.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
