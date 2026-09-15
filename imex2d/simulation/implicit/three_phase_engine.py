@@ -100,6 +100,8 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in self.newton.well_model.wells
                                   if not c.is_injector})
+        self._injectors = sorted({c.well_name for c in self.newton.well_model.wells
+                                  if c.is_injector})
         #: Çox perforasiyalı RATE quyusu varmı (Seans 27)
         self._rate_allocation = needs_rate_allocation(self.newton.well_model.wells)
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
@@ -331,7 +333,15 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             rates = newton_result.rates
             oil_rate = float(-min(rates.oil.sum(), 0.0))
             water_rate = float(-min(rates.water[rates.water < 0].sum(), 0.0))
-            gas_rate = float(-min(rates.gas.sum(), 0.0))
+            # QAZ QUYULAR ÜZRƏ ayrılır. Əvvəl `-min(rates.gas.sum(), 0)` idi:
+            # hüceyrə cəmi VURULAN (+) və HASİL OLUNAN (−) qazı qarışdırırdı,
+            # vurucu hasilatdan güclü olanda cəm müsbət çıxır və `min` onu
+            # SIFIRLAYIRDI — ölçüldü: qaz vuran modeldə 1500 gün boyu sahə qaz
+            # debiti və GOR = 0, halbuki istismarçının öz GOR-u 109+ idi.
+            gas_rate = float(max(0.0, -sum(rates.per_well_gas.get(name, 0.0)
+                                           for name in self._producers)))
+            gas_injection = float(max(0.0, sum(rates.per_well_gas.get(name, 0.0)
+                                               for name in self._injectors)))
             injection = float(max(rates.water[rates.water > 0].sum(), 0.0))
             cumulative_oil += oil_rate * dt
             cumulative_water += water_rate * dt
@@ -342,6 +352,7 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
             series.water_rate.append(water_rate)
             series.gas_rate.append(gas_rate)
             series.water_injection_rate.append(injection)
+            series.gas_injection_rate.append(gas_injection)
             series.cumulative_oil.append(cumulative_oil)
             series.cumulative_water.append(cumulative_water)
             series.cumulative_gas.append(cumulative_gas)

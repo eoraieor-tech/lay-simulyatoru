@@ -3736,3 +3736,78 @@ tam dəst                  2528 keçdi, 1 buraxıldı, 1 xfailed
 * RATE quyusunda THP hələ hesablanmır (hidravlika yalnız BHP/THP rejimini tanıyır).
 * Üç fazalı RATE istismarçısının Jakobian xətası (0.49) — Seans 27-dən.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+## 15 sentyabr 2026 — Seans 28: qaz seriyaları — sıfır GOR və görünməyən vurulan qaz
+
+Sahibkar qaz vuran 1500 günlük qaçışın (86 addım, 1 təkrar) qrafiklərində üç
+detal göstərdi. Hər biri əvvəlcə ölçüldü.
+
+### 1 · GOR niyə SIFIR idi — hesablama səhvi, PVT deyil
+
+Üç fazalı mühərrik sahə qaz debitini belə yazırdı:
+
+    gas_rate = -min(rates.gas.sum(), 0.0)
+
+Hüceyrə cəmi vurulan (+) və hasil olunan (−) qazı QARIŞDIRIRDI. Vurucu
+hasilatdan güclü olanda cəm müsbət çıxır və `min` onu sıfırlayırdı. Ölçüldü
+(11×11×3, qaz vurucusu BHP 320, istismarçı BHP 150, 1500 gün):
+
+| Göstərici | Düzəlişdən əvvəl | Sonra |
+|---|---|---|
+| sahə qaz debiti | 1500 gün boyu 0 | min 174536, maks 10329735 sm³/gün |
+| sahə GOR | 0 | t = 1 gün 152.06, t = 2.5 gün 109.09 … |
+| istismarçının öz GOR-u (`well_gas_rate / well_oil_rate`) | 109.09-dan başlayır | eyni |
+
+Yəni həll olmuş qaz (Rs) mühərrikdə DÜZGÜN hesablanırdı — quyu seriyasında
+var idi; yalnız sahə seriyası sıfırlanırdı. Sahibkarın ikinci ehtimalı ("PVT
+modelində Rs GOR-a ötürülmür") təkzib olundu.
+
+**Düzəliş:** qaz quyular üzrə ayrılır — istismarçıların `per_well_gas` cəmi
+hasilat, vurucularınkı vurulan qazdır. Mühərrikin addım profili dəyişmədi
+(83 addım, 1 təkrar — əvvəl və sonra eyni), dəyişən yalnız hesabat seriyasıdır.
+
+### 2 · Vurulan qaz qrafikdə yox idi
+
+`TimeSeries`-də vurulan qaz üçün sahə ümumiyyətlə yox idi — UI-nin çəkəcəyi
+məlumat da yox idi. Əlavə olundu:
+
+| Fayl | Nə |
+|---|---|
+| `simulation/results.py` | `TimeSeries.gas_injection_rate` (yalnız üç fazalı mühərrik doldurur) |
+| `simulation/implicit/three_phase_engine.py` | qaz quyular üzrə: hasilat və vurulan qaz ayrı |
+| `rendering/renderers.py` | «Debitlər» panelində **ikinci ox**: «Qaz» və «Vurulan qaz» |
+| `rendering/theme.py` | `PALETTE.gas`; `legend(..., loc=)` |
+| `reporting/results_export.py` | CSV/JSON sütunu `q_vurulan_qaz` |
+| `tests/test_gas_series.py` | **YENİ** — 7 test |
+
+İkinci ox səbəbi: qaz səth debiti maye debitindən 10²–10³ dəfə böyükdür
+(ölçmədə 10⁵–10⁷ sm³/gün qarşısında 10³ m³/gün), eyni oxda neft/su xətləri
+sıfıra yapışardı.
+
+### 3 · Başlanğıcdakı "mişar dişi" — bu modeldə TƏKRARLANMADI ⏳
+
+Eyni ölçmədə ilk 180 gün addım-addım yazıldı: neft debiti 1411.69 → 2245.32
+m³/gün (t = 14.69) hamar qalxıb hamar enir, Nyuton iterasiyası 2–8, Δt kəsilməsi
+yalnız t = 165.82-də bir dəfə. Yeganə qeyri-monotonluq GOR-dadır: t = 1 gündə
+152.06, t = 2.5-də 109.09, sonra artır.
+
+Sahibkarın modeli (`layihe.imx`) bu maşında yoxdur (git-də deyil), ona görə
+səbəb haqqında iddia YAZILMIR və düzəliş edilmədi. Yoxlamaq üçün lazım olan:
+həmin model faylı və ya titrəmənin olduğu qaçışın CSV ixracı (addım-addım
+`t`, `q_neft`, Δt).
+
+### 4 · Yoxlama
+
+```
+tests/test_gas_series.py + əlaqəli fayllar   95 keçdi
+tam dəst                                     2535 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+### Açıq qalan ⏳
+
+* Başlanğıc titrəməsi — sahibkarın modeli ilə ölçülməlidir.
+* `ui/main_window.py::export_results` (köhnə sadə CSV) qaz sütunlarını yazmır;
+  tam ixrac `reporting/results_export.py`-dədir.
+* İki fazalı mühərrikdə qaz seriyaları yoxdur (qaz fazası yoxdur — gözlənilən).
+* Qeyd: sahibkarın «sonra BHP limitli debit idarəsinə keçək» göstərişi — B7
+  addım 2 artıq Seans 27-də bitib (`a76c8b2`); qalan B7 addım 3-dür.

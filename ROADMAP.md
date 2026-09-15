@@ -60,6 +60,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > BHP idarəsinə keçir, histerezislə RATE-ə qayıdır (Q-21). Yol boyu Eclipse
 > ixracında iki səssiz səhv düzəldildi (Q-20). Qalan: səth debiti hədəfi, SPE1.
 >
+> **Seans 28:** qaz vuran qaçışda sahə **GOR = 0** səhvi (vurulan qaz hasilatla
+> cəmlənib sıfırlanırdı) düzəldildi; **vurulan qaz** qrafikə və ixraca əlavə
+> olundu (Q-22).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

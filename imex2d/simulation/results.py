@@ -22,6 +22,9 @@ class TimeSeries:
     """Səth qaz debiti (sərbəst+həll olmuş) — YALNIZ A7 üç fazalı
     mühərrikdə doldurulur. İki fazalı nəticələrdə boş qalır (geriyə
     uyğunluq — mövcud qrafiklər bu sahəni oxumur)."""
+    gas_injection_rate: List[float] = field(default_factory=list)
+    """Vurulan qaz, səth sm³/gün — YALNIZ üç fazalı mühərrikdə doldurulur
+    (B7: qaz vuran quyu). İki fazalı nəticədə boş qalır."""
     cumulative_gas: List[float] = field(default_factory=list)
     gas_oil_ratio: List[float] = field(default_factory=list)
     """GOR = qaz_debiti / neft_debiti, sm³/sm³."""

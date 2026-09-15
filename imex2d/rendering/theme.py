@@ -22,6 +22,8 @@ class Palette:
     water: str = "#2AA7A0"
     accent: str = "#4B9FD6"
     danger: str = "#C0574B"
+    #: Qaz debitləri — qaz doyumluluğu xəritəsinin ailəsindən (sarı-narıncı)
+    gas: str = "#E8963C"
 
 
 PALETTE = Palette()
@@ -57,6 +59,6 @@ def style_axes(ax, title="", xlabel="", ylabel="", palette: Palette = PALETTE):
         ax.set_ylabel(ylabel, color=palette.text_dim, fontsize=9)
 
 
-def legend(ax, palette: Palette = PALETTE, fontsize=8):
+def legend(ax, palette: Palette = PALETTE, fontsize=8, loc="best"):
     ax.legend(fontsize=fontsize, facecolor=palette.panel_alt,
-              edgecolor=palette.line, labelcolor=palette.text)
+              edgecolor=palette.line, labelcolor=palette.text, loc=loc)

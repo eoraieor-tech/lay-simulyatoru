@@ -296,6 +296,10 @@ class ProductionCurveRenderer:
                 ls="--", label="Vurulan su")
         style_axes(a1, "Debitlər", "Zaman, gün", "q, m³/gün")
         legend(a1)
+        gas_produced = getattr(s, "gas_rate", None) or []
+        gas_injected = getattr(s, "gas_injection_rate", None) or []
+        if gas_produced or gas_injected:
+            self._draw_gas_rates(a1, t, gas_produced, gas_injected)
 
         a2.plot(t, s.water_cut, color=PALETTE.water, lw=2)
         a2.set_ylim(0, 100)
@@ -321,6 +325,29 @@ class ProductionCurveRenderer:
             self._draw_well_pressures(extra[0], result)
         if len(extra) > 1:
             self._draw_gas_oil_ratio(extra[1], t, s)
+
+    @staticmethod
+    def _draw_gas_rates(ax, t, produced, injected):
+        """Hasil olunan və VURULAN qaz — İKİNCİ oxda (B7).
+
+        Qaz səth debiti (sm³/gün) maye debitindən 10²–10³ dəfə böyükdür;
+        eyni oxda çəkilsə neft/su xətləri sıfıra yapışardı. Əvvəl vurulan
+        qaz qrafikdə ÜMUMİYYƏTLƏ yox idi — yalnız «Vurulan su» çəkilirdi.
+        """
+        twin = ax.twinx()
+        if any(value > 0.0 for value in produced):
+            twin.plot(t[:len(produced)], produced, color=PALETTE.gas, lw=1.4,
+                      label="Qaz")
+        if any(value > 0.0 for value in injected):
+            twin.plot(t[:len(injected)], injected, color=PALETTE.gas, lw=1.2,
+                      ls="--", label="Vurulan qaz")
+        twin.set_ylabel("q_qaz, sm³/gün", color=PALETTE.gas, fontsize=9)
+        twin.tick_params(colors=PALETTE.gas, labelsize=8)
+        for spine in twin.spines.values():
+            spine.set_color(PALETTE.line)
+        if twin.get_lines():
+            legend(twin, loc="upper right")      # əsas oxun legend-i ilə üst-üstə düşməsin
+        return twin
 
     @staticmethod
     def _draw_well_pressures(ax, result: SimulationResult):

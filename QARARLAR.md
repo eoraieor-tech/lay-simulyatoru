@@ -786,3 +786,25 @@ aparardı.
 ### Qərar 5 — limitli RATE quyusu təzyiq idarəsi sayılır; IMPES-də xəta, BHP/THP rejimində xəbərdarlıq
 
 Bax ISH_HESABATI §5.
+
+
+## Q-22 — Sahə qaz seriyaları quyular üzrə yığılır; qaz debiti ikinci oxda çəkilir
+
+**Tarix:** 15 sentyabr 2026 · **Kontekst:** qaz vurulmasının hesabatı
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 28)
+
+### Qərar 1 — hasilat və vurma quyu tipinə görə ayrılır, hüceyrə işarəsinə görə yox
+
+Hüceyrə massivinin cəmi (`rates.gas.sum()`) vurucu və istismarçını qarışdırır.
+Quyu lüğətləri (`per_well_gas`) quyu tipini açıq bilir, ona görə sahə qaz
+debiti = istismarçıların cəmi, vurulan qaz = vurucuların cəmi.
+
+**Alternativ rədd edildi:** hüceyrə işarəsinə görə maska (`rates.gas < 0`) —
+su üçün belə edilir, lakin eyni hüceyrədə həm vurucu, həm istismarçı
+perforasiyası olsa yenə qarışardı.
+
+### Qərar 2 — qaz debitləri «Debitlər» panelində ikinci oxdadır
+
+Qaz sm³/gün maye m³/gündən 2–3 tərtib böyükdür. Ayrıca panel 2×2 düzümü
+pozardı (mövcud çağırışlar və testlər 2×2 gözləyir), eyni ox isə maye
+xətlərini oxunmaz edərdi.

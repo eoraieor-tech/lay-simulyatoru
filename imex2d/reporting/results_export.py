@@ -41,6 +41,7 @@ SERIES_COLUMNS: Sequence[tuple] = (
     ("water_rate", "q_su [m³/gün]"),
     ("water_injection_rate", "q_vurulan_su [m³/gün]"),
     ("gas_rate", "q_qaz [m³/gün]"),
+    ("gas_injection_rate", "q_vurulan_qaz [m³/gün]"),
     ("cumulative_oil", "kum_neft [m³]"),
     ("cumulative_water", "kum_su [m³]"),
     ("cumulative_gas", "kum_qaz [m³]"),
