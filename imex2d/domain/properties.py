@@ -393,6 +393,21 @@ class RockProperties:
     permz: Optional[PropertyMap] = None
     net_to_gross: Optional[PropertyMap] = None
     compressibility: float = 4.5e-5
+    #: Süxur sıxılmasının İSTİNAD TƏZYİQİ, bar (G6).
+    #:
+    #:     PV(p) = PV_ref · [1 + c_r · (p − p_istinad)]
+    #:
+    #: `None` (defolt) → istinad `initial_conditions.datum_pressure`-dır,
+    #: yəni MÖVCUD BÜTÜN MODELLƏR üçün nəticə bit-bit eynidir.
+    #: Eclipse `ROCK` açar sözü istinad təzyiqini AYRICA verir (SPE1-də
+    #: 14.7 psia ≈ 1.01 bar), datum isə 4800 psia-dır — fərq 4800 psia-da
+    #: məsamə həcmində ~1.4 % təşkil edir.
+    #:
+    #: ⚠️ YALNIZ tam implicit mühərriklər oxuyur. IMPES məsamə həcmini
+    #: təzyiqlə ÜMUMİYYƏTLƏ miqyaslamır (ÜMUMİ sıxılma `ct` ilə işləyir,
+    #: bax `impes_engine.py::_setup_fluid_model`) — bu, G6-dan ƏVVƏLKİ
+    #: sadələşdirmədir və burada dəyişmir.
+    compressibility_reference_pressure: Optional[float] = None
     #: HƏLƏ HEÇ BİR HƏLLEDİCİ TƏRƏFİNDƏN İSTİFADƏ OLUNMUR (bax
     #: `PermeabilityTensor` docstring-i) — yalnız gələcək MPFA-O üçün
     #: opt-in verilənlər daşıyıcısı. `None` (defolt) — mövcud bütün

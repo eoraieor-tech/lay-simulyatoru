@@ -503,6 +503,8 @@ class ProjectSerializer:
                 "permz": _property_map(rock.permz),
                 "net_to_gross": _property_map(rock.net_to_gross),
                 "compressibility": rock.compressibility,
+                "compressibility_reference_pressure":
+                    rock.compressibility_reference_pressure,
                 "permeability_tensor": _permeability_tensor_to_dict(rock.permeability_tensor),
             },
             "fluids": _dataclass_to_dict(model.fluids, [
@@ -545,6 +547,8 @@ class ProjectSerializer:
             permz=_property_map_from(rock_data.get("permz")),
             net_to_gross=_property_map_from(rock_data.get("net_to_gross")),
             compressibility=rock_data.get("compressibility", 4.5e-5),
+            compressibility_reference_pressure=rock_data.get(
+                "compressibility_reference_pressure"),
             permeability_tensor=_permeability_tensor_from_dict(
                 rock_data.get("permeability_tensor")))
         maps = {}

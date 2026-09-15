@@ -68,6 +68,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > **səth debiti hədəfi** (`ORAT`, qaz `RATE`) əlavə olundu (Q-24). Qalan
 > boşluqlar və sıra — [SPE1.md](SPE1.md).
 >
+> **16 sentyabr 2026 (Seans 32):** **G6** ✅ — süxur sıxılmasının istinad
+> təzyiqi ayrıca verilə bilir (Eclipse `ROCK`); mövcud modellər bit-bit eyni
+> qaldı, Jakobian toxunulmadı (Q-25). Növbəti boşluq: **G4** (SGOF cədvəli).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

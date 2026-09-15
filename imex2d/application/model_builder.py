@@ -42,6 +42,8 @@ class ReservoirModelBuilder:
               fault_references: Optional[List] = None,
               rock_compressibility: float = 4.5e-5,
               rock_compressibility_unit: str = "bar",
+              rock_compressibility_reference: Optional[float] = None,
+              rock_compressibility_reference_unit: str = "bar",
               name: Optional[str] = None,
               units: UnitSystem = DEFAULT_UNITS) -> ReservoirModel:
         """`rock_compressibility_unit` — `rock_compressibility`-nin HANSI
@@ -61,6 +63,12 @@ class ReservoirModelBuilder:
 
         rock_compressibility = to_engine_units(
             rock_compressibility, rock_compressibility_unit, "compressibility")
+        # G6: istinad təzyiqi — verilməyibsə `None` qalır və mühərrik
+        # datum təzyiqini işlədir (köhnə davranış).
+        if rock_compressibility_reference is not None:
+            rock_compressibility_reference = to_engine_units(
+                float(rock_compressibility_reference),
+                rock_compressibility_reference_unit, "pressure")
 
         maps: Dict[str, PropertyMap] = dict(geological_model.property_maps)
         permx = geological_model.require(self.PERMX_KEY)
@@ -73,6 +81,7 @@ class ReservoirModelBuilder:
             permz=maps.get(self.PERMZ_KEY),
             net_to_gross=maps.get(self.NTG_KEY),
             compressibility=rock_compressibility,
+            compressibility_reference_pressure=rock_compressibility_reference,
         )
 
         return ReservoirModel(

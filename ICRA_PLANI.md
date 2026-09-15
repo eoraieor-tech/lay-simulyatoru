@@ -528,12 +528,15 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 >    yalnız su vururdu, `injected_phase` oxunmurdu;
 > 2. **RATE + BHP limiti** ✅ BİTDİ (Seans 27, Q-21) — rejim keçidi addımlar
 >    arasında, histerezislə;
-> 3. **səth debiti hədəfi** ⏳ (bizdə RATE = maye, lay həcmi).
+> 3. **səth debiti hədəfi** ✅ BİTDİ (Seans 30, Q-24 — `RateBasis.SURFACE`).
 >
 > **Seans 29:** SPE1 parametrləri OPM deck-indən yoxlandı, hədəf **SPE1CASE2**
 > (Q-23), etalon OPM Flow nəticəsi oxundu; 8 boşluq və iş sırası — [SPE1.md](SPE1.md).
 >
 > **Seans 30:** səth debiti hədəfi (G5) ✅ bitdi (Q-24).
+>
+> **Seans 32:** G6 ✅ bitdi (Q-25) — süxur sıxılmasının istinad təzyiqi.
+> Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi
 > düzəldildi (Q-19) — əvvəl hər perforasiya quyunun tam hədəfini alırdı.

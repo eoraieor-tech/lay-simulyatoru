@@ -80,7 +80,7 @@ köçürüləcək.
 | G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | tək `c_o`, cədvəlin Pb-dən yuxarı hissəsindən (`black_oil.py::_build_undersaturated_branch`) | təqribi — ölçülməlidir |
 | G4 | SGOF cədvəli (krg, krog) | qaz əyrisi yalnız Corey (`GasCoreyParameters`) | **provider boşluğu** |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
-| G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | istinad = `datum_pressure` (`residual.py:71`, `three_phase_residual.py:182`) | məsamə həcmi 4800 psia-da ~1.4 % fərq |
+| G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
 | G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | OPM-in ekstrapolyasiya qaydası mənbədən yoxlanılmalıdır ⏳ |
 | G8 | `DRSDT 0` (yalnız CASE1) | dəstəklənmir — qaz həmişə yenidən həll olur | CASE2 hədəf seçildi (Q-23) |
 | — | Üç fazalı kro | Stone II. SPE1-də su hərəkətsizdir (Sw = Swc = 0.12); orada Stone II və Eclipse defolt modeli eyni `kro = krog` verir | fərq gözlənilmir |
@@ -89,7 +89,8 @@ köçürüləcək.
 ## 5 · İş planı (hər biri ayrıca commit, sonlu fərq testi ilə)
 
 1. **G5 — səth debiti hədəfi** (istismarçıda neft, vurucuda qaz). ✅ Seans 30 (Q-24).
-2. **G6 — süxur sıxılmasının istinad təzyiqi** (kiçik, mövcud modellər bit-bit eyni qalmalıdır).
+2. **G6 — süxur sıxılmasının istinad təzyiqi** ✅ Seans 32 (Q-25) — mövcud
+   modellər bit-bit eyni qaldı; flüidin öz istinadı toxunulmadı.
 3. **G4 — SGOF cədvəli** ilə qaz relperm provider-i.
 4. **G1 + G2 (+G3 ölçmə)** — PVTO/PVDG köçürücüsü və doymamış özlülük.
 5. **SPE1CASE2 modeli** + etalonla müqayisə (FOPR, FGOR, WBHP, BPR), `tests/golden/`-da reqressiya.

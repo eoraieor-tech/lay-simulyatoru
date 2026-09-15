@@ -33,3 +33,6 @@ results/
 B3B_QRAFIKLER.html
 B5_PROMPT.md
 NUMUNE_NETICELER.*
+
+# Sahibkarin is fayllari (model layiheleri) repoya dusmesin
+*.imx

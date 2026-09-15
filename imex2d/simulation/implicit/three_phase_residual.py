@@ -35,6 +35,7 @@ import numpy as np
 
 from ...domain.reservoir_model import ReservoirModel
 from ...domain.wells import Phase
+from .residual import rock_reference_pressure
 from ...domain.wells import ControlMode
 from ..discretization import DiscretizedGrid
 from ..well_model import WellConnection
@@ -179,10 +180,17 @@ class ThreePhaseAccumulator:
     def __init__(self, model: ReservoirModel, pore_volume: np.ndarray):
         self.model = model
         self.pore_volume = pore_volume
-        self.reference_pressure = float(model.initial_conditions.datum_pressure)
+        #: G6 — süxur sıxılmasının istinad təzyiqi (modeldə verilməyibsə
+        #: datum). Ad `reference_pressure` olaraq qalır, çünki BU sinif
+        #: onu YALNIZ məsamə həcmi üçün işlədir.
+        self.reference_pressure = rock_reference_pressure(model)
 
     def pore_volume_at(self, pressure: np.ndarray) -> np.ndarray:
-        """Süxur sıxılması — A6-dakı ilə eyni düstur (`residual.py`)."""
+        """Süxur sıxılması — A6-dakı ilə eyni düstur (`residual.py`).
+
+        İstinad təzyiqi G6-dan sonra modeldən gələ bilər — bax
+        `residual.rock_reference_pressure`.
+        """
         compressibility = self.model.rock.compressibility
         if compressibility <= 0.0:
             return self.pore_volume

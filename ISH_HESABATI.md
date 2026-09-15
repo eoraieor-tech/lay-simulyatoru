@@ -3974,3 +3974,90 @@ son ölçülmüş nəticə Seans 30-dan: 2549 keçdi, 1 buraxıldı, 1 xfailed.
 * `tools/eclipse_summary.py` SPE1 müqayisə testi yazılanda `imex2d/io/`-ya
   köçürülüb testlə örtülməlidir.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 32: SPE1 boşluğu G6 — süxur sıxılmasının istinad təzyiqi
+
+Sahibkarın tapşırığı: təhvil sənədindəki sıra ilə getmək — əvvəl **G6**, sonra G4.
+İş başlamazdan ƏVVƏL bu maşında baza ölçüldü: **2549 keçdi, 1 buraxıldı,
+1 xfailed** (442 san) — təhvil sənədindəki rəqəmlə eynidir.
+
+### 1 · Problem
+
+Eclipse `ROCK` açar sözü süxur sıxılmasının istinad təzyiqini AYRICA verir
+(SPE1CASE2: `ROCK 14.7 3E-6` — 14.7 psia). Bizdə isə istinad HƏMİŞƏ
+`initial_conditions.datum_pressure` idi (SPE1-də 4800 psia):
+
+    PV(p) = PV_ref · [1 + c_r · (p − p_istinad)]
+
+Ölçüldü: SPE1-in öz rəqəmləri ilə (c_r = 3e-6 1/psi, datum 4800 psia) istinadın
+14.7 psia olması məsamə həcmini **1.44 %** dəyişir (test bunu 1.3–1.6 % aralığında
+kilidləyir).
+
+### 2 · İKİ AYRI istinad təzyiqi — işin ən incə yeri
+
+Koddakı `ResidualAssembler.reference_pressure` **flüidin** statik sıxılma
+modelinə aiddir (`B(p) = B_ref/(1+c·Δp)`, PVT provider olmayanda; eyni dəyər
+`DerivativeProvider`-ə də ötürülür). İndiyə qədər süxur və flüid EYNİ dəyəri
+işlədirdi, çünki hər ikisi datum idi.
+
+G6 YALNIZ süxurunkunu ayırır; flüidinki **toxunulmadı**. Əks halda süxur üçün
+verilən istinad səssizcə flüidin sıxılmasını da dəyişərdi.
+`test_fluid_static_model_keeps_the_datum_reference` məhz bunu kilidləyir.
+
+### 3 · Jakobian TOXUNULMADI — riyazi səbəb
+
+    d(PV)/dp = PV_ref · c_r
+
+Bu, istinad təzyiqindən ASILI DEYİL (sabit differensiallaşdıranda düşür). Ona görə
+nə `jacobian.py`, nə `three_phase_residual.py`-nin akkumulyasiya bloku dəyişdi.
+İddia sonlu fərq testi ilə kilidləndi (istinad datumdan fərqli olan modeldə).
+
+### 4 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `domain/properties.py` | `RockProperties.compressibility_reference_pressure: Optional[float] = None` |
+| `simulation/implicit/residual.py` | `rock_reference_pressure(model)` köməkçisi (hər iki mühərrik onu çağırır); `pore_volume_at` yeni istinadı işlədir; flüidin istinadı ayrıca qaldı |
+| `simulation/implicit/three_phase_residual.py` | `ThreePhaseAccumulator` eyni köməkçidən qidalanır |
+| `application/model_builder.py` | `rock_compressibility_reference` (+ vahid: psi → bar) |
+| `application/serialization.py` | layihə faylında saxlanılır / bərpa olunur |
+| `ui/panels.py`, `ui/main_window.py` | `RockFluidPanel`-də qutu + sahə; söndürülü olanda `None` |
+| `tests/test_rock_compressibility_reference.py` | **YENİ** — 14 test |
+
+### 5 · Yol boyu YOXLANILAN (təhvil sənədinin ⏳ sualı)
+
+Təhvil sənədi soruşurdu: `PVTTable.rock_compressibility` və
+`model.rock.compressibility` — hansı harada oxunur? İndi yoxlanıldı:
+
+* `model.rock.compressibility` → tam implicit mühərriklərin məsamə həcmi
+  (`pore_volume_at`) və Jakobianı;
+* `PVTTable.rock_compressibility` → `BlackOilPVTProvider.total_compressibility`
+  (`cw·Sw + co·So + cr`), onu isə YALNIZ **IMPES** işlədir.
+
+Yəni iki sahə fərqli yollardadır. **IMPES məsamə həcmini təzyiqlə ümumiyyətlə
+miqyaslamır** (ÜMUMİ sıxılma `ct` ilə işləyir) — bu, G6-dan ƏVVƏLKİ
+sadələşdirmədir, burada dəyişmədi və yeni sahə IMPES-də oxunmur (sahənin
+sənədində açıq yazılıb).
+
+### 6 · Yol boyu tapılan iki TEST qüsuru (kodun deyil, mənim testimin)
+
+1. Jakobian testində flüid `Bw = 1.0` sabit qurulmuşdu, analitik blok isə
+   `water_fvf_derivative` işlədir — sonlu fərq uyğunsuz çıxırdı. Flüid PVT-dən
+   qurulduqdan sonra düzəldi.
+2. Panel sinfinin adı `RockPanel` deyil, **`RockFluidPanel`**-dir.
+
+### 7 · Yoxlama
+
+```
+tests/test_rock_compressibility_reference.py   14 keçdi
+tam dəst                                       2563 keçdi, 1 buraxıldı, 1 xfailed (baza 2549 + 14 yeni)
+```
+
+### Açıq qalan ⏳
+
+* IMPES-də süxur sıxılmasının təzyiqdən asılılığı ümumiyyətlə modelləşdirilmir;
+  yeni istinad sahəsi orada oxunmur. İstifadəçiyə xəbərdarlıq vermək (servis
+  səviyyəsində, mühərrik seçimi məlum olanda) ayrıca kiçik iş kimi qalır.
+* Növbəti boşluq: **G4** — SGOF cədvəli ilə qaz nisbi keçiriciliyi.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

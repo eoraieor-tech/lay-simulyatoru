@@ -1329,6 +1329,22 @@ class RockFluidPanel(QWidget):
             sig = getattr(widget, "valueChanged", None) or widget.currentIndexChanged
             sig.connect(self.geology_changed)
 
+        # G6 — süxur sıxılmasının istinad təzyiqi (Eclipse `ROCK`).
+        # Söndürülü olanda istinad datum təzyiqidir (köhnə davranış).
+        self.rock_reference_enabled = QCheckBox(
+            "Süxur sıxılmasının istinad təzyiqini ayrıca ver")
+        self.rock_reference_enabled.setToolTip(
+            "Söndürülü: istinad = ilkin (datum) təzyiq — mövcud modellərdəki "
+            "davranış. Açıq: Eclipse ROCK açar sözündəki kimi ayrıca təzyiq.")
+        self.rock_reference_pressure = _spin(1.0, 0.01, 2000.0, 3, 1.0, "bar")
+        self.rock_reference_enabled.stateChanged.connect(
+            self._on_rock_reference_toggled)
+        self.rock_reference_enabled.stateChanged.connect(self.changed)
+        self.rock_reference_pressure.valueChanged.connect(self.changed)
+        form.addRow(self.rock_reference_enabled)
+        form.addRow("Süxur istinad təzyiqi", self.rock_reference_pressure)
+        self._on_rock_reference_toggled()
+
         self.context_note = QLabel("")
         self.context_note.setWordWrap(True)
         self.context_note.setStyleSheet("color:#e0a020;font-size:11px")
@@ -1353,6 +1369,16 @@ class RockFluidPanel(QWidget):
 
     def rock_compressibility_value(self) -> float:
         return self.rock_compressibility.value()
+
+    def _on_rock_reference_toggled(self):
+        self.rock_reference_pressure.setEnabled(
+            self.rock_reference_enabled.isChecked())
+
+    def rock_compressibility_reference_value(self):
+        """İstinad təzyiqi, bar — söndürülübsə `None` (G6)."""
+        if not self.rock_reference_enabled.isChecked():
+            return None
+        return self.rock_reference_pressure.value()
 
     # ───────────────────────────────────── kontekst (görünürlük düzəlişi)
     #: Geologiya sahələri — GRDECL idxal olunanda bunlar İŞLƏMİR.

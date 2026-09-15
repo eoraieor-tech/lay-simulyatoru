@@ -60,6 +60,19 @@ class WellRates:
     per_well_oil: dict
 
 
+def rock_reference_pressure(model) -> float:
+    """Süxur sıxılmasının istinad təzyiqi, bar — G6.
+
+    Modeldə açıq verilibsə o, yoxsa datum təzyiqi (köhnə davranış).
+    Hər iki mühərrik (iki və üç fazalı) EYNİ funksiyanı çağırır ki,
+    qayda bir yerdə qalsın.
+    """
+    explicit = getattr(model.rock, "compressibility_reference_pressure", None)
+    if explicit is None:
+        return float(model.initial_conditions.datum_pressure)
+    return float(explicit)
+
+
 class ResidualAssembler:
     """Verilmiş vəziyyət üçün qalıq vektorunu qurur."""
 
@@ -69,6 +82,11 @@ class ResidualAssembler:
                  capillary: Optional[ICapillaryPressureProvider] = None):
         self.model = model
         self.reference_pressure = float(model.initial_conditions.datum_pressure)
+        #: G6 — süxur sıxılmasının istinad təzyiqi AYRIDIR: yuxarıdakı
+        #: `reference_pressure` FLÜİDİN statik sıxılma modelinə aiddir
+        #: (`fluid_state`, `DerivativeProvider`), bu isə yalnız məsamə
+        #: həcminə. Model verməyibsə ikisi üst-üstə düşür (köhnə davranış).
+        self.rock_reference_pressure = rock_reference_pressure(model)
         self.grid = grid
         self.wells = wells
         self.relperm = relperm
@@ -336,11 +354,15 @@ class ResidualAssembler:
 
     # ═══════════════════════════════════════════════════════ akkumulyasiya
     def pore_volume_at(self, pressure: np.ndarray) -> np.ndarray:
-        """Süxur sıxılması: PV(p) = PV_ref · [1 + c_r·(p − p_ref)]."""
+        """Süxur sıxılması: PV(p) = PV_ref · [1 + c_r·(p − p_ref)].
+
+        `p_ref` — `rock.compressibility_reference_pressure` (G6), o
+        verilməyibsə datum təzyiqi.
+        """
         compressibility = self.model.rock.compressibility
         if compressibility <= 0.0:
             return self.pore_volume
-        factor = 1.0 + compressibility * (pressure - self.reference_pressure)
+        factor = 1.0 + compressibility * (pressure - self.rock_reference_pressure)
         return self.pore_volume * np.maximum(factor, 1e-6)
 
     def accumulation(self, state: ReservoirState, fluid: FluidState):

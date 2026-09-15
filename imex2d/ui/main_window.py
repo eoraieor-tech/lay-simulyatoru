@@ -1590,6 +1590,8 @@ class MainWindow(QMainWindow):
                 scal_tables=self.scal_tables(),
                 fault_references=self.fault_panel.values(),
                 rock_compressibility=self.rock_panel.rock_compressibility_value(),
+                rock_compressibility_reference=(
+                    self.rock_panel.rock_compressibility_reference_value()),
                 name="Aktiv rezervuar modeli")
             self.project.add_reservoir_model(model)
             self.reservoir_model = model

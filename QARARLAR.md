@@ -876,3 +876,37 @@ qurulma anındakı (səth) rəqəmi bərpa etsəydi hədəf ~Bo qədər səhv ol
 
 IMPES-də səth rəqəmi səssizcə lay həcmi kimi işlənərdi. BHP/THP rejimində
 baza sadəcə işləmir — Q-21, Qərar 5 ilə eyni prinsip.
+
+
+## Q-25 — Süxur sıxılmasının istinad təzyiqi ayrıca sahədir; flüidinki toxunulmur
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G6
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 32, [SPE1.md](SPE1.md) → §4)
+
+### Qərar 1 — istəyə bağlı sahə, `None` → datum
+
+`RockProperties.compressibility_reference_pressure` əlavə olundu. `None`
+(defolt) olduqda istinad əvvəlki kimi datum təzyiqidir, yəni mövcud bütün
+modellərdə nəticə **bit-bit eynidir** (testlə kilidlənib).
+
+**Alternativ rədd edildi:** istinadı həmişə `ROCK`-dakı kimi ayrıca tələb etmək —
+bu, mövcud modellərin nəticəsini səssizcə dəyişərdi.
+
+### Qərar 2 — flüidin statik sıxılma istinadı DƏYİŞMİR
+
+Kodda iki ayrı istinad var: məsamə həcmi üçün (G6 bunu ayırır) və PVT provider
+olmayanda flüidin `B(p)` modeli üçün (`ResidualAssembler.reference_pressure`,
+oradan `DerivativeProvider`-ə). İkincisi datum olaraq qaldı: süxur üçün verilən
+rəqəmin flüidin sıxılmasını da dəyişməsi istifadəçinin gözlədiyi davranış deyil.
+
+### Qərar 3 — Jakobian toxunulmur (riyazi əsas)
+
+`d(PV)/dp = PV_ref·c_r` istinaddan asılı deyil. Kod dəyişmədi, iddia isə
+istinad datumdan fərqli olan modeldə sonlu fərq testi ilə kilidləndi.
+
+### Qərar 4 — IMPES genişləndirilmir
+
+IMPES məsamə həcmini təzyiqlə miqyaslamır (ümumi sıxılma `ct` yanaşması) —
+bu, G6-dan əvvəlki sadələşdirmədir. Yeni sahəni orada "bir az" tətbiq etmək
+iki fərqli modeli qarışdırardı. Sahənin sənədində açıq yazılıb; istifadəçi
+xəbərdarlığı ⏳ ayrıca iş kimi qeyd olundu.
