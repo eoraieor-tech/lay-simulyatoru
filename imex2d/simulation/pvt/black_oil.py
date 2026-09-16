@@ -20,6 +20,16 @@ from ...logging_setup import get_logger
 LOG = get_logger(__name__)
 
 
+#: Doymamış özlülük üstəlinin EHTİYAT qiyməti — `correlations.
+#: saturated_undersaturated_oil_properties`-dəki `μ = μ_b·(p/Pb)^0.278`
+#: ilə EYNİ ədəd. Cədvəldə doymamış sətir olmayanda işlədilir.
+#:
+#: ⚠️ ÖLÇÜLDÜ (Seans 34): SPE1 deck-inin qolları 0.4602 və 0.5085 verir,
+#: yəni bu ehtiyat qiymət REAL deck üçün yanlışdır — ona görə işlədiləndə
+#: xəbərdarlıq yazılır.
+CORRELATION_VISCOSITY_EXPONENT = 0.278
+
+
 class BlackOilPVTProvider(IPVTProvider):
 
     def __init__(self, table: PVTTable,
@@ -100,6 +110,25 @@ class BlackOilPVTProvider(IPVTProvider):
             # sıxılmasının neft hissəsi ən yaxın fiziki əvəzdir.
             fallback = float(np.max(self._co)) if np.size(self._co) else 0.0
             self._undersaturated_co = max(fallback, 1e-6)
+
+        # ── doymamış özlülük üstəli n: μ = μ_b·(p/Pb)^n (G2)
+        # ln μ ilə ln p arasındakı meyl məhz `n`-dir.
+        mu = np.asarray(self.table.oil_viscosity, float)
+        usable = above & (pressure > 0.0) & (mu > 0.0)
+        if int(np.count_nonzero(usable)) >= 2:
+            self._undersaturated_viscosity_exponent = float(np.polyfit(
+                np.log(pressure[usable]), np.log(mu[usable]), 1)[0])
+            self._viscosity_exponent_fitted = True
+        else:
+            self._undersaturated_viscosity_exponent = \
+                CORRELATION_VISCOSITY_EXPONENT
+            self._viscosity_exponent_fitted = False
+            LOG.warning(
+                "PVT: cədvəldə doyma təzyiqindən yuxarı iki sətir yoxdur — "
+                "doymamış özlülük üstəli korrelyasiya qiymətinə (%.3f) "
+                "düşdü. Ölçüldü: real deck-lərdə bu üstəl 0.46-0.51 ola "
+                "bilir, yəni nəticə OLDUĞUNDAN ZƏİF özlülük artımı verir.",
+                CORRELATION_VISCOSITY_EXPONENT)
 
     def saturation_pressure(self, rs) -> np.ndarray:
         """Pb(Rs) — verilmiş həll olmuş qazın doyma təzyiqi.
@@ -185,6 +214,63 @@ class BlackOilPVTProvider(IPVTProvider):
                  * (self._slope("oil_fvf", pb) / safe
                     + self._undersaturated_co))
         return d_dp, d_drs
+
+    # ═══════════════════════ doymamış qol — μo(p, Rs) (G2)
+    def oil_viscosity_undersaturated(self, pressure, rs) -> np.ndarray:
+        """μo(p, Rs) — doymamış qol (Eclipse `PVTO`-nun davam sətirləri).
+
+        Bo qolunun (`oil_fvf_undersaturated`) GÜZGÜSÜDÜR:
+
+            μo(p, Rs) = μo_sat(Pb(Rs)) · (p / Pb(Rs))^n
+
+        NİYƏ LAZIMDIR: doymamış hüceyrədə neftin tərkibi sabitdir (Rs
+        sərbəst dəyişəndir), ona görə özlülük həmin Rs-in doyma
+        təzyiqindən başlayan SIXILMA qoluna aiddir — cədvəlin doymuş
+        qolundakı `μo_sat(p)`-yə YOX. Doymuş qoldan oxumaq doymamış
+        neftin təzyiqlə QATILAŞMASINI tamamilə itirir (SPE1-də 0.51 →
+        0.74 cP, yəni 45 %).
+
+        `Rs = Rs_sat(p)` (doymuş hüceyrə) olduqda `Pb(Rs) = p` və nəticə
+        elə `μo_sat(p)`-nin özüdür — keçid KƏSİLMƏZDİR.
+        """
+        pressure = np.asarray(pressure, float)
+        pb = self.saturation_pressure(rs)
+        mu_at_pb = self._interp(self.table.oil_viscosity, pb)
+        ratio = np.maximum(pressure / np.maximum(pb, 1e-12), 1e-12)
+        return mu_at_pb * ratio ** self._undersaturated_viscosity_exponent
+
+    def oil_viscosity_undersaturated_derivatives(self, pressure, rs):
+        """`(∂μo/∂p, ∂μo/∂Rs)` — yuxarıdakı düsturun törəmələri.
+
+            ∂μo/∂p  = n·μo / p
+            ∂μo/∂Rs = (dPb/dRs) · [ μ'o_sat(Pb)·(p/Pb)^n − n·μo/Pb ]
+
+        İkinci hədd Bo-dakı ilə eyni quruluşdadır: Pb dəyişəndə HƏM
+        anchor (μo_sat(Pb)), HƏM də nisbət (p/Pb) dəyişir.
+        """
+        pressure = np.asarray(pressure, float)
+        pb = self.saturation_pressure(rs)
+        safe_pb = np.maximum(pb, 1e-12)
+        exponent = self._undersaturated_viscosity_exponent
+        mu_at_pb = self._interp(self.table.oil_viscosity, pb)
+        ratio = np.maximum(pressure / safe_pb, 1e-12)
+        mu = mu_at_pb * ratio ** exponent
+
+        d_dp = exponent * mu / np.maximum(pressure, 1e-12)
+        d_drs = self._saturation_pressure_slope(rs) * (
+            self._slope("oil_viscosity", pb) * ratio ** exponent
+            - exponent * mu / safe_pb)
+        return d_dp, d_drs
+
+    @property
+    def undersaturated_viscosity_exponent(self) -> float:
+        """Doymamış özlülük üstəli — cədvəldən fit olunub, yoxsa ehtiyat."""
+        return self._undersaturated_viscosity_exponent
+
+    @property
+    def viscosity_exponent_fitted(self) -> bool:
+        """`True` — üstəl cədvəlin ÖZ doymamış sətirlərindən alınıb."""
+        return self._viscosity_exponent_fitted
 
     # ═══════════════════════ doyma təzyiqindən aşağı Bo düzəlişi (B3-A)
     @staticmethod

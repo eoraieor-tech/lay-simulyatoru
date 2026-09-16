@@ -542,6 +542,9 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 >
 > **Seans 34:** G1 ✅ bitdi (Q-27) — deck PVT oxuyucuları; doymamış qolun
 > `c_o` fit-indəki səssiz ehtiyat qiymət xəbərdarlığa çevrildi.
+>
+> **Seans 35:** G2a ✅ — doymamış neft özlülüyü provider-də (Q-28);
+> mühərriyə qoşulma G2b-dədir.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi

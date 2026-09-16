@@ -4238,3 +4238,84 @@ Yol boyu testin tutduğu MƏNİM səhvim: 4014.7 psi üçün 276.7999 bar yazmı
 * SGOF/SWOF kimi PVT cədvəlləri də layihə faylında SAXLANMIR.
 * `to_pvt_table` şəbəkəni yalnız deck düyünlərindən qurur — süni sıxlaşdırma yoxdur.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 35: SPE1 boşluğu G2 (1-ci hissə) — doymamış neft özlülüyü
+
+G2 İKİ commit-ə bölündü (Seans 26-dakı prinsip: iki yeni şey eyni anda qalığa
+girməsin): **bu addım yalnız PROVIDER-i genişləndirir**, mühərrik toxunulmur.
+Qoşulma (flüid vəziyyəti + Jakobian) növbəti commit-dir.
+
+### 1 · Problem
+
+Üç fazalı mühərrik neft özlülüyünü `mu_o = pvt.oil_viscosity(p)` ilə, yəni
+cədvəlin DOYMUŞ qolundan oxuyur — hüceyrənin doymamış olub-olmamasından asılı
+olmayaraq. Doymamış hüceyrədə isə neftin tərkibi sabitdir (Rs sərbəst
+dəyişəndir) və özlülük həmin Rs-in doyma təzyiqindən başlayan qola aiddir.
+
+SPE1-də bu, 0.51 → 0.74 cP fərqidir (45 %) — yəni doymamış neftin təzyiqlə
+QATILAŞMASI tamamilə itirdi.
+
+### 2 · Həll — Bo qolunun güzgüsü
+
+    μo(p, Rs) = μo_sat(Pb(Rs)) · (p / Pb(Rs))^n
+
+`oil_fvf_undersaturated` (B3-B) ilə eyni quruluş: eyni `Pb(Rs)` tərsi, eyni
+kəsilməzlik təminatı. Törəmələr də analitikdir:
+
+    ∂μo/∂p  = n·μo / p
+    ∂μo/∂Rs = (dPb/dRs) · [ μ'o_sat(Pb)·(p/Pb)^n − n·μo/Pb ]
+
+### 3 · Üstəl `n` HARADAN gəlir — ölçülmüş qərar
+
+Korrelyasiya sabit **0.278** işlədir. Seans 34-də SPE1 deck-i ölçüldü: qolların
+üstəli **0.4602** və **0.5085**-dir. Ona görə `n` artıq **cədvəlin ÖZ doymamış
+sətirlərindən fit olunur** (ln μ ↔ ln p meyli).
+
+Fit mümkün olmayanda (Pb-dən yuxarı iki sətir yoxdur) korrelyasiya qiymətinə
+düşülür VƏ xəbərdarlıq yazılır — Q-27-dəki eyni qayda (səssiz yanlış dəyər yox).
+
+### 4 · Ölçülmüş yoxlamalar
+
+| Yoxlama | Nəticə |
+|---|---|
+| korrelyasiya cədvəlindən fit | 0.278 (öz üstəlini geri tapır) |
+| sintetik cədvəl, n = 0.46 | 0.46 (rel 10⁻⁶) |
+| sintetik cədvəl, n = 0.5085 | 0.5085 (rel 10⁻⁶) |
+| Pb-də kəsilməzlik (Rs = Rs_sat(p)) | doymuş qolla üst-üstə, rel 10⁻¹² |
+| ∂μo/∂p vs sonlu fərq | rel 10⁻⁶ |
+| ∂μo/∂Rs vs sonlu fərq | rel 10⁻⁵ |
+| cədvəlin Rs diapazonundan kənarda | analitik = sonlu fərq = 0 (ekstrapolyasiya YOX) |
+
+Cədvəlin doymuş Rs diapazonu ölçüldü: **0.702…153.869 sm³/sm³**.
+
+### 5 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `simulation/pvt/black_oil.py` | `oil_viscosity_undersaturated` + törəmələri; üstəlin fit-i; `CORRELATION_VISCOSITY_EXPONENT` və xəbərdarlıq |
+| `tests/test_undersaturated_viscosity.py` | **YENİ** — 12 test |
+
+Mühərrik TOXUNULMADI. Sonuncu test bunu açıq kilidləyir: flüid vəziyyətindəki
+`mu_o` hələ də doymuş qoldan gəlir.
+
+### 6 · Yol boyu öz səhvim
+
+Törəmə testində Rs = 170 götürmüşdüm — cədvəlin diapazonundan kənardır və orada
+törəmə QƏSDƏN sıfırdır (Bo qolundakı eyni qayda). Test düzəldildi və həmin
+qəsdi davranış ayrıca testlə sənədləşdirildi.
+
+### 7 · Yoxlama
+
+```
+tests/test_undersaturated_viscosity.py   12 keçdi
+tam dəst                                 2617 keçdi, 1 buraxıldı, 1 xfailed (baza 2605 + 12 yeni)
+```
+
+### Açıq qalan ⏳
+
+* **G2b** — mühərriyə qoşulma: `ThreePhaseFluidState`-ə `mu_o_p`/`mu_o_rs`,
+  `build_fluid`-də doyma vəziyyətinə görə seçim, axın və quyu Jakobianında
+  yeni Rs həddi. Sonlu fərq testləri MƏCBURİDİR.
+* **G3** — `c_o`-nun deck qolundan hesablanması (Seans 34-dəki ölçmə).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

@@ -76,7 +76,7 @@ köçürüləcək.
 | # | SPE1 tələbi | Mühərrikdə indi | Qiymət |
 |---|---|---|---|
 | G1 | PVT cədvəlləri PVTO/PVDG/PVTW (FIELD) | ✅ `io/pvt_io.py` — itkisiz oxuma + açıq birləşdirmə (Seans 34, Q-27) | bağlandı; çox qollu Bo/μo ⏳ G2/G3 |
-| G2 | Doymamış neft özlülüyü μo(p, Rs) — PVTO-da 0.51 → 0.74 cP | `mu_o = pvt.oil_viscosity(p)` — yalnız doymuş əyri (`three_phase_newton.py:145`) | **fizika boşluğu** (qalıq + Jakobian) |
+| G2 | Doymamış neft özlülüyü μo(p, Rs) — PVTO-da 0.51 → 0.74 cP | 🟡 provider hazırdır (Seans 35, Q-28); mühərriyə qoşulma ⏳ G2b | yarımçıq — üstəl cədvəldən fit olunur |
 | G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | tək `c_o`, cədvəlin Pb-dən yuxarı hissəsindən (`black_oil.py::_build_undersaturated_branch`) | təqribi — ölçülməlidir |
 | G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |

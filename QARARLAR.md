@@ -984,3 +984,35 @@ yazılmır ki, iki yerdə fərqli dəyər qalmasın.
 Bir doymamış sətir olanda provider `c_o`-nu fit edə bilmir və ehtiyat qiymətə
 düşür (ölçüldü: 15 dəfə böyük). Birləşdirmə indi bundan açıq xəbərdarlıq verir.
 Düzgün həll — `c_o`-nu deck qolundan hesablamaq — G3-ə aiddir.
+
+
+## Q-28 — Doymamış özlülük üstəli CƏDVƏLDƏN fit olunur; G2 iki commit-ə bölünür
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G2
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 35)
+
+### Qərar 1 — üstəl korrelyasiyadan GÖTÜRÜLMÜR
+
+`μo = μo_b·(p/Pb)^n`-də `n` korrelyasiyada 0.278-dir, SPE1 deck-ində isə
+0.4602 və 0.5085 (ölçüldü, Seans 34). Ona görə `n` cədvəlin öz doymamış
+sətirlərindən fit olunur. Sabit qiymət işlətmək real deck-də özlülük artımını
+təxminən iki dəfə az göstərərdi.
+
+### Qərar 2 — fit mümkün olmayanda XƏBƏRDARLIQ
+
+Pb-dən yuxarı iki sətir olmayanda korrelyasiya qiymətinə düşülür, lakin bu,
+jurnalda açıq yazılır (Q-27-dəki eyni qayda — səssiz yanlış dəyər ən pis haldır).
+
+### Qərar 3 — G2 İKİ commit-dir
+
+(a) provider + testlər (mühərrik toxunulmur, tam dəst dəyişməz qalmalıdır);
+(b) mühərriyə qoşulma + sonlu fərq testləri.
+
+Səbəb Seans 26-dakı ilə eynidir: iki yeni şey eyni anda qalığa/Jakobiana
+girsəydi, sonlu fərq xətası çıxanda mənbəyi ayırmaq çətinləşərdi.
+
+### Qərar 4 — cədvəl diapazonundan kənarda törəmə SIFIRDIR
+
+`dPb/dRs` cədvəlin Rs diapazonundan kənarda sıfırdır (Bo qolunda da belədir),
+ona görə ∂μo/∂Rs də sıfır olur. Bu, EKSTRAPOLYASİYA ETMƏMƏK qərarıdır və sonlu
+fərq də eyni nəticəni verir, yəni Jakobian cədvəlin öz davranışı ilə uyğundur.

@@ -78,7 +78,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **16 sentyabr 2026 (Seans 34):** **G1** ✅ — deck-dən `PVTW`/`PVDG`/`PVTO`
 > oxunur (`io/pvt_io.py`); Bg-nin ölçüsüz olmaması üçün yeni vahid növü
-> əlavə edildi (Q-27). Növbəti: **G2** (doymamış neft özlülüyü μo(p, Rs)).
+> əlavə edildi (Q-27).
+>
+> **16 sentyabr 2026 (Seans 35):** **G2a** ✅ — doymamış neft özlülüyü
+> μo(p, Rs) provider səviyyəsində; üstəl cədvəldən fit olunur (Q-28).
+> Mühərriyə qoşulma (**G2b**) ayrıca commit-dir.
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
