@@ -252,7 +252,18 @@ def validate_cell_volumes(volumes, label: str = "hüceyrə həcmi") -> Validatio
 
 
 # ── quyu ──────────────────────────────────────────────────────────────
-def validate_well_rate(value: float, label: str = "debit") -> ValidationResult:
+#: "Qeyri-adi yüksək" debit xəbərdarlığının HƏDDİ — evristikadır, fiziki
+#: sərhəd deyil. Maye (lay və ya səth həcmi), m³/gün:
+UNUSUAL_LIQUID_RATE = 100000.0
+#: Qazın SƏTH debiti, sm³/gün (Seans 38). Qaz səthdə lay həcmindən yüzlərlə
+#: dəfə böyükdür, ona görə maye həddi ona tətbiq olunanda yanıldıcı idi:
+#: SPE1-in vurucusu (100 000 Mscf/gün ≈ 2.83·10⁶ sm³/gün) xəbərdarlıq alırdı.
+UNUSUAL_GAS_SURFACE_RATE = 1.0e7
+
+
+def validate_well_rate(value: float, label: str = "debit",
+                       unusual_limit: float = UNUSUAL_LIQUID_RATE,
+                       unit: str = "m³/gün") -> ValidationResult:
     """Mühərrik konvensiyası: istifadəçi RATE hədəfini HƏMİŞƏ müsbət
     böyüklük kimi verir (bax `standard_well.py:_signed_rate_target`) —
     mənfi dəyər burada XƏTADIR. Sıfır debit (bağlı quyu niyyəti) mümkün
@@ -267,8 +278,8 @@ def validate_well_rate(value: float, label: str = "debit") -> ValidationResult:
             "ilə müəyyənləşir, böyüklük həmişə müsbətdir.")
     elif value == 0.0:
         result.warnings.append(f"{label}: debit sıfırdır — bağlı quyu nəzərdə tutulursa qanunidir.")
-    elif value > 100000.0:
-        result.warnings.append(f"{label}: {value:g} m³/gün — tək quyu üçün qeyri-adi yüksəkdir.")
+    elif value > unusual_limit:
+        result.warnings.append(f"{label}: {value:g} {unit} — tək quyu üçün qeyri-adi yüksəkdir.")
     return result
 
 

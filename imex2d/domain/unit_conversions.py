@@ -95,6 +95,9 @@ RATE_TO_M3_PER_S: Dict[str, float] = {
     "m3/day": VOLUME_TO_M3["m3"] / _SECONDS_PER_DAY,
     "bbl/day": VOLUME_TO_M3["bbl"] / _SECONDS_PER_DAY,
     "stb/day": VOLUME_TO_M3["stb"] / _SECONDS_PER_DAY,
+    #: Qazın səth debiti (SPE1 `WCONINJE 'GAS' 'RATE'`) — Seans 38.
+    #: 1 Mscf = 1000 ft³; standart şəraitlərin fərqi nəzərə alınmır (həcm çevirməsi).
+    "Mscf/day": 1000.0 * VOLUME_TO_M3["ft3"] / _SECONDS_PER_DAY,
 }
 
 #: 1 lb = 0.45359237 kg (dəqiq), 1 ft³ = 0.028316846592 m³ (dəqiq).

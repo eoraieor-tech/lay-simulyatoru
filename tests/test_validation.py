@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from imex2d.domain import validation as v
 
@@ -126,6 +127,26 @@ def test_well_rate_rejects_negative_warns_on_zero_and_extreme():
     assert huge.ok and huge.warnings
     normal = v.validate_well_rate(60.0)
     assert normal.ok and not normal.warnings
+
+
+def test_gas_surface_rate_has_its_own_threshold():
+    """Seans 38: SPE1 vurucusu (≈2.83e6 sm³/gün) yanıldıcı xəbərdarlıq almırdı."""
+    from imex2d.domain.unit_conversions import convert
+    from imex2d.domain.wells import (ControlMode, Phase, RateBasis,
+                                     WellControl)
+    spe1_gas = convert(100000.0, "Mscf/day", "m3/day", "rate")
+    assert spe1_gas == pytest.approx(2.8317e6, rel=1e-4)
+    gas = WellControl(ControlMode.RATE, spe1_gas, Phase.GAS,
+                      rate_basis=RateBasis.SURFACE)
+    assert gas.validate() == [] and gas.validate_warnings() == []
+    # lay həcmi bazasında və maye üçün köhnə hədd qalır
+    reservoir_gas = WellControl(ControlMode.RATE, spe1_gas, Phase.GAS)
+    assert reservoir_gas.validate_warnings()
+    water = WellControl(ControlMode.RATE, 500000.0, Phase.WATER,
+                        rate_basis=RateBasis.SURFACE)
+    assert water.validate_warnings()
+    assert WellControl(ControlMode.RATE, 2.0e7, Phase.GAS,
+                       rate_basis=RateBasis.SURFACE).validate_warnings()
 
 
 def test_validate_query_range_accepts_in_range_values():

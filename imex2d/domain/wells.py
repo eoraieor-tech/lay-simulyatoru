@@ -6,7 +6,8 @@ from enum import Enum
 from typing import List, Optional
 
 from .tubing import TubingGeometry
-from .validation import validate_pressure, validate_well_rate
+from .validation import (UNUSUAL_GAS_SURFACE_RATE, validate_pressure,
+                         validate_well_rate)
 
 
 class WellType(Enum):
@@ -78,6 +79,11 @@ class WellControl:
             return validate_pressure([self.target], label="BHP hədəfi")
         if self.mode is ControlMode.THP:
             return validate_pressure([self.target], label="THP hədəfi")
+        if (self.injected_phase is Phase.GAS
+                and self.rate_basis is RateBasis.SURFACE):
+            return validate_well_rate(self.target, label="qaz debiti hədəfi (səth)",
+                                      unusual_limit=UNUSUAL_GAS_SURFACE_RATE,
+                                      unit="sm³/gün")
         return validate_well_rate(self.target, label="debit hədəfi")
 
     def _limit_check(self):
