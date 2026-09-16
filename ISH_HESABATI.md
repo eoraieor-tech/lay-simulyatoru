@@ -4540,3 +4540,120 @@ tam dəst                                 2646 keçdi, 1 buraxıldı, 1 xfailed 
   modeldə IMPES işə düşmür, təsiri yoxdur).
 * **G7, TB-1…TB-3** dəyişməyib. Növbəti: **SPE1CASE2 modeli**.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 38: G9 (canlı neft sıxlığı) + SPE1CASE2 modeli, ilk müqayisə
+
+Sahibkarın tapşırığı: **SPE1CASE2-yə başlamaq**. Yol boyu nəticəni dəyişən
+fizika boşluğu tapıldı (G9) və qərar sahibkara verildi: **modeldən ƏVVƏL
+düzəltmək**. Seans 37-nin bazası: 2646 keçdi.
+
+### 1 · G9 — həll olmuş qazın kütləsi sıxlığa daxil deyildi
+
+Canlı neftin lay sıxlığı `(ρo_səth + Rs·ρg_səth)/Bo`-dur; kodda hər yerdə
+`ρo_səth/Bo` idi (üç fazalı axının cazibə həddi, ilkin tarazlıq; iki fazalı
+yol və IMPES-də Rs = 0, orada düzgündür; THP hidravlikası ⏳).
+Ölçüldü (SPE1 sıxlıqları, 330 bar, doymuş): **478 → 609 kq/m³ (+27 %)**.
+
+Üç commit (hər biri sonlu fərq testi ilə):
+
+| Addım | Nə | Ölçüldü |
+|---|---|---|
+| G9a | Cazibə həddində sıxlığın törəmələri Jakobiana (əvvəl atılırdı) | 3 laylı model: doymuş p sütunu 8.2×10⁻⁵ → 3.2×10⁻⁷; qarışıq 3-cü sütun 7.7×10⁻³ → 1.6×10⁻¹⁰. Fizika dəyişmir |
+| G9b | `ρo = (ρo_s + Rs·ρg_s)/Bo` + törəmələri (doymuşda `Rs_sat'`, doymamışda `∂/∂Rs`) | Jakobian eyni dəqiqlikdə; Rs hədləri atılsa 9.8×10⁻⁵ və 5.3×10⁻³ |
+| G9c | İlkin tarazlıq canlı neft sıxlığı ilə, Bo mühərrik kimi (doymamış qol) | İlkin vəziyyətdə şaquli süni neft axını **5.7 → 4.5×10⁻³ m³/gün** |
+
+**TB-2 haqqında ölçülmüş nəticə:** qarışıq vəziyyətdəki təzyiq sütunu xətası
+(~0.03–0.19) **cazibədən gəlmir** — tək laylı modeldə (cazibəsiz) də var və
+G9a onu dəyişmədi. Seans 36-dakı "ehtimal: cazibədə sıxlığın təzyiq törəməsi"
+fərziyyəsi təkzib olundu; mənbə ⏳.
+
+Mövcud testlərin heç biri pozulmadı (G9b-dən sonra tam dəst 2655 keçdi).
+
+### 2 · Yol boyu tapılan səssiz səhv — layihə faylı qaz sütunlarını atırdı
+
+`_pvt_to_dict` Bg və μg-ni yazmırdı: qazlı model saxlanıb açılanda
+`has_gas_phase` **True → False** (ölçüldü). Düzəldildi, köhnə fayllar açılır.
+UI modeli PVT panelindən yenidən qurduğu üçün təsir UI yolunda məhdud idi.
+
+### 3 · SPE1CASE2 hazırlığı
+
+| Commit | Nə |
+|---|---|
+| SPE1-1 | `OilBranch` → `domain/pvt.py`; `ReservoirModel.pvt_oil_branches`; servis provider-ə verir; layihə faylında saxlanılır |
+| SPE1-2 | Qazın SƏTH debiti üçün ayrıca "qeyri-adi yüksək" həddi (1e7 sm³/gün, evristika); `Mscf/day` vahidi |
+| SPE1-3 | `imex2d/io/eclipse_summary.py` + 7 test; real OPM faylı ilə yoxlandı (3650: FOPR 5732.65, FGOR 22.1403) |
+| SPE1-4 | `imex2d/benchmarks/spe1.py` (qurucu + müqayisə), `tools/spe1_compare.py`, 8 test |
+
+Qurucu cədvəlləri deck-dən oxuyur, qalan parametrlər `SPE1.md` §2-dəki
+yoxlanılmış FIELD sabitləridir. Yeni `benchmarks` paketi `io` və
+`application`-ı birləşdirən kompozisiya qatıdır (`ARCHITECTURE.md` §5.20).
+
+İlkin vəziyyət (ölçüldü): lay ortaları 4782 / 4789 / 4800 psia (datum 8400 ft
+3-cü layın mərkəzidir), bütün hüceyrələr doymamış, Rs = 226.197 sm³/sm³.
+
+### 4 · İlk tam qaçış və OPM Flow ilə müqayisə
+
+`tools/spe1_compare.py`: **514 addım, ~80 san**, orta Δt 7.1 gün, 197 təkrar həll.
+Nəticə iki dəfə işlədildi — eyni rəqəmlər.
+
+| t, gün | kəmiyyət | bizdə | OPM Flow | fərq |
+|---|---|---|---|---|
+| 1 | WBHP INJ, psia | 5271 | 8082 | −34.8 % |
+| 304 | FGOR, Mscf/STB | 1.359 | 1.282 | +6.0 % |
+| 1034 | FGOR | 6.255 | 1.280 | +389 % |
+| 1034 | WBHP PROD | 1576 | 4013 | −60.7 % |
+| 1034 | BPR (10,10,3) | 4821 | 5806 | −17.0 % |
+| 1399 | FOPR, STB/gün | 14 720 | 20 000 | −26.4 % |
+| 1399 | BPR (1,1,1) | 5842 | 7389 | −20.9 % |
+| 2129 | FOPR | 9735 | 11 625 | −16.3 % |
+| 3650 | FOPR | 4980 | 5733 | −13.1 % |
+| 3650 | FGOR | 24.55 | 22.14 | +10.9 % |
+| 3650 | WBHP INJ | 4142 | 4333 | −4.4 % |
+| 3650 | BPR (1,1,1) / (10,10,3) | 3931 / 3158 | 4101 / 3278 | −4.2 / −3.7 % |
+
+| Hadisə (0.5 % toleransla) | bizdə | OPM Flow |
+|---|---|---|
+| FOPR 19 900-dən aşağı (istismarçı BHP limitinə keçir) | 1120 gün | 1550 gün |
+| FGOR > 2 Mscf/STB (qazın çatması) | 900 gün | 1276 gün |
+
+**Oxunuşu:** 304-cü günə qədər təzyiqlər və debitlər 1 % daxilindədir;
+sonra bizdə qaz ~375 gün TEZ çatır, lay təzyiqi aşağı düşür və istismarçı
+BHP limitinə ~430 gün tez keçir. 10 ilin sonunda fərqlər 4–13 %-ə enir.
+
+**Bu nəticə etalon (golden) kimi YAZILMADI** — fərqlər izah olunmayıb.
+
+### 5 · Fərqin mümkün səbəbləri — HAMISI YOXLANILMAYIB ⏳
+
+Aşağıdakılar fərziyyədir, heç biri ölçülməyib və OPM mənbəsindən oxunmayıb:
+
+1. **Vurucu bağlantısının mobilliyi.** Bizdə vurulan fazanın SON NÖQTƏ
+   mobilliyi işlədilir (`krg_end/μg`). 1-ci gündə vurucu BHP-si 5271 ↔ 8082
+   psia — bizim injektivlik xeyli yüksəkdir. OPM/Eclipse-in qaydası
+   mənbədən yoxlanılmalıdır.
+2. **G7** — 5014.7 psia-dan yuxarı Rs_sat plato; etalonda hüceyrə təzyiqi
+   7534 psia-ya qalxır.
+3. **Üç fazalı kro** — Stone II ↔ Eclipse defolt modeli (su hərəkətsiz olsa
+   da qaz zonasında fərq ola bilər).
+4. Zaman addımı / hesabat ölçüsü (197 təkrar həll, 1 dəfə "səth debiti
+   düzəlişi yığılmadı" xəbərdarlığı).
+
+### 6 · Yoxlama
+
+```
+tests/test_live_oil_density.py     13 keçdi
+tests/test_eclipse_summary.py       7 keçdi
+tests/test_spe1_model.py            8 keçdi
+tam dəst                          2679 keçdi, 1 buraxıldı, 1 xfailed (10 dəq 45 san)
+```
+
+### Açıq qalan ⏳
+
+* SPE1 fərqinin səbəbləri (§5) — biri-biri ölçülməlidir; ən ucuz başlanğıc:
+  vurucu mobilliyi (1-ci günün BHP-si birbaşa göstərir).
+* THP hidravlikası (`wellbore/`) hələ ölü neft sıxlığı ilə.
+* İki fazalı Jakobianda da cazibə sıxlığının törəməsi atılır (Rs yoxdur,
+  yalnız Bo(p)) — ölçülməyib.
+* SWOF/SGOF-un Pc sütunu vahid çevirməsiz oxunur (SPE1-də 0).
+* TB-2-nin əsl mənbəyi.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

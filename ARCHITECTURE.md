@@ -886,6 +886,19 @@ dəyişkən həndəsə, qeyri-ortoqonal).
 
 ---
 
+### 5.20 Etalon modellər — `imex2d/benchmarks/` (Seans 38)
+
+```
+imex2d/benchmarks/spe1.py   SPE1CASE2 qurucusu + OPM etalonu ilə müqayisə
+imex2d/io/eclipse_summary.py  SMSPEC/UNSMRY oxuyucusu
+tools/spe1_compare.py         tam qaçış + cədvəl
+```
+
+`benchmarks` deck oxuyucularını (`io`) və `ReservoirModelBuilder`-i
+(`application`) birləşdirir, yəni `app.py` kimi yuxarı kompozisiya qatıdır.
+`OilBranch` (PVTO qolu) `domain/pvt.py`-yə köçdü: `ReservoirModel.pvt_oil_branches`
+və layihə faylı onu daşıyır (Q-31).
+
 ## 6. Növbəti modulun necə qoşulacağı
 
 Bu bölmə refaktorinqin sübutu kimi PVT modulunun əlavəsini nümunə

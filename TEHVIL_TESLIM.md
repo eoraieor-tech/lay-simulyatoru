@@ -1,10 +1,10 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
 **Hazırlanıb:** 15 sentyabr 2026 (Seans 31) ·
-**Yenilənib:** 16 sentyabr 2026 (Seans 37) · **Son kod commit-i:** G3b (bax `git log`)
-**Növbəti iş:** **SPE1CASE2 modeli** (bax §5.4)
+**Yenilənib:** 16 sentyabr 2026 (Seans 38) · **Son kod commit-i:** SPE1-4 (bax `git log`)
+**Növbəti iş:** **SPE1CASE2 fərqlərinin səbəbləri** (bax `SPE1.md` §6, `ISH_HESABATI.md` → Seans 38 §5)
 
-> Seans 31-dən bəri BEŞ mərhələ bitib (G6, G4, G1, G2, G3). §5-dəki təsvirlər
+> Seans 31-dən bəri G6, G4, G1, G2, G3, G9 bitib; SPE1CASE2 modeli qurulub (Seans 38). §5-dəki təsvirlər
 > tarixi kontekst kimi saxlanılıb, hər birinin üstündə cari vəziyyət yazılıb.
 
 Bu sənəd işi davam etdirəcək şəxs (insan və ya AI köməkçisi) üçündür.
@@ -22,10 +22,10 @@ məzmun git tarixçəsindədir (`git show dd425be:TEHVIL_TESLIM.md`).
 | | |
 |---|---|
 | Budaq | `main` = `origin/main` (bu sənədin commit-i) |
-| Test dəsti | **2646 keçdi, 1 buraxıldı, 1 xfailed** (~6–9 dəqiqə) |
-| Son hesabat bölməsi | **Seans 37** → növbəti yazılacaq: **Seans 38** |
-| Son qərar | **Q-30** → növbəti: **Q-31** |
-| Aktiv blok | **B7 / SPE1** — boşluqlar bağlandı (G7/G8 istisna), növbəti SPE1CASE2 modeli |
+| Test dəsti | **2679 keçdi, 1 buraxıldı, 1 xfailed** (~9–10 dəqiqə) |
+| Son hesabat bölməsi | **Seans 38** → növbəti yazılacaq: **Seans 39** |
+| Son qərar | **Q-31** → növbəti: **Q-32** |
+| Aktiv blok | **B7 / SPE1** — model qurulub, etalondan fərqlər araşdırılır (G7/G8 açıq) |
 
 Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 
@@ -43,6 +43,7 @@ Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 | 35 | **G2a:** doymamış neft özlülüyü μo(p, Rs) provider səviyyəsində (Q-28) | `32df7b4` |
 | 36 | **G2b:** özlülük mühərriyə (qalıq + Jakobian) qoşuldu; **doyma nöqtəsi lövbəri düzəldildi** (Q-29) | `a07a627` |
 | 37 | **G3:** c_o və n hər PVTO qolundan (`oil_branches`); sınaq deck-indəki səhv sətir düzəldildi (Q-30) | `git log` |
+| 38 | **G9** canlı neft sıxlığı (Q-31); layihə faylının qaz sütunları; **SPE1CASE2 modeli + müqayisə** (fərqlər ⏳) | `git log` |
 
 **Seans 36-nın ən vacib tapıntısı:** `Bo_sat(Pb)` və `μo_sat(Pb)` lövbərləri
 cədvəldən adi interpolyasiya ilə götürülürdü, halbuki Pb adətən düyün deyil və
@@ -220,7 +221,13 @@ yoxlayın.
   isə 5014.7-də bitir. `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato).
   OPM-in bu haldakı qaydası mənbədən yoxlanılmayıb — uydurmayın.
 
-### 5.4 · SPE1CASE2 modeli və etalonla müqayisə ⏳ ƏSAS QALAN İŞ
+### 5.4 · SPE1CASE2 modeli və etalonla müqayisə — QURULUB (Seans 38), fərqlər ⏳
+
+> Model: `imex2d/benchmarks/spe1.py`; müqayisə: `python tools/spe1_compare.py
+> SPE1CASE2.DATA SPE1CASE2` (~80 san). Qaz bizdə ~375 gün tez çatır, 3650-də
+> FOPR −13 %, FGOR +11 % — cədvəl `SPE1.md` §6. Növbəti iş səbəbləri bir-bir
+> ölçməkdir (vurucu mobilliyi → G7 → Stone). Golden fayl HƏLƏ YAZILMIR (Q-31).
+> Aşağıdakı mətn tarixi kontekstdir.
 
 * **Vahidlər:** mühərrik METRIC-dir; `domain/unit_conversions.py`
   (`psi_to_bar`, `ft_to_m`, `stb_per_day_to_m3_per_day`, `convert(...)`).

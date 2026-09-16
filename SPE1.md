@@ -82,6 +82,7 @@ köçürüləcək.
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
 | G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | OPM-in ekstrapolyasiya qaydası mənbədən yoxlanılmalıdır ⏳ |
+| G9 | Canlı neftin sıxlığı `(ρo + Rs·ρg)/Bo` (cazibə, ilkin tarazlıq) | ✅ Seans 38, Q-31 — əvvəl `ρo/Bo` idi | bağlandı; SPE1-də +27 %; THP hidravlikası ⏳ |
 | G8 | `DRSDT 0` (yalnız CASE1) | dəstəklənmir — qaz həmişə yenidən həll olur | CASE2 hədəf seçildi (Q-23) |
 | — | Üç fazalı kro | Stone II. SPE1-də su hərəkətsizdir (Sw = Swc = 0.12); orada Stone II və Eclipse defolt modeli eyni `kro = krog` verir | fərq gözlənilmir |
 | — | Etalonun oxunması | `resdata` qurulmayıb | öz oxuyucumuz işləyir (Seans 29) |
@@ -98,5 +99,36 @@ köçürüləcək.
    Ölçüldü (real deck): c_o 2.056e-4 ↔ 1.832e-4 1/bar (~11 %), n 0.460 ↔
    0.580. Əvvəl yazılmış "0.3 %, 0.46/0.51" sınaq deck-indəki səhv
    sətirdən gəlirdi. Korrelyasiyadakı 0.278 SPE1 üçün YANLIŞDIR.
-5. **SPE1CASE2 modeli** + etalonla müqayisə (FOPR, FGOR, WBHP, BPR), `tests/golden/`-da reqressiya.
+5. **SPE1CASE2 modeli** ✅ qurulub (Seans 38, `imex2d/benchmarks/spe1.py`,
+   `tools/spe1_compare.py`). İlk müqayisə etalondan fərqlənir — bax §6.
+   `tests/golden/` reqressiyası fərqlər izah olunandan SONRA (Q-31 Qərar 7).
 6. ⏳ G7 və CASE1 (`DRSDT 0`) — müqayisə nəticəsinə görə.
+
+
+## 6 · İlk müqayisə — Seans 38 (G1–G6, G9 bağlı; G7 açıq)
+
+`python tools/spe1_compare.py SPE1CASE2.DATA SPE1CASE2` — 514 addım, ~80 san.
+
+| t, gün | kəmiyyət | bizdə | OPM Flow | fərq |
+|---|---|---|---|---|
+| 1 | WBHP INJ, psia | 5271 | 8082 | −34.8 % |
+| 304 | FGOR, Mscf/STB | 1.359 | 1.282 | +6.0 % |
+| 1034 | FGOR | 6.255 | 1.280 | +389 % |
+| 1034 | WBHP PROD | 1576 | 4013 | −60.7 % |
+| 1034 | BPR (10,10,3) | 4821 | 5806 | −17.0 % |
+| 1399 | FOPR, STB/gün | 14 720 | 20 000 | −26.4 % |
+| 1399 | BPR (1,1,1) | 5842 | 7389 | −20.9 % |
+| 2129 | FOPR | 9735 | 11 625 | −16.3 % |
+| 3650 | FOPR | 4980 | 5733 | −13.1 % |
+| 3650 | FGOR | 24.55 | 22.14 | +10.9 % |
+| 3650 | WBHP INJ | 4142 | 4333 | −4.4 % |
+| 3650 | BPR (1,1,1) / (10,10,3) | 3931 / 3158 | 4101 / 3278 | −4.2 / −3.7 % |
+
+| Hadisə (0.5 % toleransla) | bizdə | OPM Flow |
+|---|---|---|
+| FOPR 19 900-dən aşağı (istismarçı BHP limitinə keçir) | 1120 gün | 1550 gün |
+| FGOR > 2 Mscf/STB (qazın çatması) | 900 gün | 1276 gün |
+
+Fərqin mümkün səbəbləri (heç biri ölçülməyib ⏳): vurucu bağlantısının
+mobilliyi (bizdə son nöqtə `krg_end/μg`; 1-ci gündə BHP 5271 ↔ 8082), G7
+(Rs_sat plato), Stone II ↔ Eclipse defolt kro, zaman addımı.

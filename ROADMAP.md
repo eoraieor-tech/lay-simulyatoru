@@ -92,6 +92,12 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > "0.3 %" ölçməsinin sınaq deck-indəki səhv sətirdən gəldiyi tapıldı
 > (həqiqi fərq ~11 %). Növbəti: **SPE1CASE2 modeli**.
 >
+> **16 sentyabr 2026 (Seans 38):** **G9** ✅ — canlı neft sıxlığı (+27 %),
+> cazibə sıxlığı törəmələri Jakobiana, ilkin tarazlıq (Q-31). **SPE1CASE2
+> modeli qurulub** və OPM Flow ilə müqayisə aləti var; ilk nəticə etalondan
+> fərqlənir (qaz ~375 gün tez çatır) — səbəblər ⏳. Layihə faylının qaz
+> sütunlarını atması düzəldildi.
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 
@@ -265,7 +271,7 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 | # | Nə | Ölçülüb | Mənbə |
 |---|---|---|---|
 | TB-1 | Üç fazalı RATE istismarçısının quyu Jakobianı: sərbəst qazın təzyiq/Sg törəmələri sıfır qoyulub | sonlu fərqə qarşı nisbi xəta **0.4893** (tək perforasiya), 0.3239 (iki) | Seans 27, `three_phase_residual.py` RATE budağı |
-| TB-2 | Üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə | nisbi xəta **0.1936**; ən pis element 8-ci hüceyrənin qaz tənliyi, orada quyu YOXDUR. G2b-dən əvvəl 0.5672 idi | Seans 36; ehtimal: cazibədə sıxlığın təzyiq törəməsi + upstream seçiminin diferensiallaşdırılmaması |
+| TB-2 | Üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə | nisbi xəta **0.1936**; ən pis element 8-ci hüceyrənin qaz tənliyi, orada quyu YOXDUR. G2b-dən əvvəl 0.5672 idi | Seans 36; Seans 38-də ÖLÇÜLDÜ: cazibə DEYİL (cazibəsiz modeldə də var, G9a onu dəyişmədi) — mənbə ⏳ |
 | TB-3 | `_saturation_pressure_slope` ən üst Rs düyünündə | analitik 3.619, sonlu fərq 1.810 — **tam 2 dəfə** (interpolyasiya düyündən yuxarı sabit qalır, mərkəzi fərq yarısını görür) | Seans 36, `black_oil.py` |
 
 ---

@@ -1097,3 +1097,44 @@ Deck-də Pb düyündür, ona görə lövbər fit-dən yox, birbaşa başlardan g
 Qollar cədvəlin doymuş əyrisinə uyğun gəlmirsə, doymamış sətir yoxdursa və ya
 Bo təzyiqlə artırsa — `ValueError`. Cədvəl ən böyük qoldan əvvəl bitirsə
 (Rs kəsiləcək) — xəbərdarlıq.
+
+
+## Q-31 — Canlı neftin sıxlığı həll olmuş qazı daxil edir; SPE1 qurucusu ayrıca paketdədir
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1CASE2 hazırlığı
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 38)
+
+### Qərar 1 — `ρo = (ρo_səth + Rs·ρg_səth)/Bo` (sahibkarın qərarı: modeldən ƏVVƏL)
+
+Ölçüldü: SPE1-də +27 %. Üç fazalı axının cazibə həddi və ilkin tarazlıq
+dəyişdi; iki fazalı yol və IMPES-də Rs = 0 olduğu üçün nəticə eynidir.
+
+### Qərar 2 — cazibə həddində sıxlıq törəmələri Jakobiana daxildir (üç fazalı)
+
+A6-dan qalan "sıxlığın təzyiqdən asılılığı nəzərə alınmır" sadələşdirməsi üç
+fazalı yolda aradan qaldırıldı — Rs sıxlığa girəndən sonra 3-cü sütun onsuz
+7.7×10⁻³ səhv olurdu. Upstream seçimi hələ də diferensiallaşdırılmır.
+
+### Qərar 3 — ilkin tarazlıq mühərriklə EYNİ Rs və Bo qaydasını işlədir
+
+Əks halda ilkin vəziyyət mühərrikin cazibə həddi ilə taraz olmur (ölçüldü:
+5.7 m³/gün süni şaquli axın).
+
+### Qərar 4 — `OilBranch` domain-dədir
+
+Model və layihə faylı qolları daşıyır; `application` qatı `io`-nu import
+etmir. `io/pvt_io.py` sinfi oradan import edir (köhnə importlar işləyir).
+
+### Qərar 5 — etalon modellər `imex2d/benchmarks/`-dadır
+
+Qurucu həm deck oxuyucularını (`io`), həm model qurucusunu (`application`)
+işlədir — `app.py` kimi kompozisiya qatıdır; `domain`/`simulation` onu tanımır.
+
+### Qərar 6 — qazın səth debiti üçün xəbərdarlıq həddi 1e7 sm³/gün
+
+Evristikadır, fiziki sərhəd deyil; maye həddi (1e5 m³/gün) dəyişmədi.
+
+### Qərar 7 — SPE1 nəticəsi etalon kimi YAZILMIR
+
+İlk müqayisədə izah olunmamış fərqlər var (qaz 375 gün tez çatır). Golden
+fayl yalnız fərqlərin səbəbi ölçüləndən sonra yazılacaq.

@@ -552,6 +552,9 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > **Seans 37:** G3 ✅ (Q-30) — hər PVTO qolunun öz c_o və n-i; mühərrik
 > toxunulmadı, sonlu fərq 1.5×10⁻¹⁰. Qolların modelə qoşulması SPE1CASE2
 > modeli ilə birlikdədir.
+>
+> **Seans 38:** G9 ✅ (Q-31) — canlı neft sıxlığı; SPE1CASE2 modeli və
+> müqayisə aləti hazırdır, nəticə etalondan fərqlənir — araşdırma ⏳.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi
