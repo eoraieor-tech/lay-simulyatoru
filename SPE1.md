@@ -81,7 +81,7 @@ köçürüləcək.
 | G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
-| G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | **OPM XƏTTİ EKSTRAPOLYASİYA edir** — mənbədən oxundu (Seans 40, §7). Fərqin ƏSAS səbəbi budur; düzəliş qərarı sahibkardadır ⏳ |
+| G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | ✅ **Seans 41 (Q-32)** — OPM-in qaydası (xətti uzantı) tətbiq olundu; ölçülmüş təsir §8 |
 | G9 | Canlı neftin sıxlığı `(ρo + Rs·ρg)/Bo` (cazibə, ilkin tarazlıq) | ✅ Seans 38, Q-31 — əvvəl `ρo/Bo` idi | bağlandı; SPE1-də +27 %; THP hidravlikası ⏳ |
 | G8 | `DRSDT 0` (yalnız CASE1) | dəstəklənmir — qaz həmişə yenidən həll olur | CASE2 hədəf seçildi (Q-23) |
 | — | Üç fazalı kro | Stone II. SPE1-də su hərəkətsizdir (Sw = Swc = 0.12); orada Stone II və Eclipse defolt modeli eyni `kro = krog` verir | fərq gözlənilmir |
@@ -180,3 +180,29 @@ OPM-in vurucu bağlantısındakı qaydası hələ mənbədən oxunmayıb ⏳.
 
 Doymamış qolda OPM düyünlər arasında xəttidir, biz üstəl qanunla gedirik:
 Bo-da 0.06 %, **μo-da 1.97 %** (5500–6500 psia).
+
+
+## 8 · G7-dən sonrakı müqayisə — Seans 41
+
+Eyni qaçış, eyni etalon; yeganə dəyişiklik doymuş qolun xətti uzadılmasıdır.
+
+| Kəmiyyət | G7-dən əvvəl | **sonra** | OPM Flow |
+|---|---|---|---|
+| WBHP PROD, 1034 | 1576 (−60.7 %) | **3965 (−1.2 %)** | 4013 |
+| FGOR, 1034 | 6.255 (+389 %) | **1.776 (+38.7 %)** | 1.280 |
+| FOPR, 1399 | 14 720 (−26.4 %) | **19 450 (−2.8 %)** | 20 000 |
+| FOPR, 3650 | 4980 (−13.1 %) | **5176 (−9.7 %)** | 5733 |
+| FGOR, 3650 | 24.55 (+10.9 %) | **24.29 (+9.7 %)** | 22.14 |
+| BHP limitinə keçid | 1120 gün | **1381 gün** | 1550 gün |
+
+Qaz cəbhəsi (Sg > 0.05):
+
+| blok | əvvəl | **sonra** | OPM |
+|---|---|---|---|
+| 10 (10,1,1) | 944 | **1533** | 1611 |
+| 200 (10,10,2) | — | **1132** | 1246 |
+| 300 (10,10,3) | — | **1157** | 1307 |
+
+**Qalan fərqlər:** vurucunun 1-ci gündəki BHP-si (−34.8 %, §7.2 — ayrı
+məsələ), cəbhənin 110–150 gün tez gəlməsi, FGOR-un 1034-cü gündə +38.7 %
+olması. Etalon (golden) fayl hələ YAZILMAYIB.

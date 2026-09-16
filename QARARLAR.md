@@ -1138,3 +1138,61 @@ Evristikadır, fiziki sərhəd deyil; maye həddi (1e5 m³/gün) dəyişmədi.
 
 İlk müqayisədə izah olunmamış fərqlər var (qaz 375 gün tez çatır). Golden
 fayl yalnız fərqlərin səbəbi ölçüləndən sonra yazılacaq.
+
+
+## Q-32 — Doymuş PVTO qolu cədvəldən yuxarı XƏTTİ uzadılır (yalnız deck yolunda)
+
+**Tarix:** 17 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G7
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 40 və 41)
+
+### Problem
+
+Deck-in PVTO cədvəli 5014.7 psia-da bitir, SPE1CASE2-də isə vurucunun
+ətrafında təzyiq 7500 psia-dan yuxarı qalxır. Biz `np.interp` ilə Rs_sat-ı
+platoda saxlayırdıq. Ölçüldü: eyni təzyiqdə bizdə sərbəst qaz OPM-dən çox
+olur, cəbhə tez gedir və bütün sonrakı fərqlər bundan doğur.
+
+### OPM-in qaydası — MƏNBƏDƏN oxundu
+
+* `opm-common/opm/material/fluidsystems/blackoilpvt/LiveOilPvt.hpp:512` —
+  `saturatedGasDissolutionFactor` cədvəli **`extrapolate=true`** ilə
+  çağırılır;
+* `opm-common/opm/material/common/Tabulated1DFunction.hpp:266-283` — bu
+  bayraq qoyulanda son seqmentin xətti düsturu cədvəldən KƏNARDA da tətbiq
+  olunur ("extended beyond its range by straight lines").
+
+### Qərar 1 — uzantı YALNIZ deck yolunda
+
+Korrelyasiya ilə qurulan cədvəldə Pb-dən yuxarı Rs platosu HƏQİQİ
+fizikadır (neftin tərkibi sabitdir) — orada uzatmaq YANLIŞ olardı.
+Deck-də isə plato sadəcə məlumatın bitməsidir. Ona görə uzantı
+`oil_branches` verildikdə qurulur; korrelyasiya modelləri bit-bit eyni
+qalır (testlə kilidlənib).
+
+### Qərar 2 — meyl SON İKİ doymuş düyündən
+
+OPM eyni qaydadır. Bo və μo da eyni meyllə uzanır, çünki onlar Rs ilə
+uzlaşan doymuş vəziyyəti təsvir edir.
+
+### Qərar 3 — törəmələr də uzanır
+
+Uzantı qoyulub törəmə sıfır qalsaydı, Nyuton yanlış Jakobianla işləyərdi —
+səssiz səhvin ən pis sinfi. `_slope` və `_saturation_pressure_slope`
+uzantının öz meylini qaytarır; sonlu fərqlə yoxlanılıb.
+
+### Qərar 4 — müsbətlik qoruyucusu
+
+Xətti uzantı kifayət qədər yüksək təzyiqdə μo_sat-ı sıfırdan keçirər.
+Hədd + xəbərdarlıq qoyuldu (SPE1-də işə düşmür). Səbəb: səssiz mənfi
+özlülük fəlakət olardı.
+
+### Ölçülmüş nəticə
+
+İstismarçının BHP-si 1034-cü gündə −60.7 % → **−1.2 %**; FGOR +389 % →
+**+38.7 %**; BHP limitinə keçid 1120 → **1381 gün** (OPM 1550). Addım
+sayı 514 → 375.
+
+### Açıq qalan
+
+Vurucu bağlantısının mobilliyi (1-ci gündə −34.8 %) bu qərara DAXİL
+DEYİL — ayrı məsələdir və OPM qaydası hələ mənbədən oxunmayıb ⏳.

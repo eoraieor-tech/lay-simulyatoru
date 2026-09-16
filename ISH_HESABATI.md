@@ -4790,3 +4790,80 @@ baza (bu maşında)          2679 keçdi, 1 buraxıldı, 1 xfailed
 
 `tools/spe1_compare.py` bu maşında Seans 38-in rəqəmlərini **eynilə**
 təkrarladı (1034-cü gün FGOR +388.7 %, keçid 1119.7 ↔ 1550 gün).
+
+
+## 17 sentyabr 2026 — Seans 41: G7 tətbiq olundu, SPE1CASE2 etalona yaxınlaşdı
+
+Seans 40-da səbəb tapıldı, sahibkar qərar verdi: **OPM kimi xətti uzatma**.
+Bu seans həmin qərarın tətbiqidir (Q-32).
+
+### 1 · Nə edildi
+
+`BlackOilPVTProvider`-ə `_sat_extension` əlavə olundu — doymuş qolun
+cədvəldən yuxarı davamı. Uzantı **yalnız deck qolları (`oil_branches`)
+verildikdə** qurulur, çünki korrelyasiya cədvəlində Pb-dən yuxarı Rs
+platosu HƏQİQİ fizikadır.
+
+Uzantı bu dörd yerə toxunur (hamısı eyni meylləri işlədir):
+
+| Yer | Nə dəyişdi |
+|---|---|
+| `solution_gor`, `oil_fvf`, `oil_viscosity` | son düyündən yuxarı xətti davam |
+| `_slope` (törəmələr) | uzantı zonasında meyl **sıfır deyil**, uzantının meylidir |
+| `saturation_pressure` | Rs > Rs_maks üçün Pb-nin tərsi də uzanır |
+| `_saturation_pressure_slope` | uzantıda `1/(dRs/dp)` |
+
+**Qoruyucu:** xətti uzantı kifayət qədər yüksək təzyiqdə azalan sütunu
+(μo_sat) sıfırdan keçirə bilər — bu, səssiz fəlakət olardı. Müsbətlik həddi
+və xəbərdarlıq əlavə olundu. SPE1-də təzyiq 7600 psia-ya qalxır və hədd
+İŞƏ DÜŞMÜR (μo_sat orada 0.30 cP), lakin test onu uzaq nöqtədə yoxlayır.
+
+### 2 · ÖLÇÜLMÜŞ TƏSİR (SPE1CASE2, eyni qaçış, eyni etalon)
+
+| Kəmiyyət | G7-dən əvvəl | **G7-dən sonra** | OPM Flow |
+|---|---|---|---|
+| WBHP PROD, 1034-cü gün | 1576 psia (−60.7 %) | **3965 (−1.2 %)** | 4013 |
+| FGOR, 1034-cü gün | 6.255 (+389 %) | **1.776 (+38.7 %)** | 1.280 |
+| FOPR, 1399-cu gün | 14 720 (−26.4 %) | **19 450 (−2.8 %)** | 20 000 |
+| BPR (1,1,1), 1399 | 5842 (−20.9 %) | **6701 (−9.3 %)** | 7389 |
+| FOPR, 3650 | 4980 (−13.1 %) | **5176 (−9.7 %)** | 5733 |
+| BHP limitinə keçid | 1120 gün | **1381 gün** | 1550 gün |
+| qaz cəbhəsi, blok 10 | 944 gün | **1533 gün** | 1611 gün |
+| qaz cəbhəsi, blok 300 | — | **1157 gün** | 1307 gün |
+| addım / təkrar | 514 / 197 | **375 / 146** | — |
+
+Yəni yığılma da yaxşılaşdı (addım sayı 27 % azaldı).
+
+### 3 · Nə DƏYİŞMƏDİ (gözlənildiyi kimi)
+
+* **Vurucunun 1-ci gündəki BHP-si: −34.8 %** — toxunulmadı. Bu, Seans
+  40-da göstərildiyi kimi AYRI məsələdir (bağlantı mobilliyi qaydası) və
+  G7 ilə əlaqəsi yoxdur. Fərqin dəyişməməsi diaqnozu təsdiqləyir.
+* **Korrelyasiya ilə qurulan modellər** — qollar verilmədiyi üçün uzantı
+  qurulmur, davranış bit-bit eynidir (testlə kilidlənib).
+
+### 4 · Texniki borc
+
+**TB-3** (`_saturation_pressure_slope` ən üst düyündə analitik ↔ sonlu
+fərq 2 dəfə) deck yolunda **aradan qalxdı** — meyl artıq `1/(dRs/dp)`-dir
+və sonlu fərqlə uyğundur (test). Korrelyasiya yolunda qalır.
+
+### 5 · Qalan fərqlər (növbəti işlər)
+
+| Fərq | Ölçü | Namizəd səbəb |
+|---|---|---|
+| Vurucu BHP, 1-ci gün | −34.8 % | bağlantı mobilliyi (OPM qaydası mənbədən oxunmayıb ⏳) |
+| Qaz cəbhəsi | 110–150 gün tez | ⏳ |
+| FGOR, 1034 | +38.7 % | ⏳ |
+| FOPR, 3650 | −9.7 % | ⏳ |
+
+Sahibkarın ikinci qərarı — doymamış qolda deck düyünləri arasında XƏTTİ
+interpolyasiya (ölçülmüş fərq: μo-da 1.97 %) — ayrıca commit-də
+tətbiq olunacaq ⏳.
+
+### 6 · Yoxlama
+
+```
+tests/test_saturated_extrapolation.py   15 keçdi (YENİ)
+tam dəst                                2698 keçdi, 1 buraxıldı, 1 xfailed (6 dəq 22 san)
+```

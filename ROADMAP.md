@@ -98,6 +98,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > fərqlənir (qaz ~375 gün tez çatır) — səbəblər ⏳. Layihə faylının qaz
 > sütunlarını atması düzəldildi.
 >
+> **17 sentyabr 2026 (Seans 41):** **G7** ✅ tətbiq olundu (Q-32) —
+> doymuş qol deck-dən yuxarı OPM kimi xətti uzanır. ÖLÇÜLDÜ: istismarçının
+> BHP-si 1034-cü gündə −60.7 % → −1.2 %, FGOR +389 % → +38.7 %, addım sayı
+> 514 → 375. Qalan: vurucu mobilliyi (−34.8 %, 1-ci gün).
+>
 > **17 sentyabr 2026 (Seans 40):** SPE1CASE2 fərqinin **səbəbi ölçüldü**:
 > **G7** — doymuş Rs qolunu biz platoda saxlayırıq, OPM isə xətti uzadır
 > (mənbədən oxundu). 6150 psia-da Rs_sat 1.618 ↔ 2.013. Müqayisə alətinə
@@ -277,7 +282,7 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 |---|---|---|---|
 | TB-1 | Üç fazalı RATE istismarçısının quyu Jakobianı: sərbəst qazın təzyiq/Sg törəmələri sıfır qoyulub | sonlu fərqə qarşı nisbi xəta **0.4893** (tək perforasiya), 0.3239 (iki) | Seans 27, `three_phase_residual.py` RATE budağı |
 | TB-2 | Üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə | nisbi xəta **0.1936**; ən pis element 8-ci hüceyrənin qaz tənliyi, orada quyu YOXDUR. G2b-dən əvvəl 0.5672 idi | Seans 36; Seans 38-də ÖLÇÜLDÜ: cazibə DEYİL (cazibəsiz modeldə də var, G9a onu dəyişmədi) — mənbə ⏳ |
-| TB-3 | `_saturation_pressure_slope` ən üst Rs düyünündə | analitik 3.619, sonlu fərq 1.810 — **tam 2 dəfə** (interpolyasiya düyündən yuxarı sabit qalır, mərkəzi fərq yarısını görür) | Seans 36, `black_oil.py` |
+| TB-3 | `_saturation_pressure_slope` ən üst Rs düyünündə | analitik 3.619, sonlu fərq 1.810 — **tam 2 dəfə** (interpolyasiya düyündən yuxarı sabit qalır, mərkəzi fərq yarısını görür) | Seans 36, `black_oil.py`. **DECK yolunda Seans 41-də (G7/Q-32) həll olundu**; korrelyasiya yolunda qalır |
 
 ---
 

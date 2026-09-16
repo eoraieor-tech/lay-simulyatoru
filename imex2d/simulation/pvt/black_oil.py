@@ -84,6 +84,8 @@ class BlackOilPVTProvider(IPVTProvider):
         self._slopes = {name: np.diff(values) / np.diff(pressure)
                         for name, values in columns}
         self._oil_branches = oil_branches
+        #: G7 uzantısı (Q-32) — YALNIZ deck qolları verildikdə qurulur.
+        self._sat_extension = None
         self._build_undersaturated_branch()
 
     # ═════════════════════════ doymamış qol — Bo(p, Rs) (B3-B)
@@ -240,6 +242,33 @@ class BlackOilPVTProvider(IPVTProvider):
                 "Cədvəli `DeckPvt.to_pvt_table()` ilə `reference_rs` "
                 "olmadan qurun.", pb, float(head_rs[-1]))
 
+        # ── G7 (Q-32): doymuş qol deck-də BİTİR, OPM isə onu uzadır.
+        # Qayda MƏNBƏDƏN oxundu (Seans 40):
+        #   `LiveOilPvt.hpp:512` — `saturatedGasDissolutionFactor` cədvəli
+        #   `extrapolate=true` ilə çağırılır;
+        #   `Tabulated1DFunction.hpp:266-283` — bu bayraq qoyulanda SON
+        #   seqmentin xətti düsturu cədvəldən KƏNARDA da tətbiq olunur
+        #   ("extended beyond its range by straight lines").
+        #
+        # NİYƏ YALNIZ DECK YOLUNDA: korrelyasiya ilə qurulan cədvəldə
+        # Pb-dən yuxarı Rs platosu HƏQİQİ fizikadır (neftin tərkibi
+        # sabitdir), deck-də isə sadəcə cədvəlin məlumatı bitir.
+        self._sat_extension = None
+        if head_pb.size >= 2 and head_pb[-1] > head_pb[-2]:
+            span = float(head_pb[-1] - head_pb[-2])
+            self._sat_extension = {
+                "pressure": float(head_pb[-1]),
+                "rs": float(head_rs[-1]),
+                "solution_gor": float((head_rs[-1] - head_rs[-2]) / span),
+                "oil_fvf": float((head_bo[-1] - head_bo[-2]) / span),
+                "oil_viscosity": float((head_mu[-1] - head_mu[-2]) / span),
+            }
+            LOG.info("PVT (G7): doymuş qol %.1f bar-da bitir — ondan yuxarı "
+                     "OPM qaydası ilə XƏTTİ uzadılır "
+                     "(dRs_sat/dp = %.4g sm³/sm³ / bar).",
+                     self._sat_extension["pressure"],
+                     self._sat_extension["solution_gor"])
+
         # Lövbər — deck-in DƏQİQ doymuş başlarından (Pb burada düyündür,
         # interpolyasiya sınığı kəsmir; bax Seans 36).
         self._bo_anchor = float(np.interp(pb, head_pb, head_bo))
@@ -364,7 +393,17 @@ class BlackOilPVTProvider(IPVTProvider):
         rs = np.asarray(rs, float)
         if self._rs_nodes.size < 2:
             return np.full(rs.shape, float(self.table.bubble_point))
-        return np.interp(rs, self._rs_nodes, self._pb_nodes)
+        pb = np.interp(rs, self._rs_nodes, self._pb_nodes)
+        # G7: Rs_sat cədvəldən yuxarı xətti uzandığı üçün onun TƏRSİ də
+        # uzanmalıdır — əks halda Rs > Rs_maks olan hüceyrədə Pb kəsilər
+        # və doymuş/doymamış keçid pozulardı.
+        extension = self._sat_extension
+        if extension is not None and extension["solution_gor"] > 0.0:
+            pb = np.where(rs > extension["rs"],
+                          extension["pressure"]
+                          + (rs - extension["rs"]) / extension["solution_gor"],
+                          pb)
+        return pb
 
     def _saturation_pressure_slope(self, rs) -> np.ndarray:
         """dPb/dRs — `saturation_pressure`-in parçalı meyli.
@@ -379,7 +418,15 @@ class BlackOilPVTProvider(IPVTProvider):
                         0, self._dpb_drs.size - 1)
         slope = self._dpb_drs[index]
         outside = (rs < self._rs_nodes[0]) | (rs > self._rs_nodes[-1])
-        return np.where(outside, 0.0, slope)
+        result = np.where(outside, 0.0, slope)
+        # G7: uzantı zonasında meyl `1 / (dRs_sat/dp)`-dir. Bu, həm də
+        # TB-3-ün (ən üst düyündə analitik ↔ sonlu fərq 2 dəfə) deck
+        # yolundakı kökünü aradan qaldırır.
+        extension = self._sat_extension
+        if extension is not None and extension["solution_gor"] > 0.0:
+            result = np.where(rs > extension["rs"],
+                              1.0 / extension["solution_gor"], result)
+        return result
 
     def oil_fvf_undersaturated(self, pressure, rs) -> np.ndarray:
         """Bo(p, Rs) — doymamış qol, sənaye standartı (Eclipse `PVTO`).
@@ -583,11 +630,42 @@ class BlackOilPVTProvider(IPVTProvider):
     def _interp(self, values: np.ndarray, pressure) -> np.ndarray:
         return np.interp(np.asarray(pressure, float), self.table.pressure, values)
 
+    def _saturated(self, name: str, values: np.ndarray, pressure) -> np.ndarray:
+        """Doymuş sütun — cədvəlin son düyünündən yuxarı G7 uzantısı ilə.
+
+        Uzantı YOXDURSA (korrelyasiya cədvəli) davranış DƏYİŞMİR:
+        `np.interp` sərhəd dəyərini saxlayır.
+        """
+        pressure = np.asarray(pressure, float)
+        base = self._interp(values, pressure)
+        extension = self._sat_extension
+        if extension is None:
+            return base
+        top = extension["pressure"]
+        above = pressure > top
+        if not np.any(above):
+            return base
+        anchor = float(np.interp(top, self.table.pressure, values))
+        extended = anchor + extension[name] * (pressure - top)
+        # Uzantı XƏTTİ olduğu üçün kifayət qədər yüksək təzyiqdə azalan
+        # sütun (μo_sat) sıfırı keçə bilər — bu, səssiz fəlakət olardı.
+        # SPE1-də təzyiq 7600 psia-ya qədər qalxır və hədd İŞƏ DÜŞMÜR
+        # (μo_sat orada 0.30 cP), lakin başqa deck-də düşə bilər.
+        floor = 1e-3 * abs(anchor)
+        if np.any(above & (extended < floor)):
+            LOG.warning("PVT (G7): doymuş '%s' sütununun xətti uzantısı "
+                        "%.1f bar-dan yuxarı sıfıra yaxınlaşır — hədd "
+                        "(%.4g) tətbiq olundu. Deck-in cədvəli bu qədər "
+                        "yüksək təzyiqi ƏHATƏ ETMİR.", name, top, floor)
+            extended = np.maximum(extended, floor)
+        return np.where(above, extended, base)
+
     def oil_fvf(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
-        return self._interp(self._oil_fvf, pressure)
+        return self._saturated("oil_fvf", self._oil_fvf, pressure)
 
     def oil_viscosity(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
-        return self._interp(self.table.oil_viscosity, pressure)
+        return self._saturated("oil_viscosity", self.table.oil_viscosity,
+                               pressure)
 
     def water_fvf(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
         return self._interp(self.table.water_fvf, pressure)
@@ -596,7 +674,7 @@ class BlackOilPVTProvider(IPVTProvider):
         return self._interp(self.table.water_viscosity, pressure)
 
     def solution_gor(self, pressure, region: Optional[np.ndarray] = None) -> np.ndarray:
-        return self._interp(self.table.solution_gor, pressure)
+        return self._saturated("solution_gor", self.table.solution_gor, pressure)
 
     def total_compressibility(self, pressure, sw, region: Optional[np.ndarray] = None) -> np.ndarray:
         sw = np.asarray(sw, float)
@@ -637,7 +715,14 @@ class BlackOilPVTProvider(IPVTProvider):
                         0, nodes.size - 2)
         slopes = self._slopes[name][index]
         outside = (pressure < nodes[0]) | (pressure > nodes[-1])
-        return np.where(outside, 0.0, slopes)
+        result = np.where(outside, 0.0, slopes)
+        # G7: uzadılan doymuş sütunlarda meyl SIFIR DEYİL — uzantının öz
+        # meylidir (analitik törəmə qalıqla bitə-bit uyğun qalsın deyə).
+        extension = self._sat_extension
+        if extension is not None and name in extension:
+            result = np.where(pressure > extension["pressure"],
+                              extension[name], result)
+        return result
 
     def oil_fvf_derivative(self, pressure, region=None) -> np.ndarray:
         return self._slope("oil_fvf", pressure)
@@ -660,8 +745,8 @@ class BlackOilPVTProvider(IPVTProvider):
     def solution_gor_derivative(self, pressure, region=None) -> np.ndarray:
         """dRs_sat/dp — Jakobianda doymuş hüceyrələr üçün lazımdır (A7/6c).
 
-        Doyma təzyiqindən yuxarıda Rs sabitdir, ona görə bu, sıfıra
-        düşür — cədvəlin özündə bu sabitlik artıq mövcuddur, əlavə
-        şərtə ehtiyac yoxdur.
+        Korrelyasiya cədvəlində doyma təzyiqindən yuxarıda Rs sabitdir,
+        ona görə bu, sıfıra düşür. DECK yolunda isə doymuş qol G7
+        uzantısı ilə davam edir və meyl uzantının meylidir (Q-32).
         """
         return self._slope("solution_gor", pressure)

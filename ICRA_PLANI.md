@@ -557,6 +557,10 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > müqayisə aləti hazırdır, nəticə etalondan fərqlənir — araşdırma ⏳.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
+> **Seans 41:** G7 ✅ tətbiq olundu (Q-32) — ölçülmüş təsir:
+> istismarçının BHP-si −60.7 % → −1.2 %. Növbəti: doymamış qolun xətti
+> interpolyasiyası, sonra vurucu mobilliyi.
+>
 > **Seans 40:** fərqin səbəbi tapıldı — **G7** (Rs platosu); OPM-in qaydası
 > mənbədən oxundu. Alətə BGSAT cəbhə ölçməsi əlavə olundu. Düzəliş qərarı
 > sahibkardadır ⏳ — bax [SPE1.md](SPE1.md) §7.
