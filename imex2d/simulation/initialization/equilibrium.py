@@ -28,6 +28,16 @@ sütun çəkisi daxildir (adətən çox kiçikdir, çünki ρ_qaz ≪ ρ_neft).
 
 Sıxlıqlar lay şəraitinə çevrilir: ρ_lay = ρ_səth / B. PVT provider
 verilibsə B(p) ondan, verilməyibsə modelin sabit dəyərindən alınır.
+
+G9c — CANLI NEFT: PVT-də qaz fazası varsa neftin lay sıxlığına həll olmuş
+qazın kütləsi də daxildir və Bo mühərrikin özü kimi seçilir:
+
+    ρo = (ρo_səth + Rs·ρg_səth) / Bo(p, Rs)
+
+Rs mühərrikin ilkin vəziyyəti ilə EYNİ qaydadan gəlir
+(`three_phase_engine._initial_solution_gor`); Bo doymamış hüceyrədə
+doymamış qoldan (`oil_fvf_undersaturated`). Əks halda ilkin təzyiq profili
+mühərrikin cazibə həddi ilə TARAZ olmazdı və ilk addımda süni axın yaranardı.
 """
 
 from __future__ import annotations
@@ -120,6 +130,11 @@ class EquilibriumInitializationProvider(IInitializationProvider):
         """Lay şəraitində sıxlıq, kg/m3."""
         fluids = model.fluids
         if phase == "oil":
+            rs = self._solution_gor(model, pressure)
+            if rs is not None:
+                fvf = self._live_oil_fvf(pressure, rs)
+                return ((fluids.oil_density + rs * fluids.gas_density)
+                        / np.maximum(fvf, 1e-9))
             surface, fvf = fluids.oil_density, (
                 self.pvt.oil_fvf(pressure) if self.pvt else fluids.oil_fvf)
         elif phase == "gas":
@@ -132,6 +147,35 @@ class EquilibriumInitializationProvider(IInitializationProvider):
         fvf = np.full(np.shape(pressure), fvf, dtype=float) \
             if np.ndim(fvf) == 0 else np.asarray(fvf, float)
         return surface / np.maximum(fvf, 1e-9)
+
+    def _solution_gor(self, model: ReservoirModel, pressure) -> Optional[np.ndarray]:
+        """İlkin Rs — `three_phase_engine._initial_solution_gor` ilə EYNİ qayda.
+
+        Qaz fazası yoxdursa `None` (iki fazalı yol — ölü neft, köhnə davranış).
+        """
+        if self.pvt is None or not self.pvt.has_gas_phase():
+            return None
+        pressure = np.asarray(pressure, float)
+        override = getattr(model.initial_conditions, "solution_gor", None)
+        if override is not None:
+            return np.full(pressure.shape, float(override))
+        bubble_point = getattr(model.pvt_table, "bubble_point", 0.0) or 0.0
+        reference = (np.minimum(pressure, bubble_point) if bubble_point > 0.0
+                     else pressure)
+        return np.asarray(self.pvt.solution_gor(reference), float)
+
+    def _live_oil_fvf(self, pressure, rs) -> np.ndarray:
+        """Bo(p, Rs) — mühərrikin `_oil_fvf` seçimi ilə eyni.
+
+        Rs < Rs_sat(p) → doymamış qol; əks halda doymuş qol.
+        """
+        pressure = np.asarray(pressure, float)
+        saturated_fvf = np.asarray(self.pvt.oil_fvf(pressure), float)
+        branch = getattr(self.pvt, "oil_fvf_undersaturated", None)
+        if branch is None:
+            return saturated_fvf
+        undersaturated = rs < np.asarray(self.pvt.solution_gor(pressure), float)
+        return np.where(undersaturated, branch(pressure, rs), saturated_fvf)
 
     def _pressure_profile(self, model: ReservoirModel, depths: np.ndarray,
                           contact: float,

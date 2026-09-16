@@ -189,3 +189,63 @@ def test_dead_oil_density_is_unchanged_when_rs_is_zero():
     assert rho_o == pytest.approx(engine.model.fluids.oil_density / fluid.bo,
                                   rel=1e-15)
 
+
+# ═══════════════════════ G9c — ilkin tarazlıq ═════════════════════════
+
+def _equilibrated_initial_state(monkeypatch=None, dead_oil=False):
+    from imex2d.domain.initial import InitialConditions
+    from imex2d.simulation.initialization import equilibrium
+
+    if dead_oil:
+        monkeypatch.setattr(equilibrium.EquilibriumInitializationProvider,
+                            "_solution_gor", lambda self, model, pressure: None)
+    engine = _spe1_engine()
+    depths = engine.model.geometry.cell_depths()
+    engine.model.initial_conditions = InitialConditions(
+        datum_depth=float(depths.min()), datum_pressure=PRESSURE,
+        water_saturation=0.2, use_equilibration=True, solution_gor=226.197)
+    engine.initialization = equilibrium.EquilibriumInitializationProvider(engine.pvt)
+    state = engine._initial_state()
+    return engine, state
+
+
+def _max_vertical_oil_flux(engine, state):
+    fluid = engine.newton.build_fluid(state)
+    _, oil, _ = engine.newton.flux.face_fluxes(state, fluid)
+    vertical = np.abs(engine.newton.flux._depth_difference) > 1e-9
+    return float(np.max(np.abs(oil[vertical])))
+
+
+def test_equilibrium_uses_the_live_oil_density():
+    """Laylar arası təzyiq fərqi mühərrikin canlı neft sıxlığına uyğundur."""
+    engine, state = _equilibrated_initial_state()
+    fluid = engine.newton.build_fluid(state)
+    _, rho_o, _ = engine.newton.flux.densities(fluid)
+    depths = engine.model.geometry.cell_depths()
+    top, below = 0, engine.model.grid.nx * engine.model.grid.ny
+    gradient = (state.pressure[below] - state.pressure[top]) / (
+        (depths[below] - depths[top]) * 9.80665 * 1e-5)
+    assert gradient == pytest.approx(0.5 * (rho_o[top] + rho_o[below]), rel=1e-4)
+
+
+def test_initial_state_is_in_vertical_equilibrium():
+    """ÖLÇÜLDÜ: ilk addımdan əvvəl şaquli neft axını 5.7 → 4.5e-3 m³/gün."""
+    engine, state = _equilibrated_initial_state()
+    assert _max_vertical_oil_flux(engine, state) < 1e-2
+
+
+def test_dead_oil_equilibrium_was_out_of_balance(monkeypatch):
+    engine, state = _equilibrated_initial_state(monkeypatch, dead_oil=True)
+    assert _max_vertical_oil_flux(engine, state) > 1.0
+
+
+def test_two_phase_equilibrium_keeps_the_dead_oil_density():
+    """Qaz fazası yoxdursa Rs yoxdur — köhnə davranış."""
+    from imex2d.simulation.initialization.equilibrium import (
+        EquilibriumInitializationProvider)
+    from imex2d.simulation.pvt.correlations import build_pvt_table
+    from imex2d.simulation.pvt.black_oil import BlackOilPVTProvider
+    provider = EquilibriumInitializationProvider(BlackOilPVTProvider(
+        build_pvt_table(pressure_min=1.0, pressure_max=400.0, n_points=20,
+                        bubble_point_bar=150.0, include_gas=False)))
+    assert provider._solution_gor(_engine().model, np.array([200.0])) is None
