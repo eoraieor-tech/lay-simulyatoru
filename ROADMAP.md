@@ -74,8 +74,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **16 sentyabr 2026 (Seans 33):** **G4** ✅ — qaz relperm artıq **SGOF
 > cədvəlindən** oxuna bilir (`read_sgof`); yol boyu üç fazalı yolun SWOF
-> cədvəlini səssizcə atması düzəldildi (Q-26). Növbəti: **G1 + G2** (PVT
-> cədvəlləri və doymamış neft özlülüyü).
+> cədvəlini səssizcə atması düzəldildi (Q-26).
+>
+> **16 sentyabr 2026 (Seans 34):** **G1** ✅ — deck-dən `PVTW`/`PVDG`/`PVTO`
+> oxunur (`io/pvt_io.py`); Bg-nin ölçüsüz olmaması üçün yeni vahid növü
+> əlavə edildi (Q-27). Növbəti: **G2** (doymamış neft özlülüyü μo(p, Rs)).
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).

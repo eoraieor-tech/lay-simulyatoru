@@ -948,3 +948,39 @@ Qaz cədvəlində hazırda yalnız defolt region işlədilir (Stone müqaviləsi
 arqumenti yoxdur) ⏳. SCAL cədvəlləri (su-neft də daxil) layihə faylında
 saxlanmır — bu, G4-dən əvvəlki vəziyyətdir və qaz üçün fərqli davranış icad
 edilmədi; backlog-a yazıldı.
+
+
+## Q-27 — Deck PVT-si İTKİSİZ oxunur, birləşdirmə isə AÇIQ təqribdir
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G1
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 34, [SPE1.md](SPE1.md) → §4)
+
+### Qərar 1 — oxuma `io` qatında, `scal_io` ilə eyni üslubda
+
+Deck mətninin ayrışdırılması GİRİŞ sərhədidir: `io/pvt_io.py` açar söz axtarışı,
+`--` şərhləri və `/` ayırıcısı üçün `scal_io.read_swof`-un EYNİ qaydalarını
+işlədir. Domain qatı deck formatından xəbərsiz qalır.
+
+### Qərar 2 — `DeckPvt` itkisizdir, `to_pvt_table` isə təqribdir
+
+`PVTTable` bir doymamış qol daşıya bilir; deck-də bir neçə Rs qolu olur.
+Ona görə oxuma bütün qolları saxlayır, birləşdirmə isə yalnız SEÇİLƏN qolu
+cədvələ köçürür və neçə qolun köçürülmədiyini jurnala yazır. Beləliklə itki
+SƏSSİZ deyil, ölçülə bilən və sənədlənmişdir.
+
+**Alternativ rədd edildi:** `PVTTable`-ı çox qollu etmək — bu, domain
+strukturunu və bütün mühərrik yollarını dəyişərdi; həmin iş G2/G3-ün öz
+mövzusudur və ayrıca aparılmalıdır.
+
+### Qərar 3 — Bg üçün YENİ vahid növü
+
+Mühərrikdə Bg ölçüsüzdür (lay m³ / səth m³), deck-də isə `rb/Mscf`. Bu, gözdən
+qaçan uyğunsuzluqdur, ona görə `gas_fvf` növü açıq şəkildə əlavə olundu.
+Əmsallar mövcud həcm sabitlərindən TÖRƏDİLİR (`rb`, `ft3`) — əl ilə rəqəm
+yazılmır ki, iki yerdə fərqli dəyər qalmasın.
+
+### Qərar 4 — səssiz ehtiyat qiymət xəbərdarlığa çevrildi
+
+Bir doymamış sətir olanda provider `c_o`-nu fit edə bilmir və ehtiyat qiymətə
+düşür (ölçüldü: 15 dəfə böyük). Birləşdirmə indi bundan açıq xəbərdarlıq verir.
+Düzgün həll — `c_o`-nu deck qolundan hesablamaq — G3-ə aiddir.

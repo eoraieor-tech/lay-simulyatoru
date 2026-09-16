@@ -110,6 +110,19 @@ DENSITY_TO_KG_M3: Dict[str, float] = {
 RS_TO_SM3_SM3: Dict[str, float] = {
     "sm3/sm3": 1.0,
     "scf/stb": 1.0 / 5.61458,
+    #: Eclipse FIELD deck-ləri Rs-i MİN standart fut³/STB ilə verir
+    #: (SPE1: `PVTO` 1.270 Mscf/STB) — G1.
+    "Mscf/stb": 1000.0 / 5.61458,
+}
+
+#: Qaz həcm əmsalı Bg — MÜHƏRRİKDƏ ÖLÇÜSÜZDÜR (lay həcmi / səth həcmi,
+#: hər ikisi m³). Deck-lər isə onu `rb/Mscf` ilə verir, yəni ölçüsüz
+#: DEYİL. Çevirmə mövcud həcm sabitlərindən TÖRƏYİR (əl ilə əmsal
+#: yazılmır): 1 rb = 0.158987… m³, 1 Mscf = 1000 ft³ standart şəraitdə.
+GAS_FVF_TO_M3_SM3: Dict[str, float] = {
+    "m3/sm3": 1.0,
+    "rb/Mscf": VOLUME_TO_M3["rb"] / (1000.0 * VOLUME_TO_M3["ft3"]),
+    "rb/scf": VOLUME_TO_M3["rb"] / VOLUME_TO_M3["ft3"],
 }
 
 _SCALAR_TABLES: Dict[str, Dict[str, float]] = {
@@ -122,6 +135,7 @@ _SCALAR_TABLES: Dict[str, Dict[str, float]] = {
     "rate": RATE_TO_M3_PER_S,
     "density": DENSITY_TO_KG_M3,
     "solution_gor": RS_TO_SM3_SM3,
+    "gas_fvf": GAS_FVF_TO_M3_SM3,
 }
 
 #: Mühərrikin faktiki gözlədiyi ("kanonik daxili") vahid — bax modul
@@ -140,6 +154,7 @@ ENGINE_UNITS: Dict[str, str] = {
     #: (`convert_compressibility`-yə ötürülür), "1/bar" yox.
     "compressibility": "bar",
     "solution_gor": "sm3/sm3",
+    "gas_fvf": "m3/sm3",
 }
 
 

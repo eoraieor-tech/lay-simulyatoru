@@ -4140,3 +4140,101 @@ gözlənilən xətası).
 * Növbəti boşluqlar: **G1 + G2 (+G3)** — PVTO/PVDG/PVTW köçürücüsü və doymamış
   neft özlülüyü; sonra SPE1CASE2 modeli.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 34: SPE1 boşluğu G1 — deck-dən PVT oxuyucuları
+
+SPE1CASE2 PVT-ni üç açar sözlə verir: `PVTW`, `PVDG`, `PVTO`. Bizdə deck-dən
+PVT oxuyan heç bir kod YOX idi (yalnız ixrac var idi).
+
+### 1 · Əsas çətinlik — üç fərqli şəbəkə, bir cədvəl
+
+`PVTTable` (domain) TƏK təzyiq şəbəkəsidir: bütün sütunlar eyni `pressure`
+massivinə bağlıdır. Deck isə fərqli şəbəkələr verir (PVDG 14.7…9014.7 psia,
+PVTO doymuş qolu daha dar) və üstəlik PVTO-da **hər Rs üçün ayrıca doymamış
+qol** var.
+
+Həll: oxuma və birləşdirmə AYRILDI.
+
+* `read_pvtw` / `read_pvdg` / `read_pvto` / `read_deck_pvt` → `DeckPvt`
+  (İTKİSİZ, bütün Rs qolları saxlanılır);
+* `DeckPvt.to_pvt_table(reference_rs=…)` → `PVTTable` (AÇIQ təqrib: yalnız
+  seçilən doymamış qol köçürülür, qalanları `DeckPvt`-də qalır və jurnala yazılır).
+
+Mühərrik TOXUNULMADI — nə qalıq, nə Jakobian, nə də `PVTTable`-ın quruluşu.
+
+### 2 · Vahidlər — əmsallar UYDURULMADI, mövcud sabitlərdən törədildi
+
+| Kəmiyyət | Deck (FIELD) | Mühərrik | Qeyd |
+|---|---|---|---|
+| Rs | `Mscf/stb` | sm³/sm³ | `RS_TO_SM3_SM3`-ə əlavə (1000 × `scf/stb`) |
+| Bg | `rb/Mscf` | **ölçüsüz** (m³/sm³) | YENİ `gas_fvf` növü: `rb` ÷ (1000 × `ft3`) |
+
+Bg-nin ölçüsüz OLMAMASI asanlıqla gözdən qaçan yerdir: mühərrikdə Bg lay
+həcmi / səth həcmidir, deck-də isə `rb/Mscf`.
+
+**Ölçülmüş çevirmələr** (testlə kilidlənib):
+
+```
+4014.7 psi      = 276.8038 bar
+1.2700 Mscf/STB = 226.197 sm³/sm³
+0.0093 rb/Mscf  = 5.2216e-05 (ölçüsüz)
+```
+
+### 3 · ÖLÇÜLMÜŞ TƏHLÜKƏ — bir doymamış sətir, səssiz ehtiyat qiymət
+
+`BlackOilPVTProvider` doymamış sıxılmanı (`c_o`) cədvəlin Pb-dən yuxarı
+düyünlərindən fit edir və **ən azı iki düyün** tələb edir. Deck-də isə hər Rs
+qolunda çox vaxt **cəmi bir** doymamış sətir olur (SPE1 məhz belədir).
+
+Ölçüldü:
+
+| Hal | Pb-dən yuxarı düyün | `_undersaturated_co` |
+|---|---|---|
+| Rs = 226.197 qolu (SPE1-in ilkin Rs-i) | 2 | 2.071×10⁻⁴ 1/bar |
+| defolt (ən böyük Rs) qolu | 1 | **3.119×10⁻³ 1/bar** (ehtiyat qiymət) |
+| deck-in ÖZ qolundan hesablanan həqiqi | — | 2.056×10⁻⁴ 1/bar |
+
+Yəni ehtiyat qiymət həqiqidən **15 dəfə** böyükdür və bu, SƏSSİZ baş verirdi.
+İndi `to_pvt_table` bu halda AÇIQ xəbərdarlıq verir; test onu kilidləyir.
+
+### 4 · G3 üçün ÖLÇÜLMÜŞ məlumat (qərar hələ verilmir)
+
+Deck-in iki doymamış qolu üçün:
+
+| Qol (Rs, sm³/sm³) | həqiqi c_o, 1/bar | özlülük üstəli n |
+|---|---|---|
+| 226.197 | 2.0564×10⁻⁴ | 0.4602 |
+| 288.178 | 2.0620×10⁻⁴ | 0.5085 |
+
+Oxunuşu: **tək `c_o` müdafiə oluna bilər** (iki qol arasında 0.3 % fərq), lakin
+özlülük üstəli qollar arasında dəyişir və hər ikisi korrelyasiyadakı sabit
+**0.278**-dən aydın fərqlidir. Yəni G2-də μo(p, Rs) üçün üstəl deck-dən
+oxunmalıdır, korrelyasiyadan götürülməməlidir.
+
+### 5 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `io/pvt_io.py` | **YENİ** — `read_pvtw`, `read_pvdg`, `read_pvto`, `read_deck_pvt`, `DeckPvt.to_pvt_table` |
+| `domain/unit_conversions.py` | `Mscf/stb` (Rs) və YENİ `gas_fvf` növü (`rb/Mscf`, `rb/scf`) |
+| `tests/test_pvt_io.py` | **YENİ** — 20 test |
+
+### 6 · Yoxlama
+
+```
+tests/test_pvt_io.py   20 keçdi
+tam dəst               2605 keçdi, 1 buraxıldı, 1 xfailed (baza 2585 + 20 yeni)
+```
+
+Yol boyu testin tutduğu MƏNİM səhvim: 4014.7 psi üçün 276.7999 bar yazmışdım,
+ölçülmüş dəyər 276.8038-dir (rəqəmi yaddaşdan götürməyin nəticəsi).
+
+### Açıq qalan ⏳
+
+* **G2** — μo(p, Rs) doymamış qolu: provider-ə `oil_viscosity_undersaturated`
+  (+ törəmələr), sonra üç fazalı flüid vəziyyəti və Jakobian. İKİ AYRI commit.
+* **G3** — `c_o`-nun deck qolundan hesablanması (yuxarıdakı ölçmə əsasında).
+* SGOF/SWOF kimi PVT cədvəlləri də layihə faylında SAXLANMIR.
+* `to_pvt_table` şəbəkəni yalnız deck düyünlərindən qurur — süni sıxlaşdırma yoxdur.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
