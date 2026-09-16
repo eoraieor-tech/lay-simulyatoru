@@ -345,8 +345,12 @@ class DeckPvt:
         daşıya bilir.
 
         ⏳ Bu, TƏQRİBDİR: deck-də hər Rs-in öz doymamış qolu var və
-        `DeckPvt`-də hamısı SAXLANILIR. Həqiqi `Bo(p, Rs)` / `μo(p, Rs)`
-        SPE1 boşluqları G2/G3-ün işidir.
+        `DeckPvt`-də hamısı SAXLANILIR.
+
+        G3 (Seans 37): həqiqi `Bo(p, Rs)` / `μo(p, Rs)` üçün cədvəli
+        `reference_rs` OLMADAN qurun (doymuş qol tam qalır) və qolları
+        provider-ə ayrıca verin:
+        `BlackOilPVTProvider(deck.to_pvt_table(), oil_branches=deck.oil.branches)`.
         """
         rs_nodes, pb_nodes, bo_nodes, mu_nodes = self.oil.saturated
         branch = (self.oil.branches[-1] if reference_rs is None
@@ -394,8 +398,8 @@ class DeckPvt:
                 "PVTO: seçilmiş Rs = %.4g qolu cədvələ doyma təzyiqindən "
                 "yuxarı yalnız %d düyün verir — doymamış sıxılma (c_o) "
                 "etibarlı fit oluna bilməz və provider ehtiyat qiymətə "
-                "düşəcək. Başqa `reference_rs` seçin və ya deck-in öz "
-                "qolundan hesablayın (SPE1 boşluqları G2/G3).",
+                "düşəcək — əgər qollar provider-ə `oil_branches` ilə "
+                "VERİLMİRSƏ (G3; bax bu metodun sənədi).",
                 branch.solution_gor, int(np.count_nonzero(above)))
 
         dropped = sum(1 for other in self.oil.branches
