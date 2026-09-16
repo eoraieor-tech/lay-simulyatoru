@@ -98,6 +98,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > fərqlənir (qaz ~375 gün tez çatır) — səbəblər ⏳. Layihə faylının qaz
 > sütunlarını atması düzəldildi.
 >
+> **17 sentyabr 2026 (Seans 40):** SPE1CASE2 fərqinin **səbəbi ölçüldü**:
+> **G7** — doymuş Rs qolunu biz platoda saxlayırıq, OPM isə xətti uzadır
+> (mənbədən oxundu). 6150 psia-da Rs_sat 1.618 ↔ 2.013. Müqayisə alətinə
+> qaz cəbhəsi (BGSAT, 9 blok) əlavə olundu. Düzəliş qərarı sahibkardadır ⏳.
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

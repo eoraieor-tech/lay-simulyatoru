@@ -81,7 +81,7 @@ köçürüləcək.
 | G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
-| G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | OPM-in ekstrapolyasiya qaydası mənbədən yoxlanılmalıdır ⏳ |
+| G7 | Doymuş qol 5014.7 psia-dan yuxarı (etalonda hüceyrə təzyiqi 7534 psia-ya qalxır) | `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato) | **OPM XƏTTİ EKSTRAPOLYASİYA edir** — mənbədən oxundu (Seans 40, §7). Fərqin ƏSAS səbəbi budur; düzəliş qərarı sahibkardadır ⏳ |
 | G9 | Canlı neftin sıxlığı `(ρo + Rs·ρg)/Bo` (cazibə, ilkin tarazlıq) | ✅ Seans 38, Q-31 — əvvəl `ρo/Bo` idi | bağlandı; SPE1-də +27 %; THP hidravlikası ⏳ |
 | G8 | `DRSDT 0` (yalnız CASE1) | dəstəklənmir — qaz həmişə yenidən həll olur | CASE2 hədəf seçildi (Q-23) |
 | — | Üç fazalı kro | Stone II. SPE1-də su hərəkətsizdir (Sw = Swc = 0.12); orada Stone II və Eclipse defolt modeli eyni `kro = krog` verir | fərq gözlənilmir |
@@ -129,6 +129,54 @@ köçürüləcək.
 | FOPR 19 900-dən aşağı (istismarçı BHP limitinə keçir) | 1120 gün | 1550 gün |
 | FGOR > 2 Mscf/STB (qazın çatması) | 900 gün | 1276 gün |
 
-Fərqin mümkün səbəbləri (heç biri ölçülməyib ⏳): vurucu bağlantısının
-mobilliyi (bizdə son nöqtə `krg_end/μg`; 1-ci gündə BHP 5271 ↔ 8082), G7
-(Rs_sat plato), Stone II ↔ Eclipse defolt kro, zaman addımı.
+Fərqin səbəbi **Seans 40-da ölçülərək tapıldı — §7**. Qısaca: G7
+(Rs_sat platosu). Vurucunun 1-ci gündəki BHP fərqi (5271 ↔ 8082) AYRI
+məsələdir və cəbhənin sürətini izah etmir — §7.2.
+
+
+## 7 · Fərqin səbəbi — Seans 40 (ölçülmüş)
+
+### 7.1 · Əsas səbəb: G7 (doymuş Rs qolunun platosu)
+
+OPM mənbəsindən oxundu: `LiveOilPvt.hpp:512` cədvəli `extrapolate=true`
+ilə çağırır, `Tabulated1DFunction.hpp:266–283` isə bu halda son seqmentin
+xəttini cədvəldən kənarda davam etdirir. Yəni OPM-in nefti 5014.7 psia-dan
+yuxarı daha çox qaz həll edir:
+
+| p, psia | Rs_sat OPM | bizdə | fərq |
+|---|---|---|---|
+| 6 150 | 2.013 | 1.618 | +24 % |
+| 7 459 | 2.469 | 1.618 | +53 % |
+
+Ölçülmüş izi: eyni təzyiqdə bizdə sərbəst qaz çoxdur (304-cü gün, blok
+201: **0.195 ↔ 0.169**), ona görə cəbhə hər istiqamətdə tez gedir
+(blok 10: **944 ↔ 1611 gün**) və istismarçı sütununa ~365 gün tez çatır.
+Qalan bütün fərqlər (kro-nun çökməsi, BHP limitinə tez keçid, təzyiqin
+ayrılması, FGOR) bunun nəticəsidir.
+
+### 7.2 · İkinci, AYRI məsələ: vurucu bağlantısının mobilliyi
+
+Vaxt imzası göstərir ki, bu, cəbhə ilə bağlı deyil:
+
+| gün | WBHP INJ fərqi |
+|---|---|
+| 1 | **−34.8 %** (ΔP bizdə 449, OPM 3019 psi) |
+| 304 | −1.2 % |
+
+Bizim qayda vurulan fazanın SON NÖQTƏ mobilliyini işlədir, yəni bloku
+əvvəlcədən qazla dolmuş sayır. Blok həqiqətən qazla dolanda (≈300 gün)
+fərq itir. Debit sabit olduğu üçün bu, cəbhənin sürətinə təsir etmir.
+OPM-in vurucu bağlantısındakı qaydası hələ mənbədən oxunmayıb ⏳.
+
+### 7.3 · Ölçülərək TƏKZİB olunanlar
+
+* Bg, μg, Bo, μo, Rs_sat, c_o — deck ilə **0.00 %** fərq.
+* Quyu indeksi — analitik Peaceman ilə eyni (10.610 ↔ 10.608).
+* `PERMZ`, `PORO` — deck ilə eyni.
+* İstismarçının blokundakı erkən qaz ayrılması — **etalonda da var**
+  (`BGSAT:300`: 0.0131 @ 31 g, 0.0222 @ 59 g, 0 @ 212 g).
+
+### 7.4 · Kiçik, ayrıca fərq
+
+Doymamış qolda OPM düyünlər arasında xəttidir, biz üstəl qanunla gedirik:
+Bo-da 0.06 %, **μo-da 1.97 %** (5500–6500 psia).

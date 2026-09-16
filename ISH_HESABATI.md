@@ -4678,3 +4678,115 @@ Kod dəyişməyib — test dəsti işlədilmədi; son ölçülmüş nəticə Sea
 * Növbəti iş: `TEHVIL_TESLIM.md` §5 — SPE1CASE2 fərqinin səbəbləri, əvvəl
   vurucu bağlantısının mobilliyi (1-ci gündə WBHP INJ 5271 ↔ 8082 psia).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 17 sentyabr 2026 — Seans 40: SPE1CASE2 fərqinin SƏBƏBİ tapıldı (G7)
+
+Seans 38-dən bəri açıq qalan sual: nəyə görə bizim qaz istismarçıya OPM
+Flow-dan ~375 gün tez çatır? Bu seansda səbəb **ölçülərək** tapıldı və
+OPM-in qaydası **mənbə kodundan** oxundu — fərziyyə qalmadı.
+
+### 1 · Alət: qaz cəbhəsinin məkanca ölçülməsi
+
+Etalon faylında (`SPE1CASE2.SMSPEC`) 42 kəmiyyət var və onların **9-u
+`BGSAT`** — üç sütunda (vurucu / künc / istismarçı) və üç layda qaz
+doyumudur. Müqayisə alətimiz onları **heç oxumurdu**; yalnız FOPR, FGOR,
+WBHP və iki blok təzyiqi işlədilirdi.
+
+Əlavə olundu: `benchmarks/spe1.py::REFERENCE_BLOCKS`, `gas_front_arrivals`,
+`first_time_above`; `tools/spe1_compare.py` indi cəbhə cədvəlini çap edir.
+Blok nömrələməsinin uyğunluğu testlə kilidləndi — Eclipse təbii sıralaması
+`i`-ni ən sürətli dəyişir, `CartesianGrid.index` də eynidir, yəni blok N ↔
+hüceyrə N−1.
+
+**Hədd niyə 0.05:** istismarçı sütununda ilk günlərdə KEÇİCİ qaz ayrılması
+var (aşağıya bax) — etalonda zirvəsi 0.0222, əsl cəbhə isə 0.19–0.24 verir.
+
+### 2 · ƏVVƏLCƏ TƏKZİB OLUNANLAR (ölçmə ilə)
+
+| Fərziyyə | Ölçmə | Nəticə |
+|---|---|---|
+| Vurulan qazın lay həcmi (Bg) səhvdir | Bg və μg deck ilə 8 təzyiqdə **0.00 %** fərq | ölü |
+| Neftin PVT-si sürüşüb | Bo, μo, Rs_sat, Bo_sat və `c_o` deck ilə **0.00 %** | ölü |
+| İstismarçının PI-si ~12 % zəifdir | WI bizdə 10.610, analitik Peaceman 10.608; PI 11.43 ↔ OPM 11.91 — fərq yalnız μo·Bo-nun təzyiq asılılığındandır (4800 ↔ 4584 psia) | ölü — əvvəlki "12 %" 30 günlük snapshot interpolyasiyasının artefaktı idi |
+| Şaquli keçiricilik və ya məsamə həcmi səhvdir | deck `PERMZ = PERMX`, `PORO 0.3`; model hər üçünü eyni verir | ölü |
+| İstismarçının blokunda erkən qaz bizim qüsurumuzdur | **etalonda da var**: `BGSAT:300` = 0.0131 (31 g), 0.0222 (59 g), 0.0000 (212 g); təzyiq 3934 → 3869 → 4079 psia | ölü — təzyiq doyma nöqtəsindən aşağı düşür, qaz ayrılır, bərpa olunanda geri həll olur |
+
+### 3 · TAPILAN SƏBƏB — G7 (doymuş qolun platosu)
+
+**OPM-in qaydası mənbədən oxundu:**
+
+* `opm-common/opm/material/fluidsystems/blackoilpvt/LiveOilPvt.hpp:512` —
+  `saturatedGasDissolutionFactor` cədvəli **`extrapolate=true`** ilə
+  çağırılır;
+* `opm-common/opm/material/common/Tabulated1DFunction.hpp:266–283` — bu
+  bayraq qoyulanda son seqmentin xətti düsturu cədvəldən KƏNARDA da tətbiq
+  olunur ("extended beyond its range by straight lines").
+
+Yəni **OPM doymuş Rs əyrisini 5014.7 psia-dan yuxarı xətti uzadır**, biz
+isə `np.interp` ilə platoda saxlayırıq. Son iki düyünün meyli
+3.48×10⁻⁴ Mscf/STB/psi:
+
+| p, psia | Rs_sat OPM | Rs_sat bizdə | fərq |
+|---|---|---|---|
+| 6 150 | 2.013 | 1.618 | **+24 %** |
+| 7 459 | 2.469 | 1.618 | **+53 %** |
+
+**Ölçülmüş nəticə** (eyni anlarda, eyni bloklarda):
+
+| gün | blok 201 Sg (bizdə/OPM) | blok 1 təzyiq (bizdə/OPM) |
+|---|---|---|
+| 304 | **0.195 / 0.169** | 6164 / 6147 — eyni |
+| 911 | **0.308 / 0.291** | 6906 / 7025 |
+
+Yəni **eyni təzyiqdə bizdə daha çox SƏRBƏST qaz var**, çünki neftimiz az
+qaz həll edir. Cəbhənin gəlişi (Sg > 0.01):
+
+| blok | bizdə | OPM | fərq |
+|---|---|---|---|
+| 201 (1,1,3) | 123 | 181 | −58 gün |
+| 10 (10,1,1) | 944 | 1611 | **−667 gün** |
+| 110 (10,1,2) | 2794 | 3316 | −522 gün |
+| 210 (10,1,3) | 2895 | 3497 | −602 gün |
+
+### 4 · Səbəb zənciri (hamısı ölçülüb)
+
+1. Rs platosu → eyni təzyiqdə sərbəst qaz çox;
+2. → cəbhə hər istiqamətdə tez gedir (yuxarıdakı cədvəl);
+3. → istismarçı sütununa ~365 gün tez çatır (911-ci gün: bizdə
+   0.253/0.231/0.094, OPM-də hələ 0.000);
+4. → SGOF sərt olduğu üçün (Sg = 0.3-də kro = 0.09) neftin keçiriciliyi
+   çökür;
+5. → BHP limitinə 1120-ci gündə keçilir (OPM 1550);
+6. → lay təzyiqi ayrılır (1276-cı gün, blok 1: 6156 ↔ 7520 psia) və
+   FGOR 1034-cü gündə +389 % fərqlənir.
+
+### 5 · Əlavə tapıntı — doymamış μo-nun interpolyasiyası
+
+OPM cədvəl düyünləri arasında **xəttidir** (eyni mənbə faylı, sətir 282),
+biz isə üstəl qanunla gedirik (Q-28/Q-30). Düyünlərdə fərq sıfırdır,
+aralıqda isə ölçüldü: **Bo 0.06 %, μo 1.97 %** (5500–6500 psia).
+
+### 6 · Sahibkarın qərarı (qayda 7)
+
+Hər iki seçim nəticəni dəyişdiyi üçün sahibkara verildi. Cavab:
+
+1. **G7 — OPM kimi xətti uzatma.** Doymuş qol cədvəlin son düyünündən
+   yuxarı son seqmentin meyli ilə davam etdirilir.
+2. **Doymamış qolda deck cədvəli verilibsə xətti interpolyasiya**;
+   korrelyasiya ilə qurulan cədvəllərdə üstəl qanun (Q-28/Q-30) qalır.
+
+TƏTBİQ AYRICA COMMIT-DƏDİR (Q-32 orada yazılacaq) — bu commit yalnız
+ölçməni və müqayisə alətini əhatə edir, yəni mühərrikin nəticəsi
+dəyişmir.
+
+### 7 · Yoxlama
+
+```
+tests/test_spe1_model.py   12 keçdi
+tam dəst                   2683 keçdi, 1 buraxıldı, 1 xfailed (17 dəq 49 san)
+baza (bu maşında)          2679 keçdi, 1 buraxıldı, 1 xfailed
+```
+
+`tools/spe1_compare.py` bu maşında Seans 38-in rəqəmlərini **eynilə**
+təkrarladı (1034-cü gün FGOR +388.7 %, keçid 1119.7 ↔ 1550 gün).

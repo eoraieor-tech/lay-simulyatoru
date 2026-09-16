@@ -15,8 +15,10 @@ import numpy as np
 import pytest
 
 from imex2d.application.simulation_service import ModelAwareSimulationService
-from imex2d.benchmarks.spe1 import (build_spe1case2_model, first_time_below,
-                                    simulated_series, spe1case2_config)
+from imex2d.benchmarks.spe1 import (REFERENCE_BLOCKS, build_spe1case2_model,
+                                    first_time_above, first_time_below,
+                                    gas_front_arrivals, simulated_series,
+                                    spe1case2_config)
 from imex2d.domain.unit_conversions import convert
 from imex2d.domain.wells import ControlMode, Phase, RateBasis
 from imex2d.simulation.implicit.engine import FullyImplicitEngine
@@ -199,3 +201,79 @@ def test_first_time_below():
     assert first_time_below(np.array([1.0, 2.0, 3.0]), np.array([5.0, 4.0, 1.0]),
                             3.0) == 3.0
     assert first_time_below(np.array([1.0]), np.array([5.0]), 3.0) is None
+
+
+# ═══════════════ qaz cəbhəsi — etalonun BGSAT blokları ════════════════
+
+def test_reference_blocks_match_eclipse_ordering(model):
+    """Etalonun blok nömrələri bizim hüceyrə indeksi ilə EYNİ sıralamadadır.
+
+    Eclipse təbii sıralaması `i`-ni ən sürətli dəyişir. Bizim
+    `CartesianGrid.index` də belədir, ona görə blok N ↔ hüceyrə N−1.
+    Bu yoxlama olmasa BGSAT müqayisəsi səssizcə BAŞQA hüceyrəni oxuyar
+    və nəticə yanlış olduğu bilinməzdi.
+    """
+    grid = model.grid
+    for block in REFERENCE_BLOCKS:
+        assert 1 <= block <= grid.ncell
+        i, j, k = grid.ijk(block - 1)
+        assert grid.index(i, j, k) == block - 1
+    assert grid.ijk(0) == (0, 0, 0), "blok 1 — vurucunun hüceyrəsi"
+    assert grid.ijk(299) == (9, 9, 2), "blok 300 — istismarçının hüceyrəsi"
+
+
+def test_first_time_above():
+    assert first_time_above(np.array([1.0, 2.0, 3.0]),
+                            np.array([0.0, 0.0, 0.5]), 0.01) == 3.0
+    assert first_time_above(np.array([1.0]), np.array([0.0]), 0.01) is None
+
+
+def test_gas_saturation_blocks_are_reported(model):
+    """BGSAT seriyaları çıxarılır, fiziki hədlərdədir və məkanca doğrudur.
+
+    30 gündə vurucu blokuna (1) vurulan qazın həcmi həmin blokun məsamə
+    həcmindən böyükdür, ona görə orada qaz OLMALIDIR.
+
+    İstismarçının blokunda (300) isə 30 gündə KİÇİK miqdarda qaz olur və
+    bu, vurulan qazın çatması DEYİL — 9 hüceyrə uzaqdan çata bilməz.
+    Səbəb başqadır: təzyiq müvəqqəti olaraq doyma nöqtəsindən (4014.7
+    psia) aşağı düşür və həll olmuş qaz ayrılır. ETALON DA eynisini
+    göstərir — `SPE1CASE2.UNSMRY`-dən ölçüldü:
+
+        gün      31      59     120     181     212
+        BGSAT  0.0131  0.0222  0.0196  0.0054  0.0000
+        BPR     3934    3869    3905    4012    4079  psia
+
+    yəni təzyiq bərpa olunanda qaz GERİ HƏLL OLUR. Ona görə hədd
+    "sıfır" deyil, "kiçik"dir.
+    """
+    engine = _engine(model, 30.0)
+    result = engine.run()
+    assert result.converged, result.message
+    series = simulated_series(model, result)
+    for block in REFERENCE_BLOCKS:
+        label = f"BGSAT:{block}"
+        assert label in series, label
+        values = series[label][1]
+        assert np.all(values >= -1e-12) and np.all(values <= 1.0 + 1e-12)
+    assert series["BGSAT:1"][1][-1] > 0.01, "vurucu blokunda qaz olmalıdır"
+    assert 0.0 < series["BGSAT:300"][1][-1] < 0.05, "kiçik, keçici ayrılma"
+
+
+def test_gas_front_arrivals_skips_missing_labels(model):
+    """Etalonda olmayan etiket sükutla buraxılır (süni etalonla yoxlanılır)."""
+
+    class _Reference:
+        def __contains__(self, label):
+            return label in ("TIME", "BGSAT:1")
+
+        def series(self, label):
+            return (np.array([0.0, 10.0, 20.0]) if label == "TIME"
+                    else np.array([0.0, 0.0, 0.4]))
+
+    engine = _engine(model, 30.0)
+    result = engine.run()
+    rows = gas_front_arrivals(model, result, _Reference())
+    assert [row.block for row in rows] == [1]
+    assert rows[0].reference == 20.0
+    assert rows[0].ijk == (0, 0, 0)

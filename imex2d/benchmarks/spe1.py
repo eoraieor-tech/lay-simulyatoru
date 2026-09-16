@@ -147,6 +147,15 @@ def spe1case2_config(max_dt: float = 31.0, snapshots: int = 120) -> SimulationCo
 
 # ═══════════════════════════════ müqayisə ════════════════════════════
 
+#: Etalonun `BGSAT` blokları (`SPE1CASE2.SMSPEC`-dən oxunub): vurucu sütunu
+#: 1/101/201, aralıq sütun 10/110/210, istismarçı sütunu 100/200/300 — yəni
+#: hər üç layda üç nöqtə. Eclipse təbii sıralamasında `i` ən sürətli dəyişir
+#: (`N = i + (j−1)·nx + (k−1)·nx·ny`); `CartesianGrid.index` də eynidir, ona
+#: görə blok N ↔ hüceyrə N−1. Bu uyğunluq testlə kilidlənib
+#: (`test_reference_blocks_match_eclipse_ordering`) — yanlış olsaydı müqayisə
+#: SƏSSİZCƏ başqa hüceyrəni oxuyardı.
+REFERENCE_BLOCKS = (1, 10, 100, 101, 110, 200, 201, 210, 300)
+
 @dataclass
 class ComparisonRow:
     time: float
@@ -186,6 +195,12 @@ def simulated_series(model: ReservoirModel, result) -> Dict[str, tuple]:
             values = np.asarray([s.pressure[cell] for s in result.snapshots], float)
             out[f"BPR:{cell + 1}"] = (snap_time, convert(values, "bar", "psi",
                                                          "pressure"), "PSIA")
+        if result.snapshots[0].gas_saturation is not None:
+            for block in REFERENCE_BLOCKS:
+                saturation = np.asarray(
+                    [np.asarray(s.gas_saturation).reshape(-1)[block - 1]
+                     for s in result.snapshots], float)
+                out[f"BGSAT:{block}"] = (snap_time, saturation, "")
     return out
 
 
@@ -215,3 +230,54 @@ def first_time_below(time: np.ndarray, values: np.ndarray,
     """`values < threshold` olan ilk an (məs. FOPR 20 000-dən aşağı)."""
     below = np.nonzero(np.asarray(values) < threshold)[0]
     return float(np.asarray(time)[below[0]]) if below.size else None
+
+
+def first_time_above(time: np.ndarray, values: np.ndarray,
+                     threshold: float) -> Optional[float]:
+    """`values > threshold` olan ilk an (məs. blokda qazın görünməsi)."""
+    above = np.nonzero(np.asarray(values) > threshold)[0]
+    return float(np.asarray(time)[above[0]]) if above.size else None
+
+
+@dataclass
+class FrontRow:
+    """Bir blokda qazın görünmə anı — bizdə ↔ etalonda."""
+    block: int
+    ijk: tuple
+    simulated: Optional[float]
+    reference: Optional[float]
+
+
+def gas_front_arrivals(model: ReservoirModel, result, reference,
+                       threshold: float = 0.05) -> List[FrontRow]:
+    """Qaz cəbhəsinin hər etalon blokuna çatma anı.
+
+    NİYƏ LAZIMDIR: FOPR/FGOR yalnız quyudakı NƏTİCƏni göstərir — qazın
+    hansı YOLLA gəldiyini yox. `BGSAT` üç sütunda (vurucu / aralıq /
+    istismarçı) və üç layda qaz doyumu verir, yəni fərqin mənbəyini
+    məkanca ayırır:
+
+    * üst layda (1 → 10 → 100) tez gedirsə — cəbhə sürəti məsələsidir;
+    * 100-ə vaxtında çatıb 200 → 300-ə tez enirsə — şaquli axın/cazibə;
+    * 300-də 100/200-siz görünürsə — yerli qaz ayrılması.
+
+    `threshold` NİYƏ 0.05: istismarçının sütununda ilk günlərdə KEÇİCİ
+    qaz ayrılması olur (təzyiq doyma nöqtəsindən aşağı düşür, sonra bərpa
+    olunanda qaz geri həll olur). Etalondan ölçüldü — həmin keçici zirvə
+    ≤ 0.0222 (31–120-ci günlər), əsl cəbhə isə 0.19–0.24 verir, yəni 0.05
+    ikisini təmiz ayırır. 0.01 götürülsə cəbhə "31-ci gündə çatdı" kimi
+    görünərdi. Çatmayan blok üçün `None` qaytarılır.
+    """
+    simulated = simulated_series(model, result)
+    reference_time = reference.series("TIME")
+    rows: List[FrontRow] = []
+    for block in REFERENCE_BLOCKS:
+        label = f"BGSAT:{block}"
+        if label not in simulated or label not in reference:
+            continue
+        sim_time, sim_values, _ = simulated[label]
+        rows.append(FrontRow(
+            block, model.grid.ijk(block - 1),
+            first_time_above(sim_time, sim_values, threshold),
+            first_time_above(reference_time, reference.series(label), threshold)))
+    return rows

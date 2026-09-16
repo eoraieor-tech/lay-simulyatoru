@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from imex2d.application.simulation_service import ModelAwareSimulationService  # noqa: E402
 from imex2d.benchmarks.spe1 import (build_spe1case2_model, compare_with_reference,  # noqa: E402
-                                    first_time_below, simulated_series,
-                                    spe1case2_config)
+                                    first_time_below, gas_front_arrivals,
+                                    simulated_series, spe1case2_config)
 from imex2d.io.eclipse_summary import read_summary  # noqa: E402
 from imex2d.simulation.implicit.engine import FullyImplicitEngine  # noqa: E402
 from imex2d.simulation.linear_solver import ScipyCgIluSolver  # noqa: E402
@@ -56,6 +56,19 @@ def main(argv=None):
           first_time_below(time_, oil, 19900.0), "gün, OPM",
           first_time_below(reference.series("TIME"), reference.series("FOPR"),
                            19900.0), "gün")
+
+    print(f"\n{'blok':>5} {'(i,j,k)':<10} {'qaz çatıb, gün':>15} "
+          f"{'OPM Flow':>10} {'fərq':>8}")
+    for row in gas_front_arrivals(model, result, reference):
+        i, j, k = row.ijk
+        ours = "—" if row.simulated is None else f"{row.simulated:.0f}"
+        opm = "—" if row.reference is None else f"{row.reference:.0f}"
+        if row.simulated is None or row.reference is None:
+            gap = "—"
+        else:
+            gap = f"{row.simulated - row.reference:+.0f}"
+        print(f"{row.block:5d} {f'({i + 1},{j + 1},{k + 1})':<10} "
+              f"{ours:>15} {opm:>10} {gap:>8}")
 
 
 if __name__ == "__main__":
