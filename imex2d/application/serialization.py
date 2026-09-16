@@ -27,7 +27,7 @@ from ..domain.grid import CartesianGrid
 from ..domain.initial import InitialConditions
 from ..domain.properties import (FluidProperties, PermeabilityTensor, PropertyMap,
                                  RockProperties)
-from ..domain.pvt import PVTTable
+from ..domain.pvt import OilBranch, PVTTable
 from ..domain.reservoir_model import ReservoirModel
 from ..domain.scal import CapillaryParameters, CoreyParameters
 from ..domain.structure import FaultReference, HorizonReference, RegionSet
@@ -532,6 +532,7 @@ class ProjectSerializer:
             "gas_capillary": _dataclass_to_dict(model.gas_capillary_parameters, [
                 "entry_pressure", "lambda_exponent", "max_pressure"]),
             "pvt": self._pvt_to_dict(model.pvt_table),
+            "pvt_oil_branches": self._oil_branches_to_list(model.pvt_oil_branches),
             "units": model.units.name,
             "source_geological_model": model.source_geological_model,
         }
@@ -573,6 +574,8 @@ class ProjectSerializer:
             gas_capillary_parameters=CapillaryParameters(
                 **data.get("gas_capillary", {})),
             pvt_table=self._pvt_from_dict(data.get("pvt")),
+            pvt_oil_branches=self._oil_branches_from_list(
+                data.get("pvt_oil_branches")),
             units=_UNIT_SYSTEMS.get(data.get("units", "METRIC"), METRIC),
             source_geological_model=data.get("source_geological_model", ""))
 
@@ -645,6 +648,23 @@ class ProjectSerializer:
             "gas_viscosity": (None if table.gas_viscosity is None
                               else _array(table.gas_viscosity)),
         }
+
+    @staticmethod
+    def _oil_branches_to_list(branches) -> Optional[list]:
+        """Deck PVTO qolları (G3) — `None` köhnə modellər üçün."""
+        if branches is None:
+            return None
+        return [{"solution_gor": float(branch.solution_gor),
+                 "pressure": _array(branch.pressure),
+                 "formation_volume_factor": _array(branch.formation_volume_factor),
+                 "viscosity": _array(branch.viscosity)}
+                for branch in branches]
+
+    @staticmethod
+    def _oil_branches_from_list(data: Optional[list]):
+        if data is None:
+            return None
+        return [OilBranch(**item) for item in data]
 
     @staticmethod
     def _pvt_from_dict(data: Optional[dict]) -> Optional[PVTTable]:

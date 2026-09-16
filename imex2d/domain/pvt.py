@@ -18,6 +18,35 @@ from .validation import (check_extrapolation_range, validate_compressibility,
 
 
 @dataclass
+class OilBranch:
+    """Bir `Rs` üçün doymuş nöqtə + ondan yuxarı doymamış sətirlər (Eclipse `PVTO`).
+
+    Domain-də saxlanılır (Seans 38), çünki `ReservoirModel.pvt_oil_branches`
+    və layihə faylı onu daşıyır; oxuyucu `io/pvt_io.py`-dir.
+
+    `pressure[0]` doyma təzyiqidir (Pb); qalan sətirlər DOYMAMIŞ qoldur
+    (eyni Rs, artan təzyiq).
+    """
+
+    solution_gor: float                # sm³/sm³
+    pressure: np.ndarray               # bar
+    formation_volume_factor: np.ndarray
+    viscosity: np.ndarray              # cP
+
+    def __post_init__(self):
+        for name in ("pressure", "formation_volume_factor", "viscosity"):
+            setattr(self, name, np.asarray(getattr(self, name), float).ravel())
+
+    @property
+    def bubble_point(self) -> float:
+        return float(self.pressure[0])
+
+    @property
+    def has_undersaturated(self) -> bool:
+        return self.pressure.size > 1
+
+
+@dataclass
 class PVTTable:
     """Təzyiqdən asılı flüid xassələri cədvəli.
 

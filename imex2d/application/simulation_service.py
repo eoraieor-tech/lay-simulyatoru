@@ -360,8 +360,11 @@ class ModelAwareSimulationService(SimulationService):
         """
         if model.pvt_table is None:
             return None
+        # G3 (Seans 38): deck PVTO qolları modeldədirsə provider-ə verilir
         return BlackOilPVTProvider(model.pvt_table,
-                                   dead_oil_below_bubble_point=True)
+                                   dead_oil_below_bubble_point=True,
+                                   oil_branches=getattr(model, "pvt_oil_branches",
+                                                        None))
 
     @staticmethod
     def _initialization(model, pvt_provider=None, capillary_provider=None):

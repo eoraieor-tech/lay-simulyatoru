@@ -36,7 +36,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ..domain.pvt import PVTTable
+from ..domain.pvt import OilBranch, PVTTable  # OilBranch: Seans 38-də domain-ə köçdü
 from ..domain.unit_conversions import convert, to_engine_units
 from ..logging_setup import get_logger
 
@@ -198,32 +198,6 @@ def read_pvdg(path: str, pressure_unit: str = "psi",
 
 
 # ═══════════════════════════════ PVTO ════════════════════════════════
-
-@dataclass
-class OilBranch:
-    """Bir `Rs` üçün doymuş nöqtə + ondan yuxarı doymamış sətirlər.
-
-    `pressure[0]` doyma təzyiqidir (Pb); qalan sətirlər DOYMAMIŞ qoldur
-    (eyni Rs, artan təzyiq).
-    """
-
-    solution_gor: float                # sm³/sm³
-    pressure: np.ndarray               # bar
-    formation_volume_factor: np.ndarray
-    viscosity: np.ndarray              # cP
-
-    def __post_init__(self):
-        for name in ("pressure", "formation_volume_factor", "viscosity"):
-            setattr(self, name, np.asarray(getattr(self, name), float).ravel())
-
-    @property
-    def bubble_point(self) -> float:
-        return float(self.pressure[0])
-
-    @property
-    def has_undersaturated(self) -> bool:
-        return self.pressure.size > 1
-
 
 @dataclass
 class OilPvt:

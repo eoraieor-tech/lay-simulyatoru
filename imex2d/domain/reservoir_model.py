@@ -20,7 +20,7 @@ from .geometry import CellGeometry
 from .grid import CartesianGrid, Connections
 from .initial import InitialConditions
 from .properties import FluidProperties, PropertyMap, RockProperties
-from .pvt import PVTTable
+from .pvt import OilBranch, PVTTable
 from .scal import CapillaryParameters, CoreyParameters
 from .structure import FaultReference, HorizonReference, RegionSet
 from .units import DEFAULT_UNITS, UnitSystem
@@ -59,6 +59,11 @@ class ReservoirModel:
     (qazlı) mühərrik oxuyur.
     """
     pvt_table: Optional[PVTTable] = None
+    pvt_oil_branches: Optional[List[OilBranch]] = None
+    """Deck `PVTO` qolları (G3, Seans 38). Verilibsə PVT provider doymamış
+    `c_o` və `n`-i HƏR QOLDAN alır (bax `BlackOilPVTProvider`, Q-30).
+    `None` — köhnə davranış (cədvəlin tək doymamış hissəsi).
+    """
     scal_tables: Optional[object] = None
     """Laboratoriya SCAL cədvəlləri (`SaturationTableSet`).
 

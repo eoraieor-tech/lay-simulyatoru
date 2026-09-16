@@ -109,3 +109,22 @@ def test_run_converges_with_the_branch_provider():
     engine = _engine(end_time=120.0)
     result = engine.run()
     assert result.converged, result.message
+
+
+def test_service_reads_the_branches_from_the_model():
+    """Seans 38: qollar `ReservoirModel.pvt_oil_branches` ilə — alt-sinif lazım deyil."""
+    deck = _deck_pvt()
+    geology = SyntheticGeologicalModelBuilder().build(
+        nx=3, ny=3, dx=25.0, dy=25.0, dz=10.0, porosity=0.2,
+        permx_base=150.0, nz=1, top_depth=2000.0)
+    model = ReservoirModelBuilder().build(
+        geology, five_spot(geology.grid), scal=CoreyParameters(),
+        gas_scal=GasCoreyParameters(), pvt_table=deck.to_pvt_table(),
+        pvt_oil_branches=deck.oil.branches, name="qollar modeldə")
+    service = ModelAwareSimulationService(
+        relperm_provider=CoreyRelativePermeabilityAdapter(default_scal()),
+        linear_solver=ScipyCgIluSolver(), engine_factory=FullyImplicitEngine)
+    engine = service.create_engine(model, SimulationConfig(end_time=10.0))
+    assert engine.newton.pvt._branch_rs is not None
+    assert engine.newton.pvt._branch_co == pytest.approx([2.0564e-4, 1.8317e-4],
+                                                         rel=1e-3)

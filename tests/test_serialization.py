@@ -344,3 +344,26 @@ def test_project_without_geology_configs_still_loads():
     restored = _round_trip(project)[0]
     assert restored.geology_facies_configs == {}
     assert restored.geology_sgs_configs == {}
+
+
+def test_pvt_oil_branches_survive_round_trip():
+    """Seans 38: deck PVTO qolları (G3) layihə faylında saxlanılır."""
+    from imex2d.domain.pvt import OilBranch
+    project, model = _rich_project(with_result=False)
+    model.pvt_oil_branches = [
+        OilBranch(226.197, [276.8, 621.5], [1.695, 1.579], [0.51, 0.74]),
+        OilBranch(288.178, [345.75, 621.5], [1.827, 1.737], [0.449, 0.631])]
+    restored = _round_trip(project)[0].reservoir_models[model.name]
+    assert len(restored.pvt_oil_branches) == 2
+    for original, copy in zip(model.pvt_oil_branches, restored.pvt_oil_branches):
+        assert copy.solution_gor == original.solution_gor
+        assert np.allclose(copy.pressure, original.pressure)
+        assert np.allclose(copy.formation_volume_factor,
+                           original.formation_volume_factor)
+        assert np.allclose(copy.viscosity, original.viscosity)
+
+
+def test_model_without_branches_still_loads():
+    project, model = _rich_project(with_result=False)
+    restored = _round_trip(project)[0].reservoir_models[model.name]
+    assert restored.pvt_oil_branches is None
