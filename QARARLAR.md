@@ -1016,3 +1016,47 @@ girsəydi, sonlu fərq xətası çıxanda mənbəyi ayırmaq çətinləşərdi.
 `dPb/dRs` cədvəlin Rs diapazonundan kənarda sıfırdır (Bo qolunda da belədir),
 ona görə ∂μo/∂Rs də sıfır olur. Bu, EKSTRAPOLYASİYA ETMƏMƏK qərarıdır və sonlu
 fərq də eyni nəticəni verir, yəni Jakobian cədvəlin öz davranışı ilə uyğundur.
+
+
+## Q-29 — Özlülüyün Rs-asılılığı Jakobiana daxil edilir; doyma nöqtəsi lövbəri fit-dən alınır
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G2b
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 36)
+
+### Qərar 1 — μo flüid vəziyyəti vasitəsilə daşınır
+
+`mu_o_p`/`mu_o_rs` sahələri əlavə olundu — Bo-dakı (B3-B) eyni naxış. Qalıq və
+Jakobian provider-i tanımır, yalnız massivləri görür.
+
+### Qərar 2 — mobilliyin Rs törəməsi İKİ hədddir
+
+`∂mob_o/∂Rs = −mob_o·(Bo'_Rs/Bo + μo'_Rs/μo)`. Ölçüldü: ikinci hədd olmadan
+3-cü sütun 3.6×10⁻¹¹-dən 4.2×10⁻¹-ə düşür.
+
+### Qərar 3 — RATE quyusunda SU tənliyinə yeni element
+
+`f` özlülükdən asılı olduğu üçün doymamış halda `blocks[c, 0, 2] ≠ 0`.
+
+### Qərar 4 — LÖVBƏR cədvəl interpolyasiyasından DEYİL, fit-dən alınır
+
+Pb adətən düyün deyil və əyrinin orada sınığı var; interpolyasiya μ lövbərini
+2.27 %, Bo lövbərini 0.37 % şişirdirdi. Düzgün lövbər doymamış qolun öz
+fit-inin Pb-dəki qiymətidir (fit onsuz da aparılır).
+
+**Pb-dən yuxarı şəbəkə DOYMUŞ meylin davamıdır.** İki variant ölçülüb rədd
+edildi: `np.where` keçidi (lövbərdə sıçrayış — sonlu fərq ∂/∂Rs 27-yə qalxırdı)
+və doymamış qolun qiymətləri (meyl `−c_o` ilə kompensasiya olunub analitik
+törəməni sıfıra endirirdi). Meyar: **törəmə uyğunluğu qiymət öz-özünə
+uyğunluğundan vacibdir** — Nyuton törəmə ilə işləyir.
+
+### Qərar 5 — invariant testlər yenilənir (sahibkarın qərarı ilə)
+
+Köhnə `atol=1e-5` şərti yalnız ona görə keçirdi ki, lövbər və cədvəl sütunu
+EYNİ interpolyasiya səhvini bölüşürdü. Yeni şərt: doymuş zonanın düyünlərində
+tam dəqiqlik, qalan yerlərdə ölçülmüş hədd (0.0195 → 0.025).
+
+### Qərar 6 — etalon hasilat əmsalı 62.86-da QALIR
+
+Müvəqqəti 62.73 dəyişikliyi geri alındı: ölçmə göstərdi ki, fərq fizikadan yox,
+lövbər qüsurundan gəlirdi. Lövbər düzəldiləndən sonra iki və üç fazalı
+mühərriklərin qazsız rejimdəki uyğunluğu da bərpa olundu (62.8612).

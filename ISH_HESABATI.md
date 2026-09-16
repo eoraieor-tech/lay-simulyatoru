@@ -4319,3 +4319,116 @@ tam dəst                                 2617 keçdi, 1 buraxıldı, 1 xfailed 
   yeni Rs həddi. Sonlu fərq testləri MƏCBURİDİR.
 * **G3** — `c_o`-nun deck qolundan hesablanması (Seans 34-dəki ölçmə).
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 36: G2b (özlülük mühərriyə qoşuldu) + doyma nöqtəsi lövbərinin düzəlişi
+
+Bu seans iki hissədən ibarətdir: planlaşdırılmış qoşulma (G2b) və onun ÜZƏ
+ÇIXARDIĞI köhnə qüsur (lövbər). İkincisi planda yox idi — tam dəst onu tapdı.
+
+### 1 · G2b — riyazi nüvə
+
+Neft mobilliyi `mob_o = kro/(μo·Bo)`-dur, ona görə doymamış hüceyrədə Rs-ə görə
+törəmə İKİ hədddir:
+
+    ∂mob_o/∂Rs = −mob_o · ( Bo'_Rs/Bo  +  μo'_Rs/μo )
+
+İkinci hədd əlavə olundu (axın + quyu Jakobianı). RATE rejimli quyuda maye payı
+`f = λw/(λw+λo)` da μo vasitəsilə Rs-dən asılıdır, ona görə **SU tənliyinin
+3-cü sütununda indiyə qədər olmayan element** yarandı (`blocks[c, 0, 2]`).
+
+**Ölçüldü** (qarışıq vəziyyət, tam qalığın sonlu fərqi, sütun növü üzrə):
+
+| Sütun | Hədd İLƏ | Hədd SIFIRLANMIŞ |
+|---|---|---|
+| Sw | 7.0×10⁻¹¹ | 7.0×10⁻¹¹ |
+| 3-cü dəyişən | **3.6×10⁻¹¹** | **4.2×10⁻¹** |
+
+Yəni hədd olmadan 3-cü sütun praktik olaraq yanlışdır.
+
+### 2 · Tam dəstin tapdığı uyğunsuzluq
+
+`test_three_phase_matches_two_phase_when_no_gas_is_liberated` düşdü: iki fazalı
+RF 62.86, üç fazalı 62.73. İlk izahım — "düzgün özlülük neft mobilliyini azaldır,
+ona görə RF aşağı düşür" — ÖLÇMƏ İLƏ TƏKZİB OLUNDU.
+
+Səbəb: modelin ilkin Rs-i məhz `Rs_sat(Pb_cədvəl)`-ə bərabərdir, yəni qol cədvəl
+sütununu DƏQİQ təkrarlamalı idi. Nisbət isə 1.0227 çıxdı.
+
+### 3 · Əsl səbəb — doyma nöqtəsindəki LÖVBƏR
+
+`μo_sat(Pb)` və `Bo_sat(Pb)` cədvəldən adi interpolyasiya ilə götürülürdü. Lakin
+Pb adətən DÜYÜN DEYİL (ölçüldü: Pb = 100 üçün qonşular 93.08 və 103.31) və
+əyrinin orada SINIĞI var (μo aşağıda azalır, yuxarıda artır). İnterpolyasiya
+sınığı kəsir və lövbəri şişirdir.
+
+**Cədvəlin ÖZÜNDƏN çıxarılan düzgün lövbər** (μ_b = μ_cədvəl(p)/(p/Pb)^n — bütün
+p üçün eyni çıxır):
+
+| Lövbər | μ_b | Bo_b |
+|---|---|---|
+| tələb olunan | 1.199050 | 1.189932 |
+| köhnə (iki tərəfli interpolyasiya) | 1.226261 (**+2.27 %**) | 1.185524 (−0.37 %) |
+
+Bu, B3-B-dən (Bo qolu) qalan qüsurdur — G2b onu yalnız görünən etdi.
+
+### 4 · Düzəlişin ÜÇ cəhdi (hamısı ölçülüb)
+
+| Variant | Lövbər dəqiqliyi | ∂/∂Rs (analitik ÷ SF) | Akkumulyasiya Jakobianı |
+|---|---|---|---|
+| v1 — Pb-də `np.where` keçidi | 0.003 % | **sıçrayış: SF 27-yə qalxır** | 0.77 |
+| v2 — Pb-dən yuxarı doymamış qol | 0.003 % | **≈ 0** (meyl `−c_o` ilə kompensasiya olunur) | 0.9998 |
+| **v3 — doymuş meylin davamı** | **0.003 %** | **1.0000** | **5.5×10⁻⁹** |
+
+v1-in dərsi: kəsilməzlik 2 %-lik meyldən VACİBDİR. v2-nin dərsi: lövbər DOYMUŞ
+qiymətdir, ona görə meyli də doymuş meyl olmalıdır — doymamış qolun meyli
+düsturdakı `+c_o` ilə tam kompensasiya olunur.
+
+v3 qəbul edildi: şəbəkə Pb-yə qədər cədvəlin düyünləri, Pb-də fit lövbəri,
+Pb-dən yuxarı isə həmin doymuş meylin davamı (yalnız sonlu fərqin simmetrik
+qalması üçün).
+
+### 5 · Sahibkarın qərarı
+
+Seçim sahibkara verildi (nəticəni dəyişən qərar): **yeni lövbər saxlanıldı,
+testlər yeniləndi**.
+
+### 6 · Yenilənən testlər — ölçülmüş əsaslandırma ilə
+
+* `test_branch_is_continuous_at_the_saturation_boundary` və
+  `test_above_the_bubble_point_nothing_changes` əvvəl `atol=1e-5` tələb edirdi və
+  KEÇİRDİ — çünki lövbər cədvəlin öz interpolyasiyasından gəlirdi, yəni test
+  fiziki dəqiqliyi yox, ÖZ-ÖZÜNƏ UYĞUNLUĞU yoxlayırdı. İndi:
+  **cədvəl düyünlərində (doymuş zonada) TAM dəqiqlik** (`rtol=1e-12`) + qalan
+  yerlərdə ölçülmüş hədd (maksimal sapma 0.0195 → hədd 0.025).
+* `test_low_bubble_point_results_are_unchanged`: etalon **62.86-da qaldı**.
+  Mən onu müvəqqəti 62.73-ə dəyişmişdim və səhv izah yazmışdım; lövbər
+  düzəldiləndən sonra dəyər 62.8612-yə qayıtdı.
+* G2a-nın kəsilməzlik testi: düyünlərdə dəqiq, sınıq intervalında 1 % hədd
+  (ölçüldü: 7.6×10⁻³).
+
+### 7 · Edilən
+
+| Fayl | Nə |
+|---|---|
+| `implicit/three_phase_residual.py` | `mu_o_p`/`mu_o_rs`; özlülük törəmə köməkçiləri; axın və quyu Jakobianında Rs hədləri; yeni `blocks[c,0,2]` |
+| `implicit/three_phase_newton.py` | `_oil_viscosity()` — doyma vəziyyətinə görə seçim |
+| `pvt/black_oil.py` | lövbər fit-dən (`_build_saturated_grid`, `_anchor_at`, `_anchor_slope`) — Bo və μo üçün |
+| `tests/test_undersaturated_viscosity_engine.py` | **YENİ** — 9 test |
+| 3 mövcud test faylı | şərtlər ölçülmüş hədlərlə yeniləndi |
+
+### 8 · Yoxlama
+
+```
+hədəf test faylları   60 keçdi
+tam dəst              2626 keçdi, 1 buraxıldı, 1 xfailed (5 dəq 49 san)
+```
+
+### Açıq qalan ⏳
+
+* **TB-2** — axın Jakobianının təzyiq sütunu (0.1936; G2b-dən əvvəl 0.5672).
+* **TB-3** — `_saturation_pressure_slope` ən üst Rs düyünündə: analitik 3.619,
+  sonlu fərq 1.810 (tam 2 dəfə) — interpolyasiyanın sərhəd davranışı.
+* **G3** — `c_o`-nun deck qolundan hesablanması.
+* Sonra: **SPE1CASE2 modeli** və etalonla müqayisə.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

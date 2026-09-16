@@ -139,10 +139,11 @@ class ThreePhaseNewtonSolver:
         rs = state.solution_gor(self.pvt)
         pc, dpc_dsw, pcog, dpcog_dsg = self._capillary_terms(state)
         bo, bo_p, bo_rs = self._oil_fvf(state, rs)
+        mu_o, mu_o_p, mu_o_rs = self._oil_viscosity(state, rs)
         return ThreePhaseFluidState(
             mu_w=np.full(state.ncell, self.model.fluids.water_viscosity)
                 if self.pvt is None else self._water_viscosity(pressure),
-            mu_o=self.pvt.oil_viscosity(pressure),
+            mu_o=mu_o,
             mu_g=self.pvt.gas_viscosity(pressure),
             bw=self.pvt.water_fvf(pressure), bo=bo,
             bg=self.pvt.gas_fvf(pressure), rs=rs,
@@ -150,6 +151,7 @@ class ThreePhaseNewtonSolver:
             kro=self.relperm.kro_three_phase(sw, sg),
             krg=self.relperm.krg(sg), pc=pc,
             bo_p=bo_p, bo_rs=bo_rs,
+            mu_o_p=mu_o_p, mu_o_rs=mu_o_rs,
             dpc_dsw=dpc_dsw, pcog=pcog, dpcog_dsg=dpcog_dsg)
 
     def _capillary_terms(self, state: ThreePhaseState):
@@ -205,6 +207,37 @@ class ThreePhaseNewtonSolver:
         bo_p = np.where(saturated, sat_dp, du_dp)
         bo_rs = np.where(saturated, 0.0, du_drs)
         return bo, bo_p, bo_rs
+
+    def _oil_viscosity(self, state: ThreePhaseState, rs: np.ndarray):
+        """μo və törəmələri — DOYMA VƏZİYYƏTİNƏ GÖRƏ (G2b).
+
+        `_oil_fvf`-in (B3-B) güzgüsüdür:
+          doymuş hüceyrə  → `μo_sat(p)`, `∂μo/∂Sg = 0`;
+          doymamış hüceyrə → `μo(p, Rs)` doymamış qoldan, `∂μo/∂Rs ≠ 0`.
+
+        NİYƏ VACİBDİR: doymuş qoldan oxumaq doymamış neftin təzyiqlə
+        QATILAŞMASINI itirir (SPE1: 0.51 → 0.74 cP, 45 %) və neft
+        mobilliyini olduğundan YÜKSƏK göstərir.
+
+        Provider doymamış qolu dəstəkləmirsə köhnə davranışa qayıdılır —
+        mühərrik müqaviləsi genişlənmir.
+        """
+        pressure = state.pressure
+        mu_sat = self.pvt.oil_viscosity(pressure)
+        branch = getattr(self.pvt, "oil_viscosity_undersaturated", None)
+        if branch is None:
+            return mu_sat, None, None
+
+        saturated = state.is_saturated
+        mu_u = branch(pressure, rs)
+        du_dp, du_drs = self.pvt.oil_viscosity_undersaturated_derivatives(
+            pressure, rs)
+        sat_dp = self.pvt.oil_viscosity_derivative(pressure)
+
+        mu_o = np.where(saturated, mu_sat, mu_u)
+        mu_o_p = np.where(saturated, sat_dp, du_dp)
+        mu_o_rs = np.where(saturated, 0.0, du_drs)
+        return mu_o, mu_o_p, mu_o_rs
 
     def _water_viscosity(self, pressure):
         analytic = getattr(self.pvt, "water_viscosity", None)

@@ -120,10 +120,21 @@ def test_fallback_warns_when_the_table_has_no_undersaturated_rows():
 def test_branch_is_continuous_at_the_bubble_point():
     """Rs = Rs_sat(p) olanda Pb(Rs) = p, yəni nəticə doymuş qolun özüdür."""
     provider = _correlation_provider()
+
+    # ÖLÇÜLDÜ (Seans 36): cədvəl DÜYÜNLƏRİNDƏ uyğunluq TAM DƏQİQDİR.
+    # Düyünlər arasında, xüsusən son düyünlə Pb arasında, xam sütun sınığı
+    # xətti kəsir və fərq 7.6e-3 nisbi səviyyəyə çatır — bu, qolun deyil,
+    # cədvəlin öz interpolyasiyasının xətasıdır.
+    nodes = provider.table.pressure
+    nodes = nodes[(nodes >= 100.0) & (nodes <= 239.0)]
+    assert np.allclose(provider.oil_viscosity_undersaturated(
+        nodes, provider.solution_gor(nodes)),
+        provider.oil_viscosity(nodes), rtol=1e-12)
+
     pressure = np.array([120.0, 200.0, 239.0])
     rs = provider.solution_gor(pressure)
     assert np.allclose(provider.oil_viscosity_undersaturated(pressure, rs),
-                       provider.oil_viscosity(pressure), rtol=1e-12)
+                       provider.oil_viscosity(pressure), rtol=1e-2)
 
 
 def test_undersaturated_oil_thickens_with_pressure():
@@ -201,14 +212,14 @@ def test_derivatives_are_consistent_with_the_exponent():
 
 # ═══════════════════════ mühərrik HƏLƏ dəyişmir ══════════════════════
 
-def test_engine_still_uses_the_saturated_branch_in_this_step():
-    """G2a YALNIZ provider-i genişləndirir — qoşulma ayrı commit-dir (G2b).
+def test_engine_wiring_happened_in_the_next_step():
+    """G2a-da bu test QOŞULMAMAĞI yoxlayırdı — G2b-də qoşulma baş verdi.
 
-    Bu test staging-i kilidləyir: flüid vəziyyətindəki `mu_o` hələ də
-    cədvəlin doymuş qolundan gəlir.
+    Test silinmir, TƏRSİNƏ çevrilir: staging-in tamamlandığını sənədləşdirir
+    (provider ayrı commit-də yazıldı, mühərriyə qoşulma ayrı commit-də).
     """
     import inspect
     from imex2d.simulation.implicit import three_phase_newton
-    source = inspect.getsource(three_phase_newton.ThreePhaseNewtonSolver.build_fluid)
-    assert "mu_o=self.pvt.oil_viscosity(pressure)" in source
-    assert "oil_viscosity_undersaturated" not in source
+    source = inspect.getsource(three_phase_newton.ThreePhaseNewtonSolver)
+    assert "_oil_viscosity" in source
+    assert "oil_viscosity_undersaturated" in source

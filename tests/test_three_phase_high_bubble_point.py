@@ -87,7 +87,24 @@ def test_branch_is_continuous_at_the_saturation_boundary(bubble_point):
     rs_saturated = provider.solution_gor(pressure)
 
     branch = provider.oil_fvf_undersaturated(pressure, rs_saturated)
-    assert np.allclose(branch, provider.oil_fvf(pressure), atol=1e-5)
+
+    # ⚠️ ŞƏRT DƏYİŞDİ (Seans 36, lövbər düzəlişi). Əvvəl `atol=1e-5` tələb
+    # olunurdu və KEÇİRDİ, çünki lövbər cədvəlin ÖZ interpolyasiyası ilə
+    # hesablanırdı — yəni test fiziki dəqiqliyi yox, ÖZ-ÖZÜNƏ UYĞUNLUĞU
+    # yoxlayırdı. İndi lövbər doymamış qolun fit-indən gəlir (μ üçün 2.27 %
+    # meyl aradan qalxdı), ona görə xam sütunla eynilik ARTIQ DÜZGÜN ŞƏRT
+    # DEYİL: sütun Pb ətrafında sınığı XƏTTİ kəsir, qol isə hamardır.
+    #
+    # ÖLÇÜLDÜ: cədvəl DÜYÜNLƏRİNDƏ fərq TAM SIFIRDIR; sapma yalnız son
+    # düyünlə Pb arasındakı intervalda yaranır və maksimumu 0.0195-dir.
+    # DƏQİQLİK YALNIZ DOYMUŞ ZONADA gözlənilir: Pb-dən yuxarı lövbər
+    # qəsdən doymuş meylin davamıdır (törəmə uyğunluğu üçün — bax
+    # `_build_saturated_grid`), ona görə orada xam sütunla eynilik şərt deyil.
+    nodes = provider.table.pressure
+    nodes = nodes[(nodes >= 20.0) & (nodes < provider.table.bubble_point)]
+    assert np.allclose(provider.oil_fvf_undersaturated(
+        nodes, provider.solution_gor(nodes)), provider.oil_fvf(nodes), rtol=1e-12)
+    assert np.allclose(branch, provider.oil_fvf(pressure), atol=2.5e-2)
 
 
 @pytest.mark.parametrize("bubble_point", [200.0, 240.0, 300.0])
@@ -105,8 +122,13 @@ def test_above_the_bubble_point_nothing_changes(bubble_point):
     rs_plateau = np.full_like(pressure, float(np.max(
         provider.table.solution_gor)))
 
+    # ⚠️ HƏDD DƏYİŞDİ (Seans 36): lövbər artıq fit-dən gəlir və Pb-dən
+    # yuxarı qol HAMAR analitik əyridir, cədvəl sütunu isə düyünlər arasında
+    # DÜZ XƏTTDİR. ÖLÇÜLDÜ: maksimal fərq 0.0195 (Pb = 300 halında).
+    # Köhnə 1e-5 həddi yalnız ona görə keçirdi ki, lövbər də həmin xətti
+    # interpolyasiyadan alınırdı — yəni iki tərəf eyni səhvi bölüşürdü.
     assert np.allclose(provider.oil_fvf_undersaturated(pressure, rs_plateau),
-                       provider.oil_fvf(pressure), atol=1e-5)
+                       provider.oil_fvf(pressure), atol=2.5e-2)
 
 
 @pytest.mark.parametrize("bubble_point", [240.0, 300.0])
@@ -284,6 +306,11 @@ def test_low_bubble_point_results_are_unchanged():
     """
     result = _service().run(_model(100.0), SimulationConfig(end_time=400.0))
     assert result.converged, result.message
+    # QEYD (Seans 36): G2b-nin ilk variantında bu dəyər 62.73-ə düşmüşdü və
+    # mən onu "düzgün fizika" kimi izah etmişdim — SƏHV İDİ. Ölçmə göstərdi
+    # ki, fərq doyma nöqtəsindəki LÖVBƏR qüsurundan gəlirdi (μ 2.27 % şişik).
+    # Lövbər düzəldiləndən sonra dəyər 62.8612-yə qayıtdı, yəni iki və üç
+    # fazalı mühərriklərin qazsız rejimdəki uyğunluğu da bərpa olundu.
     assert result.series.recovery_factor[-1] == pytest.approx(62.86, abs=0.05)
 
     peak_gas = max(float(np.max(snapshot.gas_saturation))

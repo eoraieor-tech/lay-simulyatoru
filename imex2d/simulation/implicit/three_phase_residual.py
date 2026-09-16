@@ -131,6 +131,11 @@ class ThreePhaseFluidState:
     # Rs-dən asılı deyil.
     #
     # `None` → həmin hədd yoxdur (köhnə davranış, bit-bit eyni).
+    #: μo-nun törəmələri — Bo-dakı (B3-B) ilə EYNİ məntiq (G2b).
+    #: Doymamış hüceyrədə μo Rs-dən asılıdır, ona görə `mu_o_rs`
+    #: sıfır DEYİL. `None` → köhnə davranış (doymuş cədvəl törəməsi).
+    mu_o_p: Optional[np.ndarray] = None    # ∂μo/∂p
+    mu_o_rs: Optional[np.ndarray] = None   # ∂μo/∂Rs (doymuşda 0)
     dpc_dsw: Optional[np.ndarray] = None  # ∂Pcow/∂Sw
     pcog: Optional[np.ndarray] = None     # qaz-neft kapilyar təzyiqi, bar
     dpcog_dsg: Optional[np.ndarray] = None  # ∂Pcog/∂(3-cü dəyişən)
@@ -158,6 +163,26 @@ def oil_fvf_pressure_derivative(fluid: ThreePhaseFluidState, pvt, pressure):
     if fluid.bo_p is not None:
         return fluid.bo_p
     return pvt.oil_fvf_derivative(pressure)
+
+
+def oil_viscosity_pressure_derivative(fluid: ThreePhaseFluidState, pvt,
+                                      pressure):
+    """∂μo/∂p — flüid vəziyyəti veribsə ondan, yoxsa cədvəldən (G2b).
+
+    `oil_fvf_pressure_derivative` ilə eyni geri-dönüş qaydası: flüidi əl
+    ilə quran testlər və `coupled_newton` doymuş törəməni işlədir və
+    onların Jakobianı öz-özünə uyğun qalır.
+    """
+    if fluid.mu_o_p is not None:
+        return fluid.mu_o_p
+    return pvt.oil_viscosity_derivative(pressure)
+
+
+def oil_viscosity_rs_derivative(fluid: ThreePhaseFluidState, mu_o):
+    """∂μo/∂Rs — yalnız doymamış qol veriləndə sıfırdan fərqlidir."""
+    if fluid.mu_o_rs is not None:
+        return fluid.mu_o_rs
+    return np.zeros_like(np.asarray(mu_o, float))
 
 
 def oil_fvf_rs_derivative(fluid: ThreePhaseFluidState, bo):
@@ -748,7 +773,8 @@ class ThreePhaseFluxJacobian:
         # doymamış qoldan gəlir — flüid vəziyyəti onu daşıyır.
         bo_p = oil_fvf_pressure_derivative(fluid, pvt, state.pressure)
         bg_p = self.flux.model_pvt_derivative(pvt, "gas_fvf", state.pressure)
-        mu_o_p = self.flux.model_pvt_derivative(pvt, "oil_viscosity", state.pressure)
+        # G2b: doymamış hüceyrədə ∂μo/∂p da doymamış qoldan gəlir
+        mu_o_p = oil_viscosity_pressure_derivative(fluid, pvt, state.pressure)
         mu_g_p = self.flux.model_pvt_derivative(pvt, "gas_viscosity", state.pressure)
 
         dmw_dp = -fluid.krw * (mu_w_p * fluid.bw + fluid.mu_w * bw_p) \
@@ -826,10 +852,15 @@ class ThreePhaseFluxJacobian:
         # (hasil qaydası ilə) həll olmuş qaz sətrini əskik saxlayırdı.
         bo_rs_up = oil_fvf_rs_derivative(fluid, fluid.bo)[up_o]
         mob_o_up = fluid.lam_o[up_o] / fluid.bo[up_o]
+        # G2b: mobillik `kro/(μo·Bo)`-dur, ona görə Rs-ə görə törəmə
+        # İKİ hədddən ibarətdir — əvvəl yalnız Bo həddi var idi.
+        mu_o_rs_up = oil_viscosity_rs_derivative(fluid, fluid.mu_o)[up_o]
+        relative_rs = (bo_rs_up / fluid.bo[up_o]
+                       + mu_o_rs_up / fluid.mu_o[up_o])
         d_oil_dthird = np.where(
             state.is_saturated[up_o],
             trans * dkro_dsg / fluid.mu_o[up_o] / fluid.bo[up_o] * d_phi_o,
-            -trans * mob_o_up * bo_rs_up / fluid.bo[up_o] * d_phi_o)
+            -trans * mob_o_up * relative_rs * d_phi_o)
 
         dkrg_dsg = self.relperm.gas.krg_derivative(sg_up_g, self.relperm.swc)
         d_gas_dthird_free = np.where(
@@ -906,11 +937,14 @@ class ThreePhaseWellJacobian:
         # bax `face_pressure_derivatives`-dəki eyni düzəlişin şərhi:
         # su lözlüyü PVT-dən gəlir və təzyiqdən asılıdır
         mu_w_p = self.pvt.water_viscosity_derivative(state.pressure)
-        mu_o_p = self.pvt.oil_viscosity_derivative(state.pressure)
+        # G2b: doymamış qol veriləndə flüid vəziyyətindən gəlir
+        mu_o_p = oil_viscosity_pressure_derivative(fluid, self.pvt,
+                                                   state.pressure)
         mu_g_p = self.pvt.gas_viscosity_derivative(state.pressure)
         bw_p = self.pvt.water_fvf_derivative(state.pressure)
         bo_p = oil_fvf_pressure_derivative(fluid, self.pvt, state.pressure)
         bo_rs = oil_fvf_rs_derivative(fluid, fluid.bo)   # B3-B
+        mu_o_rs = oil_viscosity_rs_derivative(fluid, fluid.mu_o)   # G2b
         bg_p = self.pvt.gas_fvf_derivative(state.pressure)
         rs_sat_p = self.pvt.solution_gor_derivative(state.pressure)
 
@@ -982,6 +1016,9 @@ class ThreePhaseWellJacobian:
                 # addımladardı).
                 drawdown = connection.target - state.pressure[c]
 
+                # BHP rejimində su debiti Rs-dən asılı deyil (su öz
+                # mobilliyi ilə gəlir) — ortaq dəyişən sıfır qalır.
+                dqw_dthird = 0.0
                 chop_w = 1.0 if wi * mob_w * drawdown < 0.0 else 0.0
                 chop_o = 1.0 if wi * mob_o * drawdown < 0.0 else 0.0
                 chop_g = 1.0 if wi * mob_g * drawdown < 0.0 else 0.0
@@ -997,10 +1034,12 @@ class ThreePhaseWellJacobian:
                     dqo_dthird = (chop_o * wi * drawdown * dkro_dsg
                                  / fluid.mu_o[c] / fluid.bo[c])
                 else:
-                    # doymamış: 3-cü dəyişən Rs-dir və mobillik Bo
-                    # vasitəsilə ondan asılıdır (B3-B)
+                    # doymamış: 3-cü dəyişən Rs-dir və mobillik HƏM Bo,
+                    # HƏM μo vasitəsilə ondan asılıdır (B3-B + G2b):
+                    #     ∂mob_o/∂Rs = −mob_o·(Bo'_Rs/Bo + μo'_Rs/μo)
                     dqo_dthird = (-chop_o * wi * drawdown * mob_o
-                                  * bo_rs[c] / fluid.bo[c])
+                                  * (bo_rs[c] / fluid.bo[c]
+                                     + mu_o_rs[c] / fluid.mu_o[c]))
 
                 dqfree_dp = chop_g * wi * (-mob_g + drawdown * dmg_dp)
                 dqfree_dthird = 0.0
@@ -1030,16 +1069,27 @@ class ThreePhaseWellJacobian:
                 dqo_dp = total * (-dfraction_dp / fluid.bo[c]
                                   - (1.0 - fraction) * bo_p[c] / fluid.bo[c] ** 2)
                 # RATE rejimində maye fraksiyası Sg-dən asılı deyil
-                # (sadələşdirmə), LAKİN doymamış halda q_o = total·
-                # (1−f)/Bo və Bo Rs-dən asılıdır (B3-B).
-                dqo_dthird = (0.0 if saturated else
-                              -total * (1.0 - fraction) * bo_rs[c]
-                              / fluid.bo[c] ** 2)
+                # (sadələşdirmə), LAKİN doymamış halda 3-cü dəyişən
+                # Rs-dir və İKİ yolla girir (B3-B + G2b):
+                #   q_o = total·(1−f)/Bo   → Bo(Rs) və f(μo(Rs))
+                #   q_w = total·f/Bw       → f(μo(Rs))  ← YENİ hədd
+                # ∂λo/∂Rs = −λo·μo'_Rs/μo,  ∂f/∂Rs = −λw·∂λo/∂Rs/λt²
+                if saturated:
+                    dqo_dthird = 0.0
+                    dqw_dthird = 0.0
+                else:
+                    dlo_drs = -lam_o * mu_o_rs[c] / fluid.mu_o[c]
+                    dfraction_drs = -lam_w * dlo_drs / lam_t ** 2
+                    dqo_dthird = total * (-dfraction_drs / fluid.bo[c]
+                                          - (1.0 - fraction) * bo_rs[c]
+                                          / fluid.bo[c] ** 2)
+                    dqw_dthird = total * dfraction_drs / fluid.bw[c]
                 dqfree_dp = 0.0
                 dqfree_dthird = 0.0
 
             blocks[c, 0, 0] += dqw_dp
             blocks[c, 0, 1] += dqw_dsw
+            blocks[c, 0, 2] += dqw_dthird        # G2b (RATE + doymamış)
             blocks[c, 1, 0] += dqo_dp
             blocks[c, 1, 1] += dqo_dsw
             blocks[c, 1, 2] += dqo_dthird

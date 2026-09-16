@@ -102,9 +102,18 @@ class BlackOilPVTProvider(IPVTProvider):
         # ln(Bo) orada p-yə görə XƏTTİDİR və meyli tam `−c_o`-dur.
         above = pressure > pb
         bo = np.asarray(self._oil_fvf, float)
+        self._bo_anchor = None
+        self._mu_anchor = None
         if int(np.count_nonzero(above)) >= 2 and np.all(bo[above] > 0.0):
-            slope = np.polyfit(pressure[above], np.log(bo[above]), 1)[0]
+            slope, intercept = np.polyfit(pressure[above], np.log(bo[above]), 1)
             self._undersaturated_co = float(max(-slope, 1e-6))
+            # LÖVBƏR (ölçülmüş düzəliş, Seans 36): `Bo_sat(Pb)`-ni cədvəldən
+            # interpolyasiya ilə GÖTÜRMƏK OLMAZ — Pb adətən düyün deyil və
+            # əyrinin orada SINIĞI var (Bo aşağıda artır, yuxarıda azalır).
+            # Ölçüldü: iki tərəfli interpolyasiya Bo_b-ni 0.37 %, μ_b-ni
+            # 2.27 % səhv verir. Doğru lövbər doymamış qolun ÖZ fit-inin
+            # Pb-dəki qiymətidir — həmin fit onsuz da aparılır.
+            self._bo_anchor = float(np.exp(intercept + slope * pb))
         else:
             # Cədvəldə doymamış qol yoxdur (Pb ≥ p_maks). Süxur-flüid
             # sıxılmasının neft hissəsi ən yaxın fiziki əvəzdir.
@@ -116,8 +125,11 @@ class BlackOilPVTProvider(IPVTProvider):
         mu = np.asarray(self.table.oil_viscosity, float)
         usable = above & (pressure > 0.0) & (mu > 0.0)
         if int(np.count_nonzero(usable)) >= 2:
-            self._undersaturated_viscosity_exponent = float(np.polyfit(
-                np.log(pressure[usable]), np.log(mu[usable]), 1)[0])
+            slope_mu, intercept_mu = np.polyfit(
+                np.log(pressure[usable]), np.log(mu[usable]), 1)
+            self._undersaturated_viscosity_exponent = float(slope_mu)
+            self._mu_anchor = float(np.exp(intercept_mu
+                                           + slope_mu * np.log(max(pb, 1e-12))))
             self._viscosity_exponent_fitted = True
         else:
             self._undersaturated_viscosity_exponent = \
@@ -129,6 +141,87 @@ class BlackOilPVTProvider(IPVTProvider):
                 "düşdü. Ölçüldü: real deck-lərdə bu üstəl 0.46-0.51 ola "
                 "bilir, yəni nəticə OLDUĞUNDAN ZƏİF özlülük artımı verir.",
                 CORRELATION_VISCOSITY_EXPONENT)
+
+        self._build_saturated_grid(pb)
+
+    def _build_saturated_grid(self, pb: float):
+        """DOYMUŞ qol üçün düzəldilmiş şəbəkə — lövbərin mənbəyi.
+
+        PROBLEM (ölçüldü, Seans 36): `Bo_sat(Pb)`/`μo_sat(Pb)` cədvəldən
+        adi interpolyasiya ilə götürüləndə Pb ADƏTƏN DÜYÜN OLMUR və
+        interpolyasiya əyrinin SINIĞINI kəsir (μo Pb-dən aşağı azalır,
+        yuxarı artır). Nəticə: μ lövbəri 2.27 %, Bo lövbəri 0.37 % səhv.
+
+        İLK CƏHD SƏHV İDİ: lövbəri `np.where` ilə "Pb-də fit, aşağıda
+        interpolyasiya" kimi seçmək SIÇRAYIŞ yaradırdı — sonlu fərq
+        ∂/∂Rs üçün 27 kimi qiymətlər verirdi (kəsilməzlik Nyuton üçün
+        2 %-lik meyldən DAHA VACİBDİR).
+
+        DÜZGÜN HƏLL: şəbəkəni Pb-də KƏSMƏK və oraya fit-dən gələn dəqiq
+        nöqtəni qoymaq. Onda lövbər həm sınığı kəsmir, həm də `pb` üzrə
+        kəsilməz qalır; törəməsi isə elə bu əyrinin öz meylidir.
+        """
+        pressure = np.asarray(self.table.pressure, float)
+        tolerance = 1e-9 * max(abs(pb), 1.0)
+
+        # ŞƏBƏKƏ Pb-DƏ KƏSİLMİR (2-ci düzəliş, ölçülmüş səbəb): əvvəlki
+        # variantda şəbəkə Pb-də bitirdi və `np.interp` ondan yuxarı sabit
+        # qalırdı. Doymamış hüceyrələrin ƏKSƏRİYYƏTİ məhz Pb-də oturur, ona
+        # görə sonlu fərq Rs-i artıranda lövbər "donurdu" və akkumulyasiya
+        # Jakobianı 4.4 dəfə səhv çıxırdı (ölçüldü). İndi şəbəkə tam
+        # diapazondadır: Pb-dən AŞAĞI cədvəlin öz düyünləri, Pb-dən YUXARI
+        # isə fit əyrisinin öz qiymətləri — yəni hər iki tərəfdə hamardır.
+        grid = np.unique(np.concatenate([pressure, [pb]]))
+        below = grid < pb - tolerance
+        above = grid > pb + tolerance
+
+        def augmented(values, anchor):
+            """DOYMUŞ əyri `pb`-nin funksiyası kimi.
+
+            Pb-yə qədər — cədvəlin öz düyünləri (sınıq kəsilmir, çünki
+            şəbəkə orada bitir). Pb-də — fit-dən gələn dəqiq lövbər.
+            Pb-dən YUXARI — həmin DOYMUŞ meylin davamı.
+
+            NİYƏ DOYMUŞ MEYL (2-ci cəhdin səhvi): oraya doymamış qolun
+            qiymətlərini yazmaq lövbərin meylini `−c_o` edirdi və törəmə
+            düsturundakı `+c_o` ilə tam kompensasiya olunurdu — analitik
+            ∂/∂Rs sıfıra düşürdü (ölçüldü: SF 4.2e-3, analitik 7.7e-7).
+            Lövbər DOYMUŞ qiymətdir, ona görə meyli də doymuş meyl olmalıdır.
+            Yuxarı davam yalnız ona görə lazımdır ki, `pb` sərhəddə olanda
+            mərkəzi sonlu fərq simmetrik qalsın (şəbəkə "donmasın").
+            """
+            values = np.asarray(values, float)
+            merged = np.interp(grid, pressure, values)
+            if anchor is None:          # fit yoxdur — köhnə davranış
+                return merged
+            merged[np.isclose(grid, pb, atol=tolerance)] = float(anchor)
+            if np.any(below) and np.any(above):
+                last = grid[below][-1]
+                slope = (float(anchor) - merged[below][-1]) / max(pb - last, 1e-12)
+                merged[above] = float(anchor) + slope * (grid[above] - pb)
+            return merged
+
+        self._sat_pressure = grid
+        self._sat_oil_fvf = augmented(self._oil_fvf, self._bo_anchor)
+        self._sat_oil_viscosity = augmented(self.table.oil_viscosity,
+                                            self._mu_anchor)
+
+    def _anchor_at(self, values: np.ndarray, pb) -> np.ndarray:
+        """Düzəldilmiş doymuş şəbəkə üzrə lövbər (bax `_build_saturated_grid`)."""
+        return np.interp(np.asarray(pb, float), self._sat_pressure, values)
+
+    def _anchor_slope(self, values: np.ndarray, pb) -> np.ndarray:
+        """`_anchor_at`-in DƏQİQ törəməsi — eyni şəbəkənin interval meyli."""
+        pb = np.atleast_1d(np.asarray(pb, float))
+        nodes = self._sat_pressure
+        if nodes.size < 2:
+            return np.zeros_like(pb)
+        slopes = np.diff(values) / np.diff(nodes)
+        index = np.clip(np.searchsorted(nodes, pb, side="right") - 1,
+                        0, slopes.size - 1)
+        result = slopes[index]
+        outside = (pb < nodes[0]) | (pb > nodes[-1])
+        return np.where(outside, 0.0, result)
 
     def saturation_pressure(self, rs) -> np.ndarray:
         """Pb(Rs) — verilmiş həll olmuş qazın doyma təzyiqi.
@@ -194,7 +287,7 @@ class BlackOilPVTProvider(IPVTProvider):
         """
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
-        bo_at_pb = self._interp(self._oil_fvf, pb)
+        bo_at_pb = self._anchor_at(self._sat_oil_fvf, pb)
         return bo_at_pb * np.exp(self._undersaturated_co * (pb - pressure))
 
     def oil_fvf_undersaturated_derivatives(self, pressure, rs):
@@ -205,13 +298,13 @@ class BlackOilPVTProvider(IPVTProvider):
         """
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
-        bo_at_pb = self._interp(self._oil_fvf, pb)
+        bo_at_pb = self._anchor_at(self._sat_oil_fvf, pb)
         bo = bo_at_pb * np.exp(self._undersaturated_co * (pb - pressure))
 
         d_dp = -self._undersaturated_co * bo
         safe = np.where(bo_at_pb > 0.0, bo_at_pb, 1.0)
         d_drs = (self._saturation_pressure_slope(rs) * bo
-                 * (self._slope("oil_fvf", pb) / safe
+                 * (self._anchor_slope(self._sat_oil_fvf, pb) / safe
                     + self._undersaturated_co))
         return d_dp, d_drs
 
@@ -235,7 +328,7 @@ class BlackOilPVTProvider(IPVTProvider):
         """
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
-        mu_at_pb = self._interp(self.table.oil_viscosity, pb)
+        mu_at_pb = self._anchor_at(self._sat_oil_viscosity, pb)
         ratio = np.maximum(pressure / np.maximum(pb, 1e-12), 1e-12)
         return mu_at_pb * ratio ** self._undersaturated_viscosity_exponent
 
@@ -252,13 +345,13 @@ class BlackOilPVTProvider(IPVTProvider):
         pb = self.saturation_pressure(rs)
         safe_pb = np.maximum(pb, 1e-12)
         exponent = self._undersaturated_viscosity_exponent
-        mu_at_pb = self._interp(self.table.oil_viscosity, pb)
+        mu_at_pb = self._anchor_at(self._sat_oil_viscosity, pb)
         ratio = np.maximum(pressure / safe_pb, 1e-12)
         mu = mu_at_pb * ratio ** exponent
 
         d_dp = exponent * mu / np.maximum(pressure, 1e-12)
         d_drs = self._saturation_pressure_slope(rs) * (
-            self._slope("oil_viscosity", pb) * ratio ** exponent
+            self._anchor_slope(self._sat_oil_viscosity, pb) * ratio ** exponent
             - exponent * mu / safe_pb)
         return d_dp, d_drs
 

@@ -545,6 +545,9 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 >
 > **Seans 35:** G2a ✅ — doymamış neft özlülüyü provider-də (Q-28);
 > mühərriyə qoşulma G2b-dədir.
+>
+> **Seans 36:** G2b ✅ (Q-29) — qoşulma tamamlandı; doyma nöqtəsi lövbəri
+> düzəldildi; TB-2 və TB-3 qeydə alındı.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
 > **Seans 27:** BHP limitindən əvvəl RATE hədəfinin perforasiyalara bölünməsi

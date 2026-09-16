@@ -82,7 +82,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 >
 > **16 sentyabr 2026 (Seans 35):** **G2a** ✅ — doymamış neft özlülüyü
 > μo(p, Rs) provider səviyyəsində; üstəl cədvəldən fit olunur (Q-28).
-> Mühərriyə qoşulma (**G2b**) ayrıca commit-dir.
+>
+> **16 sentyabr 2026 (Seans 36):** **G2b** ✅ — özlülük mühərriyə qoşuldu
+> (3-cü sütun 3.6×10⁻¹¹). Yol boyu doyma nöqtəsindəki **lövbər qüsuru**
+> tapıldı və düzəldildi (μ-da 2.27 % meyl) — Q-29. Növbəti: **G3**.
 >
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
@@ -257,6 +260,8 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 | # | Nə | Ölçülüb | Mənbə |
 |---|---|---|---|
 | TB-1 | Üç fazalı RATE istismarçısının quyu Jakobianı: sərbəst qazın təzyiq/Sg törəmələri sıfır qoyulub | sonlu fərqə qarşı nisbi xəta **0.4893** (tək perforasiya), 0.3239 (iki) | Seans 27, `three_phase_residual.py` RATE budağı |
+| TB-2 | Üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə | nisbi xəta **0.1936**; ən pis element 8-ci hüceyrənin qaz tənliyi, orada quyu YOXDUR. G2b-dən əvvəl 0.5672 idi | Seans 36; ehtimal: cazibədə sıxlığın təzyiq törəməsi + upstream seçiminin diferensiallaşdırılmaması |
+| TB-3 | `_saturation_pressure_slope` ən üst Rs düyünündə | analitik 3.619, sonlu fərq 1.810 — **tam 2 dəfə** (interpolyasiya düyündən yuxarı sabit qalır, mərkəzi fərq yarısını görür) | Seans 36, `black_oil.py` |
 
 ---
 
