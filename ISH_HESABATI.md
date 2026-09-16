@@ -4657,3 +4657,24 @@ tam dəst                          2679 keçdi, 1 buraxıldı, 1 xfailed (10 də
 * SWOF/SGOF-un Pc sütunu vahid çevirməsiz oxunur (SPE1-də 0).
 * TB-2-nin əsl mənbəyi.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 39: təhvil — iş başqa kompüterdə davam edəcək
+
+Sahibkarın göstərişi: `TEHVIL_TESLIM.md` hazırlansın; işi digər həmkar öz
+kompüterində davam etdirəcək.
+
+### Edilən
+
+| Fayl | Nə |
+|---|---|
+| `TEHVIL_TESLIM.md` | tam yenidən yazıldı: vəziyyət (2679 test, Seans 39 / Q-31), Seans 37–38 commit-ləri, yeni maşında mühit və SPE1 fayllarının qurulması, SPE1CASE2 müqayisə cədvəli, **növbəti iş — fərqin səbəbləri** (vurucu mobilliyi → G7 → Stone → zaman addımı), texniki borc, yeni tələlər (`sed -i` CRLF-i pozur, tək laylı test modellərində cazibə yoxdur, `engine.initialization` qurulanda seçilir, FOPR-un ilk günlərdəki 0.1 % sapması). Bitmiş G1–G6 mərhələlərinin uzun təsviri çıxarıldı — əvvəlki məzmun: `git show 94d04f4:TEHVIL_TESLIM.md` |
+
+Kod dəyişməyib — test dəsti işlədilmədi; son ölçülmüş nəticə Seans 38-dən:
+2679 keçdi, 1 buraxıldı, 1 xfailed.
+
+### Açıq qalan ⏳
+
+* Növbəti iş: `TEHVIL_TESLIM.md` §5 — SPE1CASE2 fərqinin səbəbləri, əvvəl
+  vurucu bağlantısının mobilliyi (1-ci gündə WBHP INJ 5271 ↔ 8082 psia).
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
