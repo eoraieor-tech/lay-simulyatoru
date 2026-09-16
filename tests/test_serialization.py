@@ -162,6 +162,17 @@ def test_pvt_scal_capillary_and_initial_conditions_survive():
            model.initial_conditions.datum_pressure
 
 
+def test_pvt_gas_columns_survive_round_trip():
+    """Seans 38: qaz sütunları əvvəl yazılmırdı — qaz fazası səssizcə itirdi."""
+    project, model = _rich_project(with_result=False)
+    model.pvt_table = build_pvt_table(bubble_point_bar=230.0, include_gas=True)
+    restored = _round_trip(project)[0].reservoir_models[model.name]
+    assert restored.pvt_table.has_gas_phase
+    assert np.allclose(restored.pvt_table.gas_fvf, model.pvt_table.gas_fvf)
+    assert np.allclose(restored.pvt_table.gas_viscosity,
+                       model.pvt_table.gas_viscosity)
+
+
 def test_restored_model_passes_validation():
     project, model = _rich_project(with_result=False)
     restored = _round_trip(project)[0].reservoir_models[model.name]

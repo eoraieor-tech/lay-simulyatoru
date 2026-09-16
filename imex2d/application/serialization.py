@@ -638,6 +638,12 @@ class ProjectSerializer:
             "bubble_point": table.bubble_point,
             "rock_compressibility": table.rock_compressibility,
             "source": table.source,
+            # Seans 38: qaz sütunları əvvəl YAZILMIRDI — qazlı model faylda
+            # saxlanıb açılanda `has_gas_phase` səssizcə False olurdu (ölçüldü).
+            "gas_fvf": (None if table.gas_fvf is None
+                        else _array(table.gas_fvf)),
+            "gas_viscosity": (None if table.gas_viscosity is None
+                              else _array(table.gas_viscosity)),
         }
 
     @staticmethod
