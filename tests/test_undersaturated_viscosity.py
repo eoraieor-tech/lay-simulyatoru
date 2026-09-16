@@ -7,7 +7,7 @@ neftin tərkibi sabitdir, ona görə özlülük həmin Rs-in doyma təzyiqindən
 başlayan qola aiddir — cədvəlin doymuş qoluna YOX.
 
 ÜSTƏL HARADAN GƏLİR (ölçüldü, Seans 34): korrelyasiya sabit 0.278 işlədir,
-SPE1 deck-inin qolları isə 0.4602 və 0.5085 verir. Ona görə üstəl CƏDVƏLİN ÖZ
+SPE1 deck-inin qolları isə 0.4602 və 0.5802 verir (Seans 37-də düzəldilib). Ona görə üstəl CƏDVƏLİN ÖZ
 doymamış sətirlərindən fit olunur; fit mümkün olmayanda korrelyasiya qiymətinə
 düşülür VƏ xəbərdarlıq verilir.
 
@@ -65,15 +65,15 @@ def _correlation_provider() -> BlackOilPVTProvider:
 # ═══════════════════════ üstəlin fit olunması ════════════════════════
 
 def test_exponent_is_fitted_from_the_table_not_hardcoded():
-    """SPE1-in qolları 0.46-0.51 verir — sabit 0.278 YARAMIR."""
+    """SPE1-in qolları 0.46-0.58 verir — sabit 0.278 YARAMIR."""
     provider = BlackOilPVTProvider(_synthetic_table(0.46))
     assert provider.viscosity_exponent_fitted
     assert provider.undersaturated_viscosity_exponent == pytest.approx(0.46, rel=1e-6)
 
 
 def test_a_different_exponent_is_recovered_too():
-    provider = BlackOilPVTProvider(_synthetic_table(0.5085))
-    assert provider.undersaturated_viscosity_exponent == pytest.approx(0.5085,
+    provider = BlackOilPVTProvider(_synthetic_table(0.5802))
+    assert provider.undersaturated_viscosity_exponent == pytest.approx(0.5802,
                                                                        rel=1e-6)
 
 

@@ -24,7 +24,7 @@ LOG = get_logger(__name__)
 #: saturated_undersaturated_oil_properties`-dəki `μ = μ_b·(p/Pb)^0.278`
 #: ilə EYNİ ədəd. Cədvəldə doymamış sətir olmayanda işlədilir.
 #:
-#: ⚠️ ÖLÇÜLDÜ (Seans 34): SPE1 deck-inin qolları 0.4602 və 0.5085 verir,
+#: ⚠️ ÖLÇÜLDÜ (Seans 37): SPE1 deck-inin qolları 0.4602 və 0.5802 verir,
 #: yəni bu ehtiyat qiymət REAL deck üçün yanlışdır — ona görə işlədiləndə
 #: xəbərdarlıq yazılır.
 CORRELATION_VISCOSITY_EXPONENT = 0.278
@@ -138,7 +138,7 @@ class BlackOilPVTProvider(IPVTProvider):
             LOG.warning(
                 "PVT: cədvəldə doyma təzyiqindən yuxarı iki sətir yoxdur — "
                 "doymamış özlülük üstəli korrelyasiya qiymətinə (%.3f) "
-                "düşdü. Ölçüldü: real deck-lərdə bu üstəl 0.46-0.51 ola "
+                "düşdü. Ölçüldü: real deck-lərdə bu üstəl 0.46-0.58 ola "
                 "bilir, yəni nəticə OLDUĞUNDAN ZƏİF özlülük artımı verir.",
                 CORRELATION_VISCOSITY_EXPONENT)
 

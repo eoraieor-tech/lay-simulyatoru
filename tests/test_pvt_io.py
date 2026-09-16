@@ -46,7 +46,7 @@ PVTO
     1.2700   4014.7    1.6950   0.5100
              9014.7    1.5790   0.7400 /
     1.6180   5014.7    1.8270   0.4490
-             9014.7    1.7260   0.6050 /
+             9014.7    1.7370   0.6310 /
 /
 
 DENSITY
@@ -232,15 +232,24 @@ def test_measured_conversions_match_the_deck_numbers():
         5.2216e-5, rel=1e-4)
 
 
-def test_deck_branches_give_a_consistent_compressibility():
-    """G3 üçün ÖLÇMƏ: iki Rs qolunun doymamış sıxılması praktik olaraq eynidir."""
+def test_deck_branches_have_different_compressibility_and_exponent():
+    """G3 üçün ÖLÇMƏ: iki Rs qolunun doymamış sıxılması və özlülük üstəli FƏRQLİDİR.
+
+    DÜZƏLİŞ (Seans 37): bu test əvvəl "praktik olaraq eynidir" (< 1 %)
+    iddiasını kilidləyirdi, çünki sınaq deck-ində Rs = 1.618 qolunun doymamış
+    sətri SƏHV köçürülmüşdü (`1.7260 0.6050`; SPE1CASE2.DATA-da
+    `1.7370 0.6310`). Real rəqəmlərlə: c_o 2.056e-4 ↔ 1.832e-4 1/bar
+    (~11 %), n 0.460 ↔ 0.580.
+    """
     deck = read_deck_pvt(_deck())
-    values = []
+    compressibility, exponent = [], []
     for branch in deck.oil.branches:
         if not branch.has_undersaturated:
             continue
-        bo = branch.formation_volume_factor
-        values.append(float(np.log(bo[0] / bo[1])
-                            / (branch.pressure[1] - branch.pressure[0])))
-    assert len(values) == 2
-    assert abs(values[0] - values[1]) / values[0] < 0.01, values
+        bo, mu, p = branch.formation_volume_factor, branch.viscosity, branch.pressure
+        compressibility.append(float(np.log(bo[0] / bo[1]) / (p[1] - p[0])))
+        exponent.append(float(np.log(mu[1] / mu[0]) / np.log(p[1] / p[0])))
+    assert len(compressibility) == 2
+    assert compressibility == pytest.approx([2.0564e-4, 1.8317e-4], rel=1e-3)
+    assert exponent == pytest.approx([0.4602, 0.5802], rel=1e-3)
+    assert abs(compressibility[0] - compressibility[1]) / compressibility[0] > 0.1
