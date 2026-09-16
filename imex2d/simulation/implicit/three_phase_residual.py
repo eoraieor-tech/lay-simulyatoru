@@ -305,10 +305,20 @@ class ThreePhaseFlux:
         return GRAVITY * self._depth_difference * PA_TO_BAR
 
     def densities(self, fluid: ThreePhaseFluidState):
-        """Lay şəraitində faza sıxlıqları (su, neft, qaz), kg/m³."""
+        """Lay şəraitində faza sıxlıqları (su, neft, qaz), kg/m³.
+
+        CANLI NEFT (G9b): lay neftinin kütləsinə həll olmuş qaz da daxildir —
+
+            ρo = (ρo_səth + Rs·ρg_səth) / Bo
+
+        Əvvəl `ρo_səth/Bo` idi. Ölçüldü (SPE1, 4800 psia, Rs = 226 sm³/sm³):
+        513 → 628 kq/m³ (+22 %), neft-qaz sıxlıq fərqi isə ~36 % artır.
+        Rs = 0 olanda (qazsız neft) nəticə əvvəlki ilə eynidir.
+        """
         fluids = self.model.fluids
         rho_w = fluids.water_density / np.maximum(fluid.bw, 1e-9)
-        rho_o = fluids.oil_density / np.maximum(fluid.bo, 1e-9)
+        rho_o = ((fluids.oil_density + fluid.rs * fluids.gas_density)
+                 / np.maximum(fluid.bo, 1e-9))
         rho_g = fluids.gas_density / np.maximum(fluid.bg, 1e-9)
         return rho_w, rho_o, rho_g
 
@@ -842,20 +852,34 @@ class ThreePhaseFluxJacobian:
     def density_pressure_derivatives(self, state, fluid, pvt, bw_p, bo_p, bg_p):
         """(∂ρw/∂p, ∂ρo/∂p, ∂ρg/∂p) hüceyrə üzrə — `ThreePhaseFlux.densities`."""
         rho_w, rho_o, rho_g = self.flux.densities(fluid)
+        bo = np.maximum(fluid.bo, 1e-9)
+        # G9b: doymuş hüceyrədə Rs = Rs_sat(p) — həll olmuş qazın kütləsi də
+        # təzyiqdən asılıdır; doymamışda Rs sərbəst dəyişəndir.
+        rs_sat_p = self.flux.model_pvt_derivative(pvt, "solution_gor",
+                                                  state.pressure)
+        gas_density = self.flux.model.fluids.gas_density
+        drho_o = (np.where(state.is_saturated, rs_sat_p * gas_density / bo, 0.0)
+                  - rho_o * bo_p / bo)
         return (-rho_w * bw_p / np.maximum(fluid.bw, 1e-9),
-                -rho_o * bo_p / np.maximum(fluid.bo, 1e-9),
+                drho_o,
                 -rho_g * bg_p / np.maximum(fluid.bg, 1e-9))
 
     def density_third_derivatives(self, state, fluid):
         """∂ρo/∂(3-cü dəyişən) hüceyrə üzrə — yalnız doymamışda sıfırdan fərqli.
 
-        Doymamış hüceyrədə Bo Rs-dən asılıdır (B3-B), ona görə neft sıxlığı
-        da asılıdır. Su və qaz sıxlığı 3-cü dəyişəndən asılı deyil.
+        Doymamış hüceyrədə Bo Rs-dən asılıdır (B3-B), G9b-dən sonra isə
+        həll olmuş qazın kütləsi də (`Rs·ρg_səth`):
+
+            ∂ρo/∂Rs = ρg_səth/Bo − ρo·Bo'_Rs/Bo
+
+        Su və qaz sıxlığı 3-cü dəyişəndən asılı deyil.
         """
         _, rho_o, _ = self.flux.densities(fluid)
+        bo = np.maximum(fluid.bo, 1e-9)
         bo_rs = oil_fvf_rs_derivative(fluid, fluid.bo)
+        gas_density = self.flux.model.fluids.gas_density
         return np.where(state.is_saturated, 0.0,
-                        -rho_o * bo_rs / np.maximum(fluid.bo, 1e-9))
+                        gas_density / bo - rho_o * bo_rs / bo)
 
     def face_saturation_derivatives(self, state: ThreePhaseState,
                                     fluid: ThreePhaseFluidState,

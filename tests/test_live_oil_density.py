@@ -93,11 +93,16 @@ def test_third_column_matches_finite_difference_with_gravity():
 
 
 def test_density_derivatives_are_necessary(without_density_derivatives):
-    """ZƏRURİLİK: törəmələr sıfırlananda hər iki sütun ölçülmüş səviyyəyə qayıdır."""
+    """ZƏRURİLİK: törəmələr sıfırlananda hər iki sütun pozulur.
+
+    Ölçüldü (G9b-dən sonra, defolt sıxlıqlar): təzyiq sütunu 3.2e-7 → 1.6e-5
+    (G9b-dən əvvəl 8.2e-5 idi — həll olmuş qaz həddi Bo həddini qismən
+    kompensasiya edir), 3-cü sütun 1.7e-10 → ~1e-2.
+    """
     engine = _engine()
     saturated = _column_kind_errors(engine, _saturated_state(engine))
     mixed = _column_kind_errors(engine, _between_branches_state(engine))
-    assert saturated["p"] > 5e-5, saturated
+    assert saturated["p"] > 1e-5, saturated
     assert mixed["third"] > 1e-3, mixed
 
 
@@ -108,3 +113,79 @@ def test_mixed_pressure_column_debt_is_not_from_gravity(without_density_derivati
     flat = _engine(nz=1)
     flat_error = _column_kind_errors(flat, _between_branches_state(flat))["p"]
     assert without > 1e-2 and flat_error > 1e-2, (without, flat_error)
+
+
+# ═══════════════════════ G9b — həll olmuş qazın kütləsi ═══════════════
+
+def _spe1_densities():
+    """SPE1 `DENSITY 53.66 64.49 0.0533` lb/ft³ — mühərrik vahidlərində."""
+    from imex2d.domain.unit_conversions import convert
+    return (convert(53.66, "lb/ft3", "kg/m3", "density"),
+            convert(64.49, "lb/ft3", "kg/m3", "density"),
+            convert(0.0533, "lb/ft3", "kg/m3", "density"))
+
+
+def _spe1_engine():
+    engine = _engine()
+    oil, water, gas = _spe1_densities()
+    fluids = engine.model.fluids
+    fluids.oil_density, fluids.water_density, fluids.gas_density = oil, water, gas
+    return engine
+
+
+def test_oil_density_includes_the_dissolved_gas_mass():
+    """ρo = (ρo_səth + Rs·ρg_səth)/Bo. SPE1 rəqəmləri: +22 %."""
+    engine = _spe1_engine()
+    state = _saturated_state(engine)
+    fluid = engine.newton.build_fluid(state)
+    _, rho_o, _ = engine.newton.flux.densities(fluid)
+    fluids = engine.model.fluids
+    expected = (fluids.oil_density + fluid.rs * fluids.gas_density) / fluid.bo
+    assert rho_o == pytest.approx(expected, rel=1e-12)
+    dead_oil = fluids.oil_density / fluid.bo
+    assert np.all(rho_o / dead_oil > 1.2), rho_o / dead_oil
+
+
+def test_live_oil_density_jacobian_matches_finite_difference():
+    engine = _spe1_engine()
+    saturated = _column_kind_errors(engine, _saturated_state(engine))
+    mixed = _column_kind_errors(engine, _between_branches_state(engine))
+    assert saturated["p"] < 5e-6, saturated
+    assert mixed["third"] < 1e-8 and mixed["Sw"] < 1e-8, mixed
+
+
+def test_dissolved_gas_terms_in_the_derivatives_are_necessary(monkeypatch):
+    """ZƏRURİLİK: Rs·ρg törəmə hədləri atılsa uyğunluq pozulur."""
+    engine = _spe1_engine()
+    original_pressure = ThreePhaseFluxJacobian.density_pressure_derivatives
+
+    def dead_oil_pressure(self, state, fluid, pvt, bw_p, bo_p, bg_p):
+        drho_w, _, drho_g = original_pressure(self, state, fluid, pvt,
+                                              bw_p, bo_p, bg_p)
+        _, rho_o, _ = self.flux.densities(fluid)
+        return drho_w, -rho_o * bo_p / fluid.bo, drho_g
+
+    def dead_oil_third(self, state, fluid):
+        _, rho_o, _ = self.flux.densities(fluid)
+        return np.where(state.is_saturated, 0.0,
+                        -rho_o * fluid.bo_rs / fluid.bo)
+
+    monkeypatch.setattr(ThreePhaseFluxJacobian, "density_pressure_derivatives",
+                        dead_oil_pressure)
+    monkeypatch.setattr(ThreePhaseFluxJacobian, "density_third_derivatives",
+                        dead_oil_third)
+    saturated = _column_kind_errors(engine, _saturated_state(engine))
+    mixed = _column_kind_errors(engine, _between_branches_state(engine))
+    assert saturated["p"] > 1e-5 or mixed["third"] > 1e-5, (saturated, mixed)
+    assert mixed["third"] > 1e-5, mixed
+
+
+def test_dead_oil_density_is_unchanged_when_rs_is_zero():
+    """GERİYƏ UYĞUNLUQ: Rs = 0 → ρo = ρo_səth/Bo (iki fazalı yol ilə eyni)."""
+    engine = _engine()
+    fluid = engine.newton.build_fluid(_saturated_state(engine))
+    fluid.rs = np.zeros_like(fluid.rs)
+    _, rho_o, _ = engine.newton.flux.densities(fluid)
+    assert rho_o == pytest.approx(engine.model.fluids.oil_density / fluid.bo,
+                                  rel=1e-15)
+
