@@ -1,10 +1,10 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
 **Hazırlanıb:** 15 sentyabr 2026 (Seans 31) ·
-**Yenilənib:** 16 sentyabr 2026 (Seans 36) · **Son kod commit-i:** `a07a627`
-**Növbəti iş:** SPE1 boşluğu **G3**, sonra **SPE1CASE2 modeli** (bax §5)
+**Yenilənib:** 16 sentyabr 2026 (Seans 37) · **Son kod commit-i:** G3b (bax `git log`)
+**Növbəti iş:** **SPE1CASE2 modeli** (bax §5.4)
 
-> Seans 31-dən bəri DÖRD mərhələ bitib (G6, G4, G1, G2). §5-dəki təsvirlər
+> Seans 31-dən bəri BEŞ mərhələ bitib (G6, G4, G1, G2, G3). §5-dəki təsvirlər
 > tarixi kontekst kimi saxlanılıb, hər birinin üstündə cari vəziyyət yazılıb.
 
 Bu sənəd işi davam etdirəcək şəxs (insan və ya AI köməkçisi) üçündür.
@@ -22,10 +22,10 @@ məzmun git tarixçəsindədir (`git show dd425be:TEHVIL_TESLIM.md`).
 | | |
 |---|---|
 | Budaq | `main` = `origin/main` (bu sənədin commit-i) |
-| Test dəsti | **2626 keçdi, 1 buraxıldı, 1 xfailed** (~6 dəqiqə) |
-| Son hesabat bölməsi | **Seans 36** → növbəti yazılacaq: **Seans 37** |
-| Son qərar | **Q-29** → növbəti: **Q-30** |
-| Aktiv blok | **B7 / SPE1** — qalan boşluq G3, sonra SPE1CASE2 modeli |
+| Test dəsti | **2646 keçdi, 1 buraxıldı, 1 xfailed** (~6–9 dəqiqə) |
+| Son hesabat bölməsi | **Seans 37** → növbəti yazılacaq: **Seans 38** |
+| Son qərar | **Q-30** → növbəti: **Q-31** |
+| Aktiv blok | **B7 / SPE1** — boşluqlar bağlandı (G7/G8 istisna), növbəti SPE1CASE2 modeli |
 
 Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 
@@ -42,6 +42,7 @@ Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 | 34 | **G1:** deck PVT oxuyucuları PVTW/PVDG/PVTO — itkisiz + açıq yaxınlaşdırma (Q-27) | `3638014` |
 | 35 | **G2a:** doymamış neft özlülüyü μo(p, Rs) provider səviyyəsində (Q-28) | `32df7b4` |
 | 36 | **G2b:** özlülük mühərriyə (qalıq + Jakobian) qoşuldu; **doyma nöqtəsi lövbəri düzəldildi** (Q-29) | `a07a627` |
+| 37 | **G3:** c_o və n hər PVTO qolundan (`oil_branches`); sınaq deck-indəki səhv sətir düzəldildi (Q-30) | `git log` |
 
 **Seans 36-nın ən vacib tapıntısı:** `Bo_sat(Pb)` və `μo_sat(Pb)` lövbərləri
 cədvəldən adi interpolyasiya ilə götürülürdü, halbuki Pb adətən düyün deyil və
@@ -182,7 +183,7 @@ yoxlayın.
 * SGOF-un son sətri (0.88) OPM-in əlavəsidir ki, `Swc + Sg_maks = 1` olsun (deck şərhi).
 * **Qəbul:** törəmələr sonlu fərqlə; Corey yolu bit-bit eyni.
 
-### 5.3 · G1 ✅ + G2 ✅ + **G3 ⏳ QALIR** — PVTO/PVDG/PVTW və doymamış özlülük
+### 5.3 · G1 ✅ + G2 ✅ + G3 ✅ — PVTO/PVDG/PVTW və doymamış Bo/özlülük
 
 > **G1** ✅ Seans 34 (Q-27, `3638014`) — `io/pvt_io.py`: itkisiz `DeckPvt` +
 > açıq `to_pvt_table` yaxınlaşdırması (tək təzyiq şəbəkəsinə köçürmə
@@ -192,7 +193,13 @@ yoxlayın.
 > `μo(p,Rs) = μo_sat(Pb(Rs))·(p/Pb)ⁿ`, `n` cədvəlin ÖZ doymamış sətirlərindən
 > fit olunur (korrelyasiyadakı 0.278 SPE1 üçün yanlışdır).
 >
-> **G3 ⏳ NÖVBƏTİ İŞ** — hazırda tək `c_o` var. Seans 34-də ÖLÇÜLÜB: SPE1
+> **G3** ✅ Seans 37 (Q-30) — `BlackOilPVTProvider(deck.to_pvt_table(),
+> oil_branches=deck.oil.branches)`: c_o və n hər qoldan, Rs üzrə
+> interpolyasiya. ⚠️ Aşağıdakı "0.3 %" ölçməsi YANLIŞ idi (sınaq
+> deck-ində səhv sətir) — həqiqi fərq ~11 %, n 0.460 ↔ 0.580.
+> ⏳ Qollar hələ `ReservoirModel`-ə/servisə ötürülmür — SPE1CASE2 modelində.
+>
+> *(tarixi mətn)* hazırda tək `c_o` var. Seans 34-də ÖLÇÜLÜB: SPE1
 > deck-inin Rs = 1.27 və 1.618 qollarının c_o-su bir-birindən **0.3 %**
 > fərqlənir. Yəni tək qiymət pis yaxınlaşma deyil, lakin açıq yazılmalıdır.
 > Qərar sahibkara verilməlidir: hər Rs üçün öz c_o-su, yoxsa tək qiymət +
@@ -226,6 +233,12 @@ yoxlayın.
   Vurucu: `RATE`, qaz, `rate_basis=SURFACE`, 100 000 Mscf/gün, `bhp_limit` 9014 psia.
   İlkin: `use_equilibration`, 4800 psia @ 8400 ft, `solution_gor` = 1.27 Mscf/STB,
   Sw = 0.12, WOC 8450 / GOC 8300 (lay xaricində).
+* **PVT (Seans 37):** cədvəli `DeckPvt.to_pvt_table()` ilə `reference_rs`
+  OLMADAN qurun və provider-ə `oil_branches=deck.oil.branches` verin.
+  `reference_rs = 1.27` Rs-i kəsir (Bo −9 %, μo +17 %), qolsuz defolt isə
+  c_o-nu ehtiyat qiymətə salır (Bo −80 %) — ölçülüb. ⏳ Servis provider-i
+  yalnız `model.pvt_table`-dan qurur: qolları `ReservoirModel`-ə (və layihə
+  faylına) ötürmək bu mərhələnin ilk işidir.
 * **Etalon nöqtələri** (`SPE1.md` §3): FOPR 1550-ci gündə 20 000-dən aşağı;
   3650-ci gündə FOPR 5732.65 STB/gün, FGOR 22.1403 Mscf/STB, WBHP PROD 1000 psia.
 * **Müqayisə testi:** `tools/eclipse_summary.py`-ı `imex2d/io/`-ya köçürüb testlə

@@ -87,6 +87,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > (3-cü sütun 3.6×10⁻¹¹). Yol boyu doyma nöqtəsindəki **lövbər qüsuru**
 > tapıldı və düzəldildi (μ-da 2.27 % meyl) — Q-29. Növbəti: **G3**.
 >
+> **16 sentyabr 2026 (Seans 37):** **G3** ✅ — doymamış Bo/μo hər PVTO
+> qolunun öz c_o və n-i ilə (`oil_branches`), Rs üzrə interpolyasiya (Q-30).
+> "0.3 %" ölçməsinin sınaq deck-indəki səhv sətirdən gəldiyi tapıldı
+> (həqiqi fərq ~11 %). Növbəti: **SPE1CASE2 modeli**.
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 

@@ -4432,3 +4432,111 @@ tam dəst              2626 keçdi, 1 buraxıldı, 1 xfailed (5 dəq 49 san)
 * **G3** — `c_o`-nun deck qolundan hesablanması.
 * Sonra: **SPE1CASE2 modeli** və etalonla müqayisə.
 * **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.
+
+
+## 16 sentyabr 2026 — Seans 37: SPE1 boşluğu G3 — hər PVTO qolunun öz c_o və n-i
+
+Sahibkarın tapşırığı: **G3-ə başlamaq**. Baza bu maşında ölçüldü: **2626 keçdi,
+1 buraxıldı, 1 xfailed** (9 dəq 14 san) — təhvil sənədi ilə eynidir.
+(Bu maşında virtual mühit `..\venv`-dir.)
+
+### 1 · İşə başlamazdan ƏVVƏL ölçmə — G3-ün əsası YANLIŞ çıxdı
+
+Təhvil sənədi G3 üçün iki seçim qoyurdu və "qolların c_o-su 0.3 % fərqlənir"
+ölçməsinə əsaslanırdı. `SPE1CASE2.DATA` yenidən endirildi (sha256 uyğundur) və
+əl ilə yoxlanıla bilən düsturla ölçüldü:
+
+    c_o = ln(Bo_b / Bo) / (p − Pb)        n = ln(μ / μ_b) / ln(p / Pb)
+
+| Qol | c_o, 1/bar | n |
+|---|---|---|
+| Rs 1.270 Mscf/STB (4014.7 → 9014.7 psia) | 2.0564×10⁻⁴ | 0.4602 |
+| Rs 1.618 Mscf/STB (5014.7 → 9014.7 psia) | **1.8317×10⁻⁴** | **0.5802** |
+
+Fərq **~11 %**-dir, 0.3 % yox. **Kök səbəb:** `tests/test_pvt_io.py`-dakı sınaq
+deck-ində Rs 1.618 qolunun doymamış sətri səhv köçürülmüşdü (`1.7260 0.6050`,
+deck-də `1.7370 0.6310`). Seans 34-ün 2.062×10⁻⁴ və 0.5085 rəqəmləri məhz
+həmin sətirdən alınır. Seans 34 bölməsi dəyişdirilmir; düzəliş buradadır.
+
+### 2 · Daha böyük tapıntı — tək qollu cədvəl SPE1-in Rs diapazonunu tutmur
+
+Provider tək doymamış hissəli `PVTTable` qəbul edirdi. SPE1-də qaz vurulan
+hüceyrələrdə Rs 1.27 → 1.618 dəyişir. Real deck ilə ölçüldü (Rs 1.618 qolu):
+
+| `to_pvt_table` | Pb(Rs) | Bo | μo |
+|---|---|---|---|
+| `reference_rs = 1.27` | 276.80 bar (həqiqi 345.75) — Rs kəsilir | −8.5 … −9.1 % | +17.3 … +23.8 % |
+| defolt (ən böyük qol) | düzgün | **−72 … −80 %** (c_o ehtiyat qiymətə düşür) | −13.7 … −16.2 % |
+
+Birinci yolda Rs 1.27 qolunun özündə də μo lövbəri −2.18 % idi (fit xətti
+interpolyasiya olunmuş düyünlərdən aparılırdı).
+
+Seçim sahibkara verildi: **çox qollu provider** (tək c_o + sənəd və ya yalnız
+sənəd düzəlişi variantları əvəzinə).
+
+### 3 · Həll
+
+`BlackOilPVTProvider(table, oil_branches=deck.oil.branches)`:
+
+* hər qol üçün c_o və n doymuş başdan keçən ən kiçik kvadratlarla (iki sətirli
+  qolda deck sətri DƏQİQ təkrarlanır);
+* qollar arasında Rs üzrə parçalı xətti interpolyasiya, kənarda sabit
+  (törəmə sıfır — Q-28 Qərar 4 ilə eyni qayda);
+* lövbər deck-in DƏQİQ doymuş başlarından (Pb orada düyündür);
+* törəmələrə yeni hədlər:
+
+      ∂Bo/∂Rs  += Bo · (dc_o/dRs) · (Pb − p)
+      ∂μo/∂Rs  += μo · (dn/dRs) · ln(p/Pb)
+
+* açıq xətalar: qollar cədvələ uyğun deyilsə, heç bir qolda doymamış sətir
+  yoxdursa, doymamış Bo təzyiqlə artırsa; cədvəl ən böyük qoldan əvvəl bitirsə
+  (Rs kəsiləcək) — xəbərdarlıq.
+
+**Mühərrik toxunulmadı:** yeni hədlər `bo_rs`/`mu_o_rs` vasitəsilə daxil olur.
+`simulation` qatı `io`-nu import etmir — qollar duck-typing ilə qəbul olunur.
+
+### 4 · Ölçülmüş yoxlamalar
+
+| Yoxlama | Nəticə |
+|---|---|
+| deck-in hər iki qolunun sətirləri (Bo, μo) | nisbi xəta **0** |
+| provider törəmələri vs sonlu fərq (Rs qollar arasında) | ∂/∂p 2.5×10⁻⁹, ∂/∂Rs 4.8×10⁻¹⁰ |
+| yeni hədd söndürüləndə ∂/∂Rs | Bo **6.7×10⁻²**, μo **3.9×10⁻¹** |
+| mühərrik, 3-cü sütun (qarışıq vəziyyət, Rs qollar arasında) | **1.5×10⁻¹⁰** |
+| eyni, qol meylləri sıfırlananda | **2.6×10⁻²** |
+| mühərrik, Sw sütunu | 7.6×10⁻¹¹ |
+| mühərrik, p sütunu | 0.064 — hədlərdən ASILI DEYİL (TB-2) |
+| 4×4 model, 120 gün | yığıldı, 19 addım |
+
+### 5 · Edilən (üç commit)
+
+| Commit | Fayl | Nə |
+|---|---|---|
+| fix(test) | `tests/test_pvt_io.py` | sınaq deck-inin səhv sətri düzəldildi; "0.3 %" testi ölçülmüş fərqi kilidləyən testlə əvəzləndi |
+| fix(test) | `tests/test_undersaturated_viscosity.py`, `black_oil.py` | 0.5085 → 0.5802 (şərhlər, sintetik test) |
+| G3a | `simulation/pvt/black_oil.py` | `oil_branches`, `_build_branch_parameters`, `_compressibility`, `_viscosity_exponent`, törəmə hədləri |
+| G3a | `io/pvt_io.py` | `to_pvt_table` sənədi və xəbərdarlıq mətni `oil_branches`-ə yönləndirir |
+| G3a | `tests/test_deck_oil_branches.py` | **YENİ** — 15 test |
+| G3b | `tests/test_deck_oil_branches_engine.py` | **YENİ** — 5 test (mühərrik, sonlu fərq) |
+
+### 6 · Yoxlama
+
+```
+tests/test_deck_oil_branches.py          15 keçdi
+tests/test_deck_oil_branches_engine.py    5 keçdi
+tam dəst                                 2646 keçdi, 1 buraxıldı, 1 xfailed (8 dəq 19 san) (baza 2626 + 20 yeni)
+```
+
+### Açıq qalan ⏳
+
+* **Qollar modelə/servisə qoşulmayıb:** `ReservoirModel` yalnız `pvt_table`
+  daşıyır, servis provider-i ondan qurur. Qolları modelə (layihə faylı, UI)
+  ötürmək SPE1CASE2 modelinin qurulması ilə birlikdə ediləcək.
+* **OPM qaydası yoxlanılmayıb:** (a) doymamış sətri olmayan qollar üçün ən
+  yaxın qolun parametri, (b) qollar arasında c_o və n-in Rs üzrə xətti
+  interpolyasiyası — bizim fərziyyələrimizdir; OPM-in `LiveOilPvt` qaydası
+  mənbədən oxunmayıb.
+* IMPES-in `total_compressibility`-si hələ cədvəlin c_o-sunu işlədir (qazlı
+  modeldə IMPES işə düşmür, təsiri yoxdur).
+* **G7, TB-1…TB-3** dəyişməyib. Növbəti: **SPE1CASE2 modeli**.
+* **`b2a795e`** — sahibkar digər maşında özü xilas edəcək.

@@ -1060,3 +1060,40 @@ tam dəqiqlik, qalan yerlərdə ölçülmüş hədd (0.0195 → 0.025).
 Müvəqqəti 62.73 dəyişikliyi geri alındı: ölçmə göstərdi ki, fərq fizikadan yox,
 lövbər qüsurundan gəlirdi. Lövbər düzəldiləndən sonra iki və üç fazalı
 mühərriklərin qazsız rejimdəki uyğunluğu da bərpa olundu (62.8612).
+
+
+## Q-30 — Doymamış neftin c_o və n-i HƏR PVTO qolundan; Rs üzrə interpolyasiya
+
+**Tarix:** 16 sentyabr 2026 · **Kontekst:** SPE1 boşluğu G3
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 37)
+
+### Qərar 1 — tək c_o/n YOX (sahibkarın qərarı)
+
+Ölçüldü: SPE1CASE2-nin iki qolunda c_o 2.056e-4 ↔ 1.832e-4 1/bar (~11 %),
+n 0.460 ↔ 0.580. Əvvəlki "0.3 %" rəqəmi sınaq deck-indəki səhv köçürülmüş
+sətirdən gəlirdi. Üç variant sahibkara verildi; **çox qollu provider** seçildi.
+
+### Qərar 2 — qollar provider-ə AYRICA verilir, `PVTTable` dəyişmir
+
+`BlackOilPVTProvider(table, oil_branches=...)`. Cədvəl doymuş əyrini (bütün
+qolların başları) daşıyır, qollar isə doymamış parametrləri. `PVTTable`-ın
+quruluşuna (serializasiya, UI, IMPES) toxunulmadı. `simulation` qatı `io`-nu
+import etmir — qollar duck-typing ilə qəbul olunur.
+
+### Qərar 3 — qollar arasında Rs üzrə parçalı xətti interpolyasiya, kənarda sabit
+
+Qolların özündə deck DƏQİQ təkrarlanır. Qollar arasında törəmə interval
+meylidir (Jakobian qalıqla dəqiq uyğun), kənarda sıfırdır — ekstrapolyasiya
+yoxdur (Q-28 Qərar 4). ⏳ OPM-in öz qaydası mənbədən yoxlanılmayıb; bu,
+bizim fərziyyəmizdir və açıq yazılıb.
+
+### Qərar 4 — lövbər deck-in doymuş başlarından
+
+Deck-də Pb düyündür, ona görə lövbər fit-dən yox, birbaşa başlardan götürülür
+(Q-29-un qolsuz yolu dəyişmir).
+
+### Qərar 5 — uyğunsuzluq AÇIQ xətadır
+
+Qollar cədvəlin doymuş əyrisinə uyğun gəlmirsə, doymamış sətir yoxdursa və ya
+Bo təzyiqlə artırsa — `ValueError`. Cədvəl ən böyük qoldan əvvəl bitirsə
+(Rs kəsiləcək) — xəbərdarlıq.

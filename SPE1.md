@@ -75,9 +75,9 @@ köçürüləcək.
 
 | # | SPE1 tələbi | Mühərrikdə indi | Qiymət |
 |---|---|---|---|
-| G1 | PVT cədvəlləri PVTO/PVDG/PVTW (FIELD) | ✅ `io/pvt_io.py` — itkisiz oxuma + açıq birləşdirmə (Seans 34, Q-27) | bağlandı; çox qollu Bo/μo ⏳ G2/G3 |
+| G1 | PVT cədvəlləri PVTO/PVDG/PVTW (FIELD) | ✅ `io/pvt_io.py` — itkisiz oxuma + açıq birləşdirmə (Seans 34, Q-27) | bağlandı; çox qollu Bo/μo — G2/G3-də bağlandı |
 | G2 | Doymamış neft özlülüyü μo(p, Rs) — PVTO-da 0.51 → 0.74 cP | ✅ provider (Seans 35) + mühərrik (Seans 36, Q-29) | bağlandı; 3-cü sütun 3.6×10⁻¹¹, lövbər qüsuru da düzəldildi |
-| G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | tək `c_o`, cədvəlin Pb-dən yuxarı hissəsindən (`black_oil.py::_build_undersaturated_branch`) | təqribi — ölçülməlidir |
+| G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | ✅ `BlackOilPVTProvider(..., oil_branches=...)` — c_o(Rs), n(Rs) qollardan (Seans 37, Q-30) | bağlandı; qollar arasında 11 % fərq ölçüldü; modelə qoşulma ⏳ SPE1CASE2 ilə |
 | G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
@@ -94,8 +94,9 @@ köçürüləcək.
 3. **G4 — SGOF cədvəli** ilə qaz relperm provider-i. ✅ Seans 33 (Q-26).
 4. **G1** ✅ Seans 34 (Q-27) — PVTO/PVDG/PVTW oxuyucuları.
    **G2** ✅ Seans 35 (provider) + Seans 36 (mühərrik + lövbər), Q-28/Q-29.
-   **G3** ⏳ — `c_o`-nun deck qolundan hesablanması. Ölçüldü: qolların
-   c_o-su 0.3 % fərqlənir, özlülük üstəli isə 0.46/0.51 —
-   korrelyasiyadakı 0.278 SPE1 üçün YANLIŞDIR.
+   **G3** ✅ Seans 37 (Q-30) — c_o və n hər qoldan, Rs üzrə interpolyasiya.
+   Ölçüldü (real deck): c_o 2.056e-4 ↔ 1.832e-4 1/bar (~11 %), n 0.460 ↔
+   0.580. Əvvəl yazılmış "0.3 %, 0.46/0.51" sınaq deck-indəki səhv
+   sətirdən gəlirdi. Korrelyasiyadakı 0.278 SPE1 üçün YANLIŞDIR.
 5. **SPE1CASE2 modeli** + etalonla müqayisə (FOPR, FGOR, WBHP, BPR), `tests/golden/`-da reqressiya.
 6. ⏳ G7 və CASE1 (`DRSDT 0`) — müqayisə nəticəsinə görə.
