@@ -1,7 +1,11 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
-**Hazırlanıb:** 15 sentyabr 2026 (Seans 31) · **Son kod commit-i:** `b9ed645`
-**Növbəti iş:** SPE1 boşluğu **G6** — süxur sıxılmasının istinad təzyiqi (bax §5)
+**Hazırlanıb:** 15 sentyabr 2026 (Seans 31) ·
+**Yenilənib:** 16 sentyabr 2026 (Seans 36) · **Son kod commit-i:** `a07a627`
+**Növbəti iş:** SPE1 boşluğu **G3**, sonra **SPE1CASE2 modeli** (bax §5)
+
+> Seans 31-dən bəri DÖRD mərhələ bitib (G6, G4, G1, G2). §5-dəki təsvirlər
+> tarixi kontekst kimi saxlanılıb, hər birinin üstündə cari vəziyyət yazılıb.
 
 Bu sənəd işi davam etdirəcək şəxs (insan və ya AI köməkçisi) üçündür.
 Tarixçənin tam təfərrüatı `ISH_HESABATI.md`, qərarların səbəbləri `QARARLAR.md`,
@@ -18,10 +22,10 @@ məzmun git tarixçəsindədir (`git show dd425be:TEHVIL_TESLIM.md`).
 | | |
 |---|---|
 | Budaq | `main` = `origin/main` (bu sənədin commit-i) |
-| Test dəsti | **2549 keçdi, 1 buraxıldı, 1 xfailed** (~7 dəqiqə, bu maşında) |
-| Son hesabat bölməsi | **Seans 31** (bu təhvil) → növbəti yazılacaq: **Seans 32** |
-| Son qərar | **Q-24** → növbəti: **Q-25** |
-| Aktiv blok | **B7 addım 3** — SPE1CASE2 modelinə hazırlıq |
+| Test dəsti | **2626 keçdi, 1 buraxıldı, 1 xfailed** (~6 dəqiqə) |
+| Son hesabat bölməsi | **Seans 36** → növbəti yazılacaq: **Seans 37** |
+| Son qərar | **Q-29** → növbəti: **Q-30** |
+| Aktiv blok | **B7 / SPE1** — qalan boşluq G3, sonra SPE1CASE2 modeli |
 
 Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 
@@ -33,6 +37,17 @@ Bitmiş son işlər (yenidən başlamağa ehtiyac yoxdur):
 | 28 | **Səssiz səhv:** qaz vuran modeldə sahə GOR = 0 idi; vurulan qaz qrafikə/ixraca əlavə olundu (Q-22) | `769d245` |
 | 29 | SPE1 parametrləri OPM deck-indən yoxlandı, hədəf SPE1CASE2, texniki borc siyahısı (Q-23) | `19301bb` |
 | 30 | **B7 addım 3 / G5:** SƏTH debiti hədəfi (`ORAT`, qaz `RATE`) (Q-24) | `b9ed645` |
+| 32 | **G6:** süxur sıxılmasının istinad təzyiqi ayrıca verilir (`None` → köhnə davranış) (Q-25) | `ef23c77` |
+| 33 | **G4:** SGOF cədvəli ilə qaz relperm + **deck oxuyucusu** (Q-26) | `a4a9cf3` |
+| 34 | **G1:** deck PVT oxuyucuları PVTW/PVDG/PVTO — itkisiz + açıq yaxınlaşdırma (Q-27) | `3638014` |
+| 35 | **G2a:** doymamış neft özlülüyü μo(p, Rs) provider səviyyəsində (Q-28) | `32df7b4` |
+| 36 | **G2b:** özlülük mühərriyə (qalıq + Jakobian) qoşuldu; **doyma nöqtəsi lövbəri düzəldildi** (Q-29) | `a07a627` |
+
+**Seans 36-nın ən vacib tapıntısı:** `Bo_sat(Pb)` və `μo_sat(Pb)` lövbərləri
+cədvəldən adi interpolyasiya ilə götürülürdü, halbuki Pb adətən düyün deyil və
+əyrinin orada sınığı var — μ lövbərində **2.27 % meyl** yaranırdı (B3-B-dən
+qalan, indiyə qədər görünməyən qüsur). Düzəliş üç cəhddən sonra tapıldı;
+təfərrüat və rəqəmlər `ISH_HESABATI.md` → Seans 36, qərar `QARARLAR.md` → Q-29.
 
 ---
 
@@ -50,12 +65,13 @@ axtarır (Q-10, Q-13). Bu maşında **`.venv`, Python 3.12.10** işlədilib (əv
 maşında `venv`, Python 3.14.3 idi — hər ikisində dəst keçib).
 
 ```bash
-.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider -o addopts=""   # baza: 2549
+.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider -o addopts=""   # baza: 2626
 .venv\Scripts\python.exe app.py                                           # proqram
 ```
 
-**Başlamazdan əvvəl baza nəticəsini ÖZ maşınınızda alın.** 2549-dan fərqli
-çıxarsa, işə başlamadan səbəbini tapın.
+**Başlamazdan əvvəl baza nəticəsini ÖZ maşınınızda alın.** 2626-dan fərqli
+çıxarsa, işə başlamadan səbəbini tapın. (Seans 31-də baza 2549 idi; aradakı
+fərq Seans 32–36-da yazılan testlərdir.)
 
 `graphify` (CLAUDE.md-də qeyd olunub) bu maşında qurulmayıb, `graphify-out/`
 yoxdur — sizdə varsa kod dəyişəndən sonra `graphify update .` işlədin.
@@ -129,7 +145,12 @@ python tools/eclipse_summary.py SPE1CASE2 "TIME,FOPR,FGOR,WBHP:PROD,WBHP:INJ,BPR
 Checksum fərqlidirsə OPM faylı dəyişib — `SPE1.md` §2/§3-dəki rəqəmləri yenidən
 yoxlayın.
 
-### 5.1 · G6 — süxur sıxılmasının istinad təzyiqi (kiçik, ƏVVƏL bu)
+### 5.1 · G6 — süxur sıxılmasının istinad təzyiqi ✅ BİTDİ (Seans 32, Q-25, `ef23c77`)
+
+> Domendə `compressibility_reference_pressure: Optional[float]` — `None` olanda
+> datum işlədilir, yəni mövcud modellər dəyişməyib. IMPES-in öz sıxılma hesabı
+> yoxlanıldı: orada istinad OXUNMUR ⏳ (backlog-a düşüb).
+> Aşağıdakı təsvir tarixi kontekstdir.
 
 * **Problem:** SPE1 `ROCK 14.7 3E-6` — istinad 14.7 psia. Bizdə istinad
   `model.initial_conditions.datum_pressure`-dır: `simulation/implicit/residual.py:71`,
@@ -143,7 +164,12 @@ yoxlayın.
 * **Qəbul:** `None` ilə tam dəst dəyişməz; istinad verilən modeldə PV testlə;
   akkumulyasiya Jakobianı sonlu fərqlə.
 
-### 5.2 · G4 — SGOF cədvəli ilə qaz relperm
+### 5.2 · G4 — SGOF cədvəli ilə qaz relperm ✅ BİTDİ (Seans 33, Q-26, `a4a9cf3`)
+
+> `GasSaturationTable`/`GasSaturationTableSet` (`domain/scal_tables.py`) +
+> deck oxuyucusu `io/scal_io.py::read_sgof`. Törəmələr parçalı xəttidir, yəni
+> Jakobian qalıqla DƏQİQ uyğundur. Corey yolu bit-bit eyni qalıb.
+> Aşağıdakı təsvir tarixi kontekstdir.
 
 * **Problem:** qaz əyrisi yalnız `GasCoreyParameters` (`domain/scal.py`).
   `StoneRelativePermeabilityProvider` (`simulation/stone_relperm.py`) ondan
@@ -156,7 +182,21 @@ yoxlayın.
 * SGOF-un son sətri (0.88) OPM-in əlavəsidir ki, `Swc + Sg_maks = 1` olsun (deck şərhi).
 * **Qəbul:** törəmələr sonlu fərqlə; Corey yolu bit-bit eyni.
 
-### 5.3 · G1 + G2 (+G3) — PVTO/PVDG/PVTW və doymamış neft özlülüyü (ƏN BÖYÜK iş)
+### 5.3 · G1 ✅ + G2 ✅ + **G3 ⏳ QALIR** — PVTO/PVDG/PVTW və doymamış özlülük
+
+> **G1** ✅ Seans 34 (Q-27, `3638014`) — `io/pvt_io.py`: itkisiz `DeckPvt` +
+> açıq `to_pvt_table` yaxınlaşdırması (tək təzyiq şəbəkəsinə köçürmə
+> GİZLƏDİLMİR). Yeni vahidlər: `Mscf/stb`, `rb/Mscf`.
+>
+> **G2** ✅ Seans 35 (provider, Q-28) + Seans 36 (mühərrik + lövbər, Q-29) —
+> `μo(p,Rs) = μo_sat(Pb(Rs))·(p/Pb)ⁿ`, `n` cədvəlin ÖZ doymamış sətirlərindən
+> fit olunur (korrelyasiyadakı 0.278 SPE1 üçün yanlışdır).
+>
+> **G3 ⏳ NÖVBƏTİ İŞ** — hazırda tək `c_o` var. Seans 34-də ÖLÇÜLÜB: SPE1
+> deck-inin Rs = 1.27 və 1.618 qollarının c_o-su bir-birindən **0.3 %**
+> fərqlənir. Yəni tək qiymət pis yaxınlaşma deyil, lakin açıq yazılmalıdır.
+> Qərar sahibkara verilməlidir: hər Rs üçün öz c_o-su, yoxsa tək qiymət +
+> sənəddə ölçülmüş fərq.
 
 * **G1:** `PVTTable` (`domain/pvt.py`) BÜTÜN sütunlar üçün tək təzyiq şəbəkəsidir.
   PVDG 14.7…9014.7, PVTO-nun doymuş qolu isə 14.7…5014.7 psia-dır — ortaq
@@ -173,7 +213,7 @@ yoxlayın.
   isə 5014.7-də bitir. `np.interp` sərhəddə saxlayır (Rs_sat = 1.618 plato).
   OPM-in bu haldakı qaydası mənbədən yoxlanılmayıb — uydurmayın.
 
-### 5.4 · SPE1CASE2 modeli və etalonla müqayisə
+### 5.4 · SPE1CASE2 modeli və etalonla müqayisə ⏳ ƏSAS QALAN İŞ
 
 * **Vahidlər:** mühərrik METRIC-dir; `domain/unit_conversions.py`
   (`psi_to_bar`, `ft_to_m`, `stb_per_day_to_m3_per_day`, `convert(...)`).
@@ -208,6 +248,12 @@ yoxlayın.
 
 * **TB-1:** üç fazalı RATE istismarçısının quyu Jakobianı — sonlu fərqə qarşı
   xəta 0.4893 (tək perforasiya). Sahibkarın qərarı: indi düzəldilmir.
+* **TB-2:** üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə
+  — xəta 0.1936 (G2b-dən əvvəl 0.5672 idi, yəni YAXŞILAŞIB). Ən pis element
+  quyusuz hüceyrənin qaz tənliyindədir, yəni mənbə quyu həddi deyil (Seans 36).
+* **TB-3:** `black_oil.py::_saturation_pressure_slope` ən üst Rs düyünündə
+  analitik 3.619, sonlu fərq 1.810 — tam 2 dəfə (interpolyasiya düyündən yuxarı
+  sabit qalır). SPE1-in G7 boşluğu ilə eyni kökdəndir (Seans 36).
 
 **Açıq qalan ⏳ (təcili deyil):**
 
@@ -240,6 +286,19 @@ yoxlayın.
   edilən kod dəyişikliyi həmin qaçışa təsir etmir, sonradan yaradılan test faylı
   isə ümumiyyətlə toplanmır. Nəticəni hansı kod vəziyyətinə aid olduğunu bilərək oxuyun.
 * **Uzun Python heredoc-u bash-da qırıla bilər** — ayrıca `.py` faylına yazın.
+* **PVT cədvəlində doyma təzyiqi DÜYÜN DEYİL.** `np.interp` ilə götürülən
+  `Bo_sat(Pb)`/`μo_sat(Pb)` sınığın iki tərəfini qarışdırır. Lövbər həmişə
+  doymamış qolun ÖZ fit-indən alınmalıdır (Q-29).
+* **Testin keçməsi düzgünlüyün sübutu deyil.** Lövbər testi `atol=1e-5` ilə
+  KEÇİRDİ, çünki lövbər və müqayisə sütunu EYNİ interpolyasiya səhvini
+  bölüşürdü. İnvariant testi yazanda "hər iki tərəf eyni mənbədəndirmi?"
+  sualını verin.
+* **Jakobian xətasını sütun NÖVÜ üzrə ölçün** (p / Sw / 3-cü dəyişən). Ümumi
+  maksimum təzyiq sütunundakı mövcud borcla (TB-2) üstələnir və yeni həddin
+  təsirini gizlədir — nümunə:
+  `tests/test_undersaturated_viscosity_engine.py::_column_kind_errors`.
+* **`*.imx` artıq `.gitignore`-dadır** (Seans 36) — sahibkarın iş faylı
+  təsadüfən repoya düşməsin.
 * **`MainWindow()` testdə yaradılsa pytest çökür.** UI-ni mənbə yoxlaması ilə sınayın
   (`inspect.getsource(panels.WellPanel)`).
 * **Proqramı arxa plan terminal əmri ilə açsanız seans bağlananda bağlanır** —
