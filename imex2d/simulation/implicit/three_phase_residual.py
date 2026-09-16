@@ -296,6 +296,22 @@ class ThreePhaseFlux:
                                   - depths[self.connections.cell_b])
         self._has_gravity = bool(np.any(np.abs(self._depth_difference) > 1e-12))
 
+    @property
+    def has_gravity(self) -> bool:
+        return self._has_gravity
+
+    def gravity_head(self) -> np.ndarray:
+        """Üz üzrə `g·(D_a − D_b)`, bar/(kg/m³)."""
+        return GRAVITY * self._depth_difference * PA_TO_BAR
+
+    def densities(self, fluid: ThreePhaseFluidState):
+        """Lay şəraitində faza sıxlıqları (su, neft, qaz), kg/m³."""
+        fluids = self.model.fluids
+        rho_w = fluids.water_density / np.maximum(fluid.bw, 1e-9)
+        rho_o = fluids.oil_density / np.maximum(fluid.bo, 1e-9)
+        rho_g = fluids.gas_density / np.maximum(fluid.bg, 1e-9)
+        return rho_w, rho_o, rho_g
+
     def potentials(self, state: ThreePhaseState, fluid: ThreePhaseFluidState):
         """Üzlər üzrə (ΔΦ_w, ΔΦ_o, ΔΦ_g) — bar.
 
@@ -311,11 +327,8 @@ class ThreePhaseFlux:
         d_phi_g = dp.copy()
 
         if self._has_gravity:
-            fluids = self.model.fluids
-            rho_w = fluids.water_density / np.maximum(fluid.bw, 1e-9)
-            rho_o = fluids.oil_density / np.maximum(fluid.bo, 1e-9)
-            rho_g = fluids.gas_density / np.maximum(fluid.bg, 1e-9)
-            head = GRAVITY * self._depth_difference * PA_TO_BAR
+            rho_w, rho_o, rho_g = self.densities(fluid)
+            head = self.gravity_head()
             d_phi_w -= 0.5 * (rho_w[conn.cell_a] + rho_w[conn.cell_b]) * head
             d_phi_o -= 0.5 * (rho_o[conn.cell_a] + rho_o[conn.cell_b]) * head
             d_phi_g -= 0.5 * (rho_g[conn.cell_a] + rho_g[conn.cell_b]) * head
@@ -702,7 +715,10 @@ class ThreePhaseFluxJacobian:
     sənədləşməsi):
 
         · Upstream seçiminin özü diferensiallaşdırılmır
-        · Cazibə üzvündə sıxlığın təzyiqdən asılılığı nəzərə alınmır
+
+    (A6-dakı ikinci sadələşdirmə — "cazibə üzvündə sıxlığın təzyiqdən
+    asılılığı nəzərə alınmır" — G9a-da ÜÇ FAZALI yolda aradan qaldırıldı:
+    bax `density_pressure_derivatives`, `density_third_derivatives`.)
 
     Hər üz üçün YALNIZ upstream hüceyrənin mobilliyi diferensiallaşdırılır
     (downstream hüceyrədə isə yalnız ΔΦ-nin öz xətti asılılığı) — bu,
@@ -727,9 +743,8 @@ class ThreePhaseFluxJacobian:
         A6-dakı EYNİ tərkib: `F = mob_upstream·ΔΦ`-in HƏR İKİ hissəsi
         diferensiallaşdırılır — ΔΦ-nin özü (xətti, ∂/∂p_a=+1) VƏ
         mob(p)-nin özü (yalnız upstream hüceyrədə, çünki mobillik
-        YALNIZ upstream-dən götürülür). Yeganə sadələşdirmə (A6-dakı
-        eyni): cazibə həddindəki sıxlığın təzyiqdən asılılığı BURADA
-        nəzərə alınmır.
+        YALNIZ upstream-dən götürülür). G9a-dan sonra cazibə həddindəki
+        sıxlığın təzyiq törəməsi də daxildir (hər iki tərəfdə).
 
         Qaz üçün əlavə hədd: HƏLL OLMUŞ hissə (Rs_upstream_neft ·
         neft_axını) — zəncirvari qayda ilə həm Rs-in, həm neft
@@ -792,6 +807,21 @@ class ThreePhaseFluxJacobian:
         d_free_g_dpa = trans * (m_g + d_phi_g * np.where(up_g_is_a, dmg_dp[a], 0.0))
         d_free_g_dpb = trans * (-m_g + d_phi_g * np.where(up_g_is_a, 0.0, dmg_dp[b]))
 
+        # G9a — CAZİBƏ HƏDDİNDƏ SIXLIĞIN TƏZYİQ TÖRƏMƏSİ (əvvəl atılırdı).
+        #     ΔΦ = Δp − ½(ρ_a + ρ_b)·g·ΔD   →   ∂ΔΦ/∂p_a = 1 − ½·ρ'_a·g·ΔD
+        # Upstream-dən ASILI DEYİL: hər iki tərəfin sıxlığı ortalanır.
+        # Ölçüldü (3 laylı model, doymuş): təzyiq sütunu 8.2e-5 → 5.7e-7 səviyyəsi.
+        if self.flux.has_gravity:
+            drho_w, drho_o, drho_g = self.density_pressure_derivatives(
+                state, fluid, pvt, bw_p, bo_p, bg_p)
+            half_head = 0.5 * self.flux.gravity_head()
+            dfw_dpa -= trans * m_w * half_head * drho_w[a]
+            dfw_dpb -= trans * m_w * half_head * drho_w[b]
+            dfo_dpa -= trans * m_o * half_head * drho_o[a]
+            dfo_dpb -= trans * m_o * half_head * drho_o[b]
+            d_free_g_dpa -= trans * m_g * half_head * drho_g[a]
+            d_free_g_dpb -= trans * m_g * half_head * drho_g[b]
+
         # ── həll olmuş qaz: Rs_up_o · F_oil, zəncirvari qayda ──
         rs_sat_p = self.flux.model_pvt_derivative(pvt, "solution_gor", state.pressure)
         rs_up = fluid.rs[up_o]
@@ -808,6 +838,24 @@ class ThreePhaseFluxJacobian:
         dpg_b = d_free_g_dpb + d_dissolved_dpb
 
         return ((dfw_dpa, dfw_dpb), (dfo_dpa, dfo_dpb), (dpg_a, dpg_b), up_o)
+
+    def density_pressure_derivatives(self, state, fluid, pvt, bw_p, bo_p, bg_p):
+        """(∂ρw/∂p, ∂ρo/∂p, ∂ρg/∂p) hüceyrə üzrə — `ThreePhaseFlux.densities`."""
+        rho_w, rho_o, rho_g = self.flux.densities(fluid)
+        return (-rho_w * bw_p / np.maximum(fluid.bw, 1e-9),
+                -rho_o * bo_p / np.maximum(fluid.bo, 1e-9),
+                -rho_g * bg_p / np.maximum(fluid.bg, 1e-9))
+
+    def density_third_derivatives(self, state, fluid):
+        """∂ρo/∂(3-cü dəyişən) hüceyrə üzrə — yalnız doymamışda sıfırdan fərqli.
+
+        Doymamış hüceyrədə Bo Rs-dən asılıdır (B3-B), ona görə neft sıxlığı
+        da asılıdır. Su və qaz sıxlığı 3-cü dəyişəndən asılı deyil.
+        """
+        _, rho_o, _ = self.flux.densities(fluid)
+        bo_rs = oil_fvf_rs_derivative(fluid, fluid.bo)
+        return np.where(state.is_saturated, 0.0,
+                        -rho_o * bo_rs / np.maximum(fluid.bo, 1e-9))
 
     def face_saturation_derivatives(self, state: ThreePhaseState,
                                     fluid: ThreePhaseFluidState,
@@ -1258,6 +1306,22 @@ class ThreePhaseJacobianAssembler:
         # Mobillik törəməsi (yuxarıdakı `sat`) ΔΦ-ni artıq kapilyarla birlikdə
         # işlədir — bu, hasil qaydasının ikinci hissəsidir.
         trans = self.flux.transmissibility
+
+        # ── G9a: cazibə həddində neft sıxlığının 3-cü dəyişənə törəməsi —
+        # HƏR İKİ tərəfdə (sıxlıq ortalanır, upstream-dən asılı deyil).
+        # Həll olmuş qaz sətri eyni töhfəni Rs_up ilə alır.
+        if self.flux.has_gravity:
+            drho_o_third = self.flux_jacobian.density_third_derivatives(state, fluid)
+            half_head = 0.5 * self.flux.gravity_head()
+            m_o_up = (fluid.lam_o / fluid.bo)[up_o]
+            d_oil_a = -trans * m_o_up * half_head * drho_o_third[a]
+            d_oil_b = -trans * m_o_up * half_head * drho_o_third[b]
+            rs_up = fluid.rs[up_o]
+            s_block_a[:, 1, 2] += d_oil_a
+            s_block_b[:, 1, 2] += d_oil_b
+            s_block_a[:, 2, 2] += rs_up * d_oil_a
+            s_block_b[:, 2, 2] += rs_up * d_oil_b
+
         if fluid.dpc_dsw is not None:
             m_w_up = (fluid.lam_w / fluid.bw)[sat["water_up"]]
             s_block_a[:, 0, 1] += -trans * m_w_up * fluid.dpc_dsw[a]
