@@ -68,9 +68,16 @@ def _between_branches_state(engine):
 
 
 def _slopes_zeroed(engine):
+    """Qol parametrlərinin Rs üzrə meyllərini SÖNDÜRÜR.
+
+    Q-34-dən sonra (Seans 43) deck yolunda qiymətləndirmə XƏTTİdir, ona
+    görə söndürülən parametrlər `_branch_bo_slope_rs` /
+    `_branch_mu_slope_rs`-dir. Köhnə `c_o`/`n` meylləri korrelyasiya
+    yolunda işlədilir və burada təsir etmir.
+    """
     pvt = engine.newton.pvt
-    pvt._branch_co_slope = np.zeros_like(pvt._branch_co_slope)
-    pvt._branch_n_slope = np.zeros_like(pvt._branch_n_slope)
+    pvt._branch_bo_slope_rs = np.zeros_like(pvt._branch_bo_slope_rs)
+    pvt._branch_mu_slope_rs = np.zeros_like(pvt._branch_mu_slope_rs)
 
 
 def test_the_engine_uses_the_branch_provider():

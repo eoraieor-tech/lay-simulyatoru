@@ -1249,3 +1249,41 @@ CNV minimumu 0.001004 → 0.001322 (hər iki halda addım onsuz da
 yığılmırdı). Geri-izləmə isə hələ də işləyir — qalığın sıçrayışı 1.4,
 geri-izləməsiz 9.6. Sahibkar bunu bilərək qərar verə bilsin deyə burada
 yazılıb; qayda geri qaytarılarsa, yığılma bərpa olunar.
+
+
+## Q-34 — Doymamış qol deck düyünləri arasında XƏTTİ interpolyasiya olunur
+
+**Tarix:** 17 sentyabr 2026 · **Kontekst:** Seans 40-da ölçülmüş 1.97 %
+μo fərqi (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 43)
+
+### Problem
+
+OPM cədvəl düyünləri arasında XƏTTİdir (`Tabulated1DFunction.hpp:282`),
+bizdə isə doymamış qol üstəl qanunla gedirdi (`Bo = Bo_b·exp(c_o·ΔP)`,
+`μo = μ_b·(p/Pb)^n` — Q-28/Q-30). Düyünlərdə fərq sıfır, aralıqda isə
+ölçüldü: **μo 1.97 %**, Bo 0.06 %.
+
+### Qərar 1 — deck yolunda xətti, korrelyasiya yolunda üstəl
+
+Deck qolları (`oil_branches`) verildikdə qolun forması xəttidir; qollar
+yoxdursa (korrelyasiya cədvəli) üstəl qanun QALIR — orada cədvəl onsuz da
+üstəl düsturla qurulur, dəyişiklik mövcud modelləri pozardı.
+
+### Qərar 2 — LÖVBƏR dəyişmir
+
+Qol Pb-dəki doymuş qiymətdən başlayır (Seans 36-nın lövbəri). Alternativ
+— OPM kimi tam 2 ölçülü cədvəl — Pb-də kiçik kəsilmə yaradardı və
+Nyutonun doymuş/doymamış keçidini pisləşdirərdi. İki düyünlü qolda (SPE1)
+iki yanaşma EYNİ nəticə verir.
+
+### Qərar 3 — fiziki olmayan qol açıq XƏTA verir
+
+Doymamış Bo təzyiqlə artırsa və ya μo azalırsa, `ValueError` atılır
+(səssiz qəbul yox). Testlə kilidlənib.
+
+### Ölçülmüş nəticə
+
+Qiymətlər deck-in xətti interpolyasiyası ilə **0.000 %** üst-üstə düşür
+(əvvəl μo-da 1.97 %). ∂/∂p dəqiqdir; ∂/∂Rs qollar arasında sonlu fərqlə
+0.00 %, qolun düyünündə isə birtərəflidir (parçalı xətti modelin təbii
+xassəsi). SPE1CASE2-yə təsiri cüzidir (FGOR > 2: 1142 → 1132 gün).

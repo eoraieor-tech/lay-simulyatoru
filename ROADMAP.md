@@ -98,6 +98,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > fərqlənir (qaz ~375 gün tez çatır) — səbəblər ⏳. Layihə faylının qaz
 > sütunlarını atması düzəldildi.
 >
+> **17 sentyabr 2026 (Seans 43):** doymamış qol deck düyünləri arasında
+> **XƏTTİ** oldu (Q-34) — μo sapması 1.97 % → **0.000 %**. İki namizəd
+> ölçülərək istisna olundu: zaman addımı və üç fazalı kro modeli
+> (təfərrüat `SPE1.md` §8.1). SPE1-in qalan fərqi ~145 gün.
+>
 > **17 sentyabr 2026 (Seans 42):** vurucu bağlantısı HƏR İKİ mühərrikdə
 > hüceyrənin TAM mobilliyini işlədir (Q-33, OPM mənbəyindən). WBHP INJ
 > 1-ci gündə −34.8 % → **+1.1 %**; iki fazalı modellərdə RF 62.86 → 62.83 %.

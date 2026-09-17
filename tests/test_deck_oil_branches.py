@@ -136,10 +136,18 @@ def test_derivatives_match_finite_difference_between_branches(name):
     assert d_drs == pytest.approx(numeric_rs, rel=1e-6)
 
 
-@pytest.mark.parametrize("name, slope", [("oil_fvf", "_branch_co_slope"),
-                                         ("oil_viscosity", "_branch_n_slope")])
+@pytest.mark.parametrize("name, slope",
+                         [("oil_fvf", "_branch_bo_slope_rs"),
+                          ("oil_viscosity", "_branch_mu_slope_rs")])
 def test_the_new_parameter_slope_term_is_necessary(name, slope):
-    """ZƏRURİLİK: dc_o/dRs (dn/dRs) həddi söndürüləndə ∂/∂Rs uyğunluğu pozulur."""
+    """ZƏRURİLİK: qol parametrinin Rs üzrə meyli söndürüləndə ∂/∂Rs pozulur.
+
+    Q-34-DƏN SONRA (Seans 43) deck yolunda qol XƏTTİdir, yəni
+    qiymətləndirmədə `c_o`/`n` YOX, `_branch_bo_slope`/`_branch_mu_slope`
+    işlədilir. Testin məqsədi dəyişmir — yoxlanılan hədd həmin
+    parametrlərin Rs üzrə meylidir (`..._slope_rs`). `c_o`/`n` isə
+    korrelyasiya yolunda və diaqnostikada qalır.
+    """
     deck = _deck_pvt()
     provider = _provider(deck)
     value = getattr(provider, f"{name}_undersaturated")

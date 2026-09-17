@@ -186,6 +186,7 @@ class BlackOilPVTProvider(IPVTProvider):
         haldakı qaydası mənbədən YOXLANILMAYIB.
         """
         rs_values, co_values, n_values = [], [], []
+        bo_slopes, mu_slopes = [], []       # Q-34: xətti meyllər
         heads = []
         for branch in self._oil_branches:
             p = np.asarray(branch.pressure, float).ravel()
@@ -205,9 +206,24 @@ class BlackOilPVTProvider(IPVTProvider):
             log_p = np.log(p[1:] / p[0])
             n = float(np.dot(log_p, np.log(mu[1:] / mu[0]))
                       / np.dot(log_p, log_p))
+            # Q-34: qolun XƏTTİ meyli — lövbərdən (p[0], bo[0]) keçən ən
+            # kiçik kvadratlar düzü. İki düyünlü qolda bu, sadəcə həmin
+            # iki nöqtədən keçən düzdür, yəni OPM-in interpolyasiyası.
+            bo_slope = float(np.dot(dp, bo[1:] - bo[0]) / np.dot(dp, dp))
+            mu_slope = float(np.dot(dp, mu[1:] - mu[0]) / np.dot(dp, dp))
+            if not bo_slope < 0.0:
+                raise ValueError(
+                    f"PVTO qolu (Rs = {rs_branch:.4g}): doymamış Bo təzyiqlə "
+                    f"artır (meyl = {bo_slope:.3g}) — fiziki deyil.")
+            if not mu_slope > 0.0:
+                raise ValueError(
+                    f"PVTO qolu (Rs = {rs_branch:.4g}): doymamış μo təzyiqlə "
+                    f"azalır (meyl = {mu_slope:.3g}) — fiziki deyil.")
             rs_values.append(rs_branch)
             co_values.append(co)
             n_values.append(n)
+            bo_slopes.append(bo_slope)
+            mu_slopes.append(mu_slope)
 
         if not rs_values:
             raise ValueError("PVTO: heç bir qolda doymamış sətir yoxdur — "
@@ -222,6 +238,13 @@ class BlackOilPVTProvider(IPVTProvider):
                                  / np.diff(self._branch_rs))
         self._branch_n_slope = (np.diff(self._branch_n)
                                 / np.diff(self._branch_rs))
+        # Q-34: xətti meyllər və onların Rs üzrə dəyişməsi
+        self._branch_bo_slope = np.asarray(bo_slopes, float)[order]
+        self._branch_mu_slope = np.asarray(mu_slopes, float)[order]
+        self._branch_bo_slope_rs = (np.diff(self._branch_bo_slope)
+                                    / np.diff(self._branch_rs))
+        self._branch_mu_slope_rs = (np.diff(self._branch_mu_slope)
+                                    / np.diff(self._branch_rs))
 
         # Qolların doymuş başları cədvəlin doymuş əyrisində olmalıdır —
         # əks halda qollar BAŞQA cədvələ aiddir (səssiz qarışıqlıq olmasın).
@@ -465,6 +488,10 @@ class BlackOilPVTProvider(IPVTProvider):
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
         bo_at_pb = self._anchor_at(self._sat_oil_fvf, pb)
+        if self._branch_rs is not None:     # Q-34: deck qolları → XƏTTİ
+            slope, _ = self._branch_parameter(self._branch_bo_slope,
+                                              self._branch_bo_slope_rs, rs)
+            return bo_at_pb + slope * (pressure - pb)
         co, _ = self._compressibility(rs)
         return bo_at_pb * np.exp(co * (pb - pressure))
 
@@ -478,6 +505,16 @@ class BlackOilPVTProvider(IPVTProvider):
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
         bo_at_pb = self._anchor_at(self._sat_oil_fvf, pb)
+        if self._branch_rs is not None:     # Q-34: XƏTTİ qolun törəmələri
+            slope, slope_rs = self._branch_parameter(
+                self._branch_bo_slope, self._branch_bo_slope_rs, rs)
+            anchor_slope = self._anchor_slope(self._sat_oil_fvf, pb)
+            dpb_drs = self._saturation_pressure_slope(rs)
+            d_dp = np.broadcast_to(np.atleast_1d(slope),
+                                   np.shape(pressure)).astype(float).copy()
+            d_drs = (dpb_drs * (anchor_slope - slope)
+                     + slope_rs * (pressure - pb))
+            return d_dp, d_drs
         co, co_rs = self._compressibility(rs)
         bo = bo_at_pb * np.exp(co * (pb - pressure))
 
@@ -510,6 +547,10 @@ class BlackOilPVTProvider(IPVTProvider):
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
         mu_at_pb = self._anchor_at(self._sat_oil_viscosity, pb)
+        if self._branch_rs is not None:     # Q-34: deck qolları → XƏTTİ
+            slope, _ = self._branch_parameter(self._branch_mu_slope,
+                                              self._branch_mu_slope_rs, rs)
+            return mu_at_pb + slope * (pressure - pb)
         ratio = np.maximum(pressure / np.maximum(pb, 1e-12), 1e-12)
         exponent, _ = self._viscosity_exponent(rs)
         return mu_at_pb * ratio ** exponent
@@ -527,8 +568,18 @@ class BlackOilPVTProvider(IPVTProvider):
         pressure = np.asarray(pressure, float)
         pb = self.saturation_pressure(rs)
         safe_pb = np.maximum(pb, 1e-12)
-        exponent, exponent_rs = self._viscosity_exponent(rs)
         mu_at_pb = self._anchor_at(self._sat_oil_viscosity, pb)
+        if self._branch_rs is not None:     # Q-34: XETTI qolun toremeleri
+            slope, slope_rs = self._branch_parameter(
+                self._branch_mu_slope, self._branch_mu_slope_rs, rs)
+            anchor_slope = self._anchor_slope(self._sat_oil_viscosity, pb)
+            dpb_drs = self._saturation_pressure_slope(rs)
+            d_dp = np.broadcast_to(np.atleast_1d(slope),
+                                   np.shape(pressure)).astype(float).copy()
+            d_drs = (dpb_drs * (anchor_slope - slope)
+                     + slope_rs * (pressure - pb))
+            return d_dp, d_drs
+        exponent, exponent_rs = self._viscosity_exponent(rs)
         ratio = np.maximum(pressure / safe_pb, 1e-12)
         mu = mu_at_pb * ratio ** exponent
 

@@ -557,6 +557,9 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > müqayisə aləti hazırdır, nəticə etalondan fərqlənir — araşdırma ⏳.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
+> **Seans 43:** doymamış qol xətti (Q-34) ✅; zaman addımı və kro modeli
+> ölçülərək istisna olundu. Qalan fərq üçün yeni namizəd axtarılmalıdır ⏳.
+>
 > **Seans 42:** vurucu mobilliyi ✅ (Q-33, hər iki mühərrik) — WBHP INJ
 > +1.1 %. Növbəti: doymamış qolun xətti interpolyasiyası, sonra qalan
 > cəbhə fərqi.

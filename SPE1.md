@@ -210,6 +210,17 @@ Qaz cəbhəsi (Sg > 0.05):
 **Vurucunun BHP-si** Seans 42-də bağlandı (§7.2): 1-ci gündə −34.8 % →
 **+1.1 %**. Axın nəticələri dəyişmədi, çünki vurucu RATE rejimindədir.
 
-**Qalan fərqlər:** cəbhənin 110–150 gün tez gəlməsi, FGOR-un 1034-cü
-gündə +38.7 % olması, FOPR-un 3650-ci gündə −9.7 % olması. Etalon
-(golden) fayl hələ YAZILMAYIB.
+**Qalan fərqlər:** cəbhənin ~145 gün tez gəlməsi, FGOR-un 1034-cü gündə
++38.7 % olması, FOPR-un 3650-ci gündə −9.7 % olması. Etalon (golden) fayl
+hələ YAZILMAYIB.
+
+### 8.1 · Seans 43-də ÖLÇÜLƏRƏK İSTİSNA olunanlar
+
+| Namizəd | Ölçmə | Nəticə |
+|---|---|---|
+| Zaman addımı (ədədi dispersiya) | `--max-dt` 31 → 10: cəbhə 13–28 gün **daha tez** | səbəb DEYİL |
+| Üç fazalı kro modeli (Stone II ↔ OPM defolt) | orta 0.174 %, maksimum 4.29 %, istiqamət TƏRS | səbəb DEYİL |
+| Doymamış qolun forması (Q-34) | μo 1.97 % → 0.000 %, cəbhəyə təsir ±10 gün | düzəldildi, səbəb DEYİL |
+
+OPM-in defolt kro düsturu (gələcək üçün, `EclDefaultMaterial.hpp:396-421`):
+`kro = (Sg·krog(1−Sg−Sw) + (Sw−Swco)·krow(Sg+Sw)) / (Sg+Sw−Swco)`.

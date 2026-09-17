@@ -4991,3 +4991,117 @@ səbəbi və hər iki ölçmə testin şərhində yazılıb.
 hədəf test faylları   83 + 36 + 32 keçdi
 tam dəst              2701 keçdi, 1 buraxıldı, 1 xfailed (13 dəq 56 san)
 ```
+
+
+## 17 sentyabr 2026 — Seans 43: doymamış qol XƏTTİ oldu (Q-34) + iki ölçmə
+
+Bu seansda bir dəyişiklik edildi və İKİ namizəd ölçmə ilə İSTİSNA olundu.
+
+### 1 · Q-34 — doymamış qol deck düyünləri arasında xəttidir
+
+OPM cədvəl düyünləri arasında xətti interpolyasiya edir
+(`Tabulated1DFunction.hpp:282`), bizdə isə üstəl qanun idi (Q-28/Q-30).
+Sahibkarın qərarı ilə deck yolunda xəttiyə keçildi.
+
+**Quruluş:** lövbər (Pb-dəki doymuş qiymət) DƏYİŞMƏDİ — Seans 36-da
+qazanılan keçid kəsilməzliyi qorunur; yalnız qolun forması dəyişdi:
+
+```
+Bo(p, Rs) = Bo_sat(Pb) + slope_Bo(Rs)·(p − Pb)
+μo(p, Rs) = μo_sat(Pb) + slope_μ(Rs)·(p − Pb)
+```
+
+İki düyünlü qolda (SPE1 belədir) bu, OPM-in interpolyasiyası ilə EYNİDİR.
+
+**ÖLÇÜLDÜ** (Rs = 1.27 qolu, deck-in xətti interpolyasiyasına qarşı):
+
+| | əvvəl | **sonra** |
+|---|---|---|
+| Bo-nun maksimal sapması | 0.06 % | **0.000 %** |
+| μo-nun maksimal sapması | **1.97 %** | **0.000 %** |
+
+**Törəmələr:** ∂/∂p qolun öz meylidir (dəqiq). ∂/∂Rs qollar ARASINDA
+sonlu fərqlə **0.00 %** uyğundur; qolun ÖZ düyünündə birtərəflidir —
+parçalı xətti modeldə orada törəmə birqiymətli deyil (bütün cədvəl
+əsaslı törəmələrimizdə eynidir; testdə açıq yazılıb).
+
+**Korrelyasiya yolu toxunulmadı** — qollar verilmirsə üstəl qanun qalır
+(testlə kilidlənib). `c_o` və `n` deck yolunda artıq qiymətləndirmədə
+İŞLƏDİLMİR, lakin hesablanıb DOĞRULANIR (fiziki olmayan qol açıq xəta
+verir) və diaqnostika üçün saxlanılır.
+
+**G3 testləri yönləndirildi:** `test_deck_oil_branches*.py`-dakı üç test
+`c_o`/`n` meyllərinin ZƏRURİLİYİNİ yoxlayırdı; deck yolunda artıq xətti
+meyllər işlədildiyi üçün həmin testlər indi `_branch_bo_slope_rs` /
+`_branch_mu_slope_rs`-i söndürür. Testin MƏQSƏDİ dəyişmədi — yalnız
+yoxlanılan parametr dəyişdi (şərhdə səbəb yazılıb).
+
+**SPE1-ə təsiri — cüzi** (gözlənildiyi kimi, çünki fərq 2 % idi):
+
+| | əvvəl | sonra | OPM |
+|---|---|---|---|
+| FGOR > 2 | 1142 gün | 1132 gün | 1276 gün |
+| BHP limitinə keçid | 1381 | 1382 | 1550 |
+| cəbhə, blok 300 | 1157 | 1161 | 1307 |
+
+### 2 · ÖLÇMƏ — zaman addımı qalan fərqi izah ETMİR
+
+`--max-dt` 31 → 10 gün:
+
+| | Δt ≤ 31 | Δt ≤ 10 | OPM |
+|---|---|---|---|
+| FGOR > 2 | 1142 | **1129** | 1276 |
+| BHP limitinə keçid | 1381 | **1366** | 1550 |
+| cəbhə, blok 300 | 1157 | **1129** | 1307 |
+
+Addım kiçiləndə nəticə OPM-ə YAXINLAŞMIR, **13–28 gün uzaqlaşır**. Yəni
+qalan fərq ədədi dispersiyadan gəlmir; zaman diskretləşməsi onsuz da
+demək olar yığılıb (31 → 10 arasında dəyişmə 1–3 %).
+
+### 3 · ÖLÇMƏ — üç fazalı kro modeli də səbəb DEYİL (və mənim səhvim)
+
+OPM deck-də `STONE1`/`STONE2` olmayanda ÖZ DEFOLT modelini işlədir
+(`EclMaterialLawManager.cpp:540-545`), düsturu isə
+(`EclDefaultMaterial.hpp:396-421`):
+
+```
+kro = (Sg·kro_go + (Sw − Swco)·kro_ow) / (Sg + Sw − Swco)
+kro_ow = krow(Sg + Sw)          ← DİQQƏT: sw-də YOX, (sg+sw)-də
+kro_go = krog(So = 1 − Sg − Sw)
+```
+
+**Mən əvvəlcə `kro_ow`-u `sw`-də hesablamışdım və nəticəni sahibkara
+YANLIŞ təqdim etdim** (orta 1.78 %, maksimum 31.5 %, "Stone II daha
+kiçik"). Düzgün düsturla, SPE1 qaçışının BÜTÜN vəziyyətləri üzrə:
+
+| | səhv ölçmə | **düzgün** |
+|---|---|---|
+| orta fərq (kro > 0.01) | 1.78 % | **0.174 %** |
+| maksimum | 31.5 % | 4.29 % |
+| istiqamət | Stone II kiçik | **Stone II BÖYÜK** (88.7 % halda) |
+
+Yəni model dəyişsəydi qaz cəbhəsi daha da TEZ gələrdi — qalan fərqi
+düzəltmək əvəzinə artırardı. Ona görə tətbiq edilmədi.
+
+⏳ **Backlog:** defolt modeli yenə də əlavə etmək məntiqlidir — su
+HƏRƏKƏT EDƏN modellərdə fərq böyükdür (Sw = 0.20-də 50 %-ə çatır). Bu,
+SPE1 dəqiqliyi üçün deyil, ümumi OPM uyğunluğu üçündür.
+
+### 4 · Qalan fərq (SPE1CASE2)
+
+Cəbhə hələ ~145 gün tez gəlir, FGOR 1034-cü gündə +38.7 %, FOPR 1580-də
+−18.3 %. Ölçülərək İSTİSNA olunanlar: PVT (Bg/Bo/μo/Rs/c_o deck ilə
+0.00 %), quyu indeksi, PERMZ/PORO, vurucu mobilliyi (Q-33), G7 (bağlandı),
+zaman addımı, üç fazalı kro modeli.
+
+Bir müşahidə: 1034-cü gündə bizim quyudibi təzyiq 3965 psia, OPM-də 4013
+— hər ikisi doyma nöqtəsinin (4014.7) düz ətrafındadır, biz bir az
+altında. Sistem orada həddindən həssasdır: 48 psi fərq FGOR-da 38 %
+fərqə çevrilir.
+
+### 5 · Yoxlama
+
+```
+tests/test_undersaturated_linear.py   14 keçdi (YENİ)
+tam dəst                              2715 keçdi, 1 buraxıldı, 1 xfailed (5 dəq 52 san)
+```
