@@ -188,6 +188,9 @@ Bo-da 0.06 %, **μo-da 1.97 %** (5500–6500 psia).
 
 ## 8 · G7-dən sonrakı müqayisə — Seans 41
 
+> Bu bölmə **Seans 41-in anıdır**. Q-33 və Q-34-dən sonrakı CARİ
+> rəqəmlər §8.3-dədir.
+
 Eyni qaçış, eyni etalon; yeganə dəyişiklik doymuş qolun xətti uzadılmasıdır.
 
 | Kəmiyyət | G7-dən əvvəl | **sonra** | OPM Flow |
@@ -224,3 +227,63 @@ hələ YAZILMAYIB.
 
 OPM-in defolt kro düsturu (gələcək üçün, `EclDefaultMaterial.hpp:396-421`):
 `kro = (Sg·krog(1−Sg−Sw) + (Sw−Swco)·krow(Sg+Sw)) / (Sg+Sw−Swco)`.
+
+### 8.2 · Növbəti namizədlər — ÖLÇÜLMƏYİB ⏳ (backlog)
+
+Qalan fərq: qaz ~145 gün tez gəlir. Aşağıdakıların **heç biri ölçülməyib**;
+hər biri üçün ölçmə üsulu da yazılıb ki, növbəti seans birbaşa başlaya bilsin.
+
+**N-1 · Şaquli axın / cazibə həddində sıxlığın ortalanması.**
+Seans 40-da (G7-DƏN ƏVVƏL) ölçülmüşdü: 304-cü gündə vurucu sütununda qaz
+doyumu bizdə 0.476 / 0.423 / **0.195**, OPM-də 0.470 / 0.413 / **0.169** —
+yəni qaz bizdə aşağı laya bir az tez sürüşürdü. G7 və Q-33-dən SONRA bu
+ölçmə TƏKRARLANMALIDIR. Üsul: `BGSAT` bloklarını (1 / 101 / 201) etalonla
+eyni anlarda tutuşdurmaq (`spe1_compare` artıq cəbhə cədvəlini verir).
+Sonra OPM-in sərhəd sıxlığı qaydası mənbədən oxunmalıdır.
+
+**N-2 · Upstream çəkiləməsi.** Hər iki tərəfdə tək nöqtəli upstream olsa
+da, faza potensialının qurulmasında (xüsusən cazibə hissəsində) fərq ola
+bilər. Üsul: eyni vəziyyətdə bir sərhəd üçün hər iki qaydanın verdiyi
+upstream seçimini müqayisə etmək.
+
+**N-3 · İstismarçıda qazın bölünməsi (sərbəst ↔ həll olmuş).**
+FGOR-un tərkibi ayrıca ölçülməyib. Üsul: quyudan gələn qazı iki
+komponentə ayırıb (`q_free`, `Rs·q_oil`) zamanla çap etmək; OPM-in
+`gasOilPerfRateInj` qaydası ilə tutuşdurmaq.
+
+**N-4 · Rs artımının sürəti.** CASE2-də `DRSDT` yoxdur, lakin Eclipse-in
+bu haldakı defolt davranışı mənbədən yoxlanılmayıb.
+
+**QOVMAYIN — bu, müstəqil səbəb DEYİL:** lay təzyiqimiz 1034-cü gündə
+OPM-dən aşağıdır (BPR 1: −3.2 %, BPR 300: −5.7 %). Bu, daha çox qaz hasil
+etməyimizin (FGOR +38.7 %) NƏTİCƏSİDİR — həcm balansı daha çox boşalır.
+Yəni kök səbəb yenə cəbhənin tez gəlməsidir.
+
+**Yoxlanılıb, səbəb DEYİL:** G6 — SPE1 modeli deck-in `ROCK 14.7 psia`
+istinadını ötürür (`benchmarks/spe1.py:134-137`, Seans 43-də yoxlanıldı).
+
+### 8.3 · CARİ nəticə — Seans 43 (G7 + Q-33 + Q-34)
+
+375 addım, orta Δt 9.7 gün, 146 təkrar (~2 dəqiqə).
+
+| t, gün | Kəmiyyət | Bizdə | OPM Flow | Fərq |
+|---|---|---|---|---|
+| 1 | WBHP INJ, psia | 8173 | 8082 | **+1.1 %** |
+| 304 | FOPR, STB/gün | 20 000 | 20 000 | 0.0 % |
+| 1034 | FOPR, STB/gün | 20 000 | 20 000 | 0.0 % |
+| 1034 | WBHP PROD, psia | 3965 | 4013 | **−1.2 %** |
+| 1034 | FGOR, Mscf/STB | 1.776 | 1.280 | +38.7 % |
+| 1399 | FOPR, STB/gün | 19 450 | 20 000 | −2.8 % |
+| 1580 | FOPR, STB/gün | 15 410 | 18 870 | −18.3 % |
+| 3650 | FOPR, STB/gün | 5176 | 5733 | −9.7 % |
+| 3650 | BPR (1,1,1) / (10,10,3) | 3989 / 3203 | 4101 / 3278 | −2.7 / −2.3 % |
+
+| Hadisə | Bizdə | OPM Flow | Fərq |
+|---|---|---|---|
+| FGOR > 2 Mscf/STB (qazın çatması) | 1132 gün | 1276 gün | −144 gün |
+| FOPR < 19 900 (limitə keçid) | 1382 gün | 1550 gün | −168 gün |
+| Qaz cəbhəsi, blok 300 (Sg > 0.05) | 1161 gün | 1307 gün | −146 gün |
+
+Seans 38-dən bəri yol: FGOR > 2 **900 → 1132 gün**, WBHP PROD (1034)
+**−60.7 % → −1.2 %**, WBHP INJ (1) **−34.8 % → +1.1 %**, addım sayı
+**514 → 375**.

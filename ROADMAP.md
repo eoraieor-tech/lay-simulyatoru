@@ -307,3 +307,8 @@ Hələ mərhələyə salınmayan, amma unudulmaması lazım olan fikirlər:
 - Paralel hesablama (çox nüvəli / GPU)
 - History matching (tarixi uyğunlaşdırma) modulu
 - Qeyri-struktur (PEBI) grid dəstəyi
+- **SPE1CASE2-nin qalan ~145 günlük cəbhə fərqi** — dörd namizəd və hər
+  birinin ölçmə üsulu: [SPE1.md](SPE1.md) §8.2 (şaquli axın/cazibə,
+  upstream çəkiləməsi, istismarçıda qazın bölünməsi, Rs artımının sürəti)
+- **OPM-in defolt üç fazalı kro modeli** — SPE1-də fərq cəmi 0.174 %,
+  lakin su HƏRƏKƏT EDƏN modellərdə 50 %-ə çatır (düstur: SPE1.md §8.1)

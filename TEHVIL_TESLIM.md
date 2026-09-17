@@ -310,6 +310,15 @@ Aşağıdakı bölmələr TARİXİ kontekstdir (Seans 39-da yazılıb).
 
 **Açıq qalan ⏳:**
 
+* **SPE1CASE2-nin qalan ~145 günlük fərqi** — dörd namizəd və hər birinin
+  ÖLÇMƏ ÜSULU `SPE1.md` §8.2-də yazılıb (şaquli axın/cazibə, upstream
+  çəkiləməsi, istismarçıda qazın bölünməsi, Rs artımının sürəti). Orada
+  həm də "qovmayın" siyahısı var: lay təzyiqinin aşağı olması müstəqil
+  səbəb deyil, FGOR-un yüksəkliyinin nəticəsidir.
+* **Etalon (golden) fayl YAZILMAYIB** və fərqlər izah olunana qədər
+  yazılmamalıdır (Q-31 Qərar 7, sahibkarın təsdiqi ilə Seans 43-də də
+  saxlanıldı).
+
 * THP hidravlikası (`simulation/wellbore/`) hələ ölü neft sıxlığı ilə hesablayır.
 * İki fazalı Jakobianda cazibə sıxlığının törəməsi atılır — ölçülməyib.
 * SWOF/SGOF-un Pc sütunu vahid çevirməsiz oxunur (SPE1-də 0).
