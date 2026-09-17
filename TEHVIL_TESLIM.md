@@ -1,17 +1,18 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
-**Hazırlanıb:** 16 sentyabr 2026, Seans 38-in sonunda ·
-**Təhvil anındakı commit:** `94d04f4` (bu sənədin commit-i ondan sonra gəlir)
-**Növbəti iş:** SPE1CASE2 nəticəsinin OPM Flow etalonundan **fərqinin səbəblərini** ölçmək (§5)
+**Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 17 sentyabr 2026 (Seans 43)
+**Təhvil anındakı commit:** `647ac78`
+**Növbəti iş:** SPE1CASE2-nin QALAN fərqi üçün yeni namizəd tapmaq (§5) —
+əsas səbəb (G7) tapılıb və bağlanıb, üç namizəd isə ölçülərək istisna olunub.
 
 Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI köməkçisi)
 üçündür. Burada yalnız davam etmək üçün LAZIM olanlar var:
 
 | Harada | Nə |
 |---|---|
-| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son iş seansı: **Seans 38**, təhvil: Seans 39) |
-| `QARARLAR.md` | texniki qərarların səbəbləri (son: **Q-31**) |
-| `SPE1.md` | SPE1-in mənbəsi, deck parametrləri, boşluq cədvəli, **§6 müqayisə** |
+| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son: **Seans 43**) |
+| `QARARLAR.md` | texniki qərarların səbəbləri (son: **Q-34**) |
+| `SPE1.md` | SPE1-in mənbəsi, deck parametrləri, boşluq cədvəli, **§7 səbəb**, **§8 cari müqayisə** |
 | `ROADMAP.md` | mərhələ statusu, texniki borc (TB-1…TB-3) |
 | `CLAUDE.md` | layihə qaydaları (AI köməkçisi üçün) |
 
@@ -25,12 +26,25 @@ Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI kö
 | | |
 |---|---|
 | Budaq | `main` = `origin/main`, açıq budaq yoxdur |
-| Test dəsti | **2679 keçdi, 1 buraxıldı, 1 xfailed** (bu maşında 10–11 dəqiqə) |
-| Son hesabat bölməsi | **Seans 39** (təhvil) → növbəti yazılacaq: **Seans 40** |
-| Son qərar | **Q-31** → növbəti: **Q-32** |
-| Aktiv blok | **B7 / SPE1** — SPE1CASE2 modeli qurulub, etalondan fərqlər izah olunmayıb |
+| Test dəsti | **2715 keçdi, 1 buraxıldı, 1 xfailed** (~6 dəqiqə boş maşında) |
+| Son hesabat bölməsi | **Seans 43** → növbəti yazılacaq: **Seans 44** |
+| Son qərar | **Q-34** → növbəti: **Q-35** |
+| Aktiv blok | **B7 / SPE1** — əsas fərq bağlandı, qalan ~145 günlük fərqin səbəbi ⏳ |
 
-### Son iki seansda bitənlər (yenidən başlamağa ehtiyac yoxdur)
+### Seans 40–43-də bitənlər (17 sentyabr 2026)
+
+| Seans | İş | Commit |
+|---|---|---|
+| 40 | **Fərqin SƏBƏBİ tapıldı** — etalonun 9 `BGSAT` bloku ilə qaz cəbhəsi ölçüldü; PVT/quyu indeksi/PERMZ deck ilə 0.00 % təsdiqləndi | `e0aadd1` |
+| 41 | **G7** ✅ — doymuş Rs qolu OPM kimi xətti uzadılır (Q-32). WBHP PROD 1034-cü gündə −60.7 % → **−1.2 %** | `2073136` |
+| 42 | **Vurucu mobilliyi** ✅ — hər iki mühərrikdə hüceyrənin tam mobilliyi (Q-33). WBHP INJ 1-ci gündə −34.8 % → **+1.1 %** | `3f9fd26` |
+| 43 | **Doymamış qol XƏTTİ** (Q-34) — μo sapması 1.97 % → 0.000 %; zaman addımı və kro modeli ölçülərək istisna olundu | `647ac78` |
+
+**Bu dörd seansın əsas dərsi:** hər qayda OPM-in MƏNBƏ KODUNDAN oxundu
+(`LiveOilPvt.hpp`, `Tabulated1DFunction.hpp`, `StandardWell_impl.hpp`,
+`EclDefaultMaterial.hpp`) — fərziyyə ilə kod yazılmadı.
+
+### Daha əvvəl bitənlər (Seans 37–38)
 
 | Seans | İş | Commit |
 |---|---|---|
@@ -53,7 +67,7 @@ Daha əvvəlki işlər (G1, G2, G4, G5, G6, BHP limiti, səth debiti və s.) —
 | # | Nə | Status |
 |---|---|---|
 | G1–G6, G9 | PVT oxuyucuları, doymamış μo/Bo, SGOF, səth debiti, süxur istinadı, canlı neft sıxlığı | ✅ |
-| G7 | Doymuş qol 5014.7 psia-dan yuxarı (Rs_sat plato) | ⏳ açıq — §5 |
+| G7 | Doymuş qol 5014.7 psia-dan yuxarı (Rs_sat plato) | ✅ Seans 41 (Q-32) |
 | G8 | `DRSDT 0` (yalnız SPE1CASE1) | ⏳ hədəf CASE2 olduğu üçün təxirə salınıb |
 
 ---
@@ -82,11 +96,11 @@ git log --oneline -3          # ən üstdə bu təhvil sənədinin commit-i, alt
 Aşağıdakı əmrlərdə `PY` öz mühitinizin `python.exe` yoludur:
 
 ```bash
-PY -m pytest -q -p no:cacheprovider -o addopts=""    # baza: 2679 keçdi, 1 buraxıldı, 1 xfailed
+PY -m pytest -q -p no:cacheprovider -o addopts=""    # baza: 2715 keçdi, 1 buraxıldı, 1 xfailed
 PY app.py                                            # proqram
 ```
 
-**İşə başlamazdan ƏVVƏL bazanı öz maşınınızda alın.** 2679-dan fərqli çıxarsa,
+**İşə başlamazdan ƏVVƏL bazanı öz maşınınızda alın.** 2715-dən fərqli çıxarsa,
 səbəbini tapmadan dəyişiklik etməyin.
 
 ### 2.3 · SPE1 faylları (repoda DEYİL — lisenziya yoxlanılmayıb)
@@ -141,29 +155,29 @@ Sizdə yoxdursa bu addımı buraxa bilərsiniz; varsa kod dəyişəndən sonra
 
 Model: [imex2d/benchmarks/spe1.py](imex2d/benchmarks/spe1.py). Cədvəllər deck-dən
 oxunur, qalan parametrlər `SPE1.md` §2-də yoxlanılmış FIELD sabitləridir.
-Qaçış: 514 addım, orta Δt 7.1 gün, 197 təkrar həll.
+Qaçış: **375 addım**, orta Δt 9.7 gün, 146 təkrar (~2 dəqiqə).
 
-| t, gün | Kəmiyyət | Bizdə | OPM Flow | Fərq |
+| t, gün | Kəmiyyət | Seans 38-də | **İNDİ** | OPM Flow |
 |---|---|---|---|---|
-| 1 | WBHP INJ, psia | 5271 | 8082 | −34.8 % |
-| 304 | BPR (1,1,1) / (10,10,3), psia | 6164 / 4270 | 6147 / 4302 | +0.3 / −0.7 % |
-| 1034 | FGOR, Mscf/STB | 6.255 | 1.280 | +389 % |
-| 1034 | WBHP PROD, psia | 1576 | 4013 | −60.7 % |
-| 1399 | FOPR, STB/gün | 14 720 | 20 000 | −26.4 % |
-| 1399 | BPR (1,1,1), psia | 5842 | 7389 | −20.9 % |
-| 3650 | FOPR, STB/gün | 4980 | 5733 | −13.1 % |
-| 3650 | FGOR, Mscf/STB | 24.55 | 22.14 | +10.9 % |
+| 1 | WBHP INJ, psia | 5271 (−34.8 %) | **8173 (+1.1 %)** | 8082 |
+| 304 | FOPR, STB/gün | 20 000 (0.0 %) | 20 000 (0.0 %) | 20 000 |
+| 1034 | FGOR, Mscf/STB | 6.255 (+389 %) | **1.776 (+38.7 %)** | 1.280 |
+| 1034 | WBHP PROD, psia | 1576 (−60.7 %) | **3965 (−1.2 %)** | 4013 |
+| 1399 | FOPR, STB/gün | 14 720 (−26.4 %) | **19 450 (−2.8 %)** | 20 000 |
+| 3650 | FOPR, STB/gün | 4980 (−13.1 %) | **5176 (−9.7 %)** | 5733 |
+| 3650 | BPR (1,1,1) / (10,10,3) | −4.2 / −3.7 % | **−2.7 / −1.9 %** | 4101 / 3278 |
 
-| Hadisə (0.5 % toleransla) | Bizdə | OPM Flow |
-|---|---|---|
-| FOPR 19 900-dən aşağı (istismarçı BHP limitinə keçir) | 1120 gün | 1550 gün |
-| FGOR > 2 (qazın istismarçıya çatması) | 900 gün | 1276 gün |
+| Hadisə | Seans 38-də | **İNDİ** | OPM Flow |
+|---|---|---|---|
+| FGOR > 2 (qazın çatması) | 900 gün | **1132 gün** | 1276 gün |
+| FOPR < 19 900 (limitə keçid) | 1120 gün | **1382 gün** | 1550 gün |
+| Qaz cəbhəsi, blok 300 | — | **1161 gün** | 1307 gün |
 
-Tam cədvəl: `SPE1.md` §6.
+Tam cədvəl və qaz cəbhəsi: `SPE1.md` §8;  alət:
+`PY tools/spe1_compare.py <deck> <etalon>` (cəbhə cədvəlini də çap edir).
 
-**Oxunuşu:** ~300-cü günə qədər təzyiq və debitlər 1 % daxilindədir. Sonra
-bizdə qaz ~375 gün tez çatır, lay təzyiqi aşağı düşür, istismarçı limitə
-~430 gün tez keçir. 10 ilin sonunda fərq 4–13 %-ə enir.
+**Oxunuşu:** 1034-cü günə qədər FOPR dəqiq, təzyiqlər ≤ 5.7 % daxilindədir.
+Qalan fərq 1399–1580-ci günlərdə toplanıb: qaz hələ ~145 gün tez gəlir.
 
 **Etalon (golden) fayl YAZILMAYIB** — fərqlər izah olunmayana qədər yazılmamalıdır (Q-31 Qərar 7).
 
@@ -171,9 +185,30 @@ bizdə qaz ~375 gün tez çatır, lay təzyiqi aşağı düşür, istismarçı l
 
 ## 5 · NÖVBƏTİ İŞ — fərqin səbəblərini bir-bir ölçmək
 
-Aşağıdakıların **heç biri ölçülməyib** və OPM mənbəsindən oxunmayıb — hamısı
-fərziyyədir. Hər birini ayrıca ölçün (bir dəyişiklik → tam müqayisə), fizikanı
-dəyişməzdən əvvəl qərarı sahibkara verin.
+> **DİQQƏT — bu bölmə köhnəlib.** §5.1 (vurucu mobilliyi) və §5.2 (G7)
+> ARTIQ BİTİB (Seans 41–42). Aşağıdakı təsvirlər tarixi kontekstdir.
+>
+> **CARİ VƏZİYYƏT:** əsas səbəb tapılıb və bağlanıb. Qalan fərq ~145 gündür
+> və ÜÇ namizəd ölçülərək İSTİSNA olunub (`SPE1.md` §8.1):
+>
+> | Namizəd | Ölçmə | Nəticə |
+> |---|---|---|
+> | Zaman addımı | `--max-dt` 31 → 10: cəbhə 13–28 gün DAHA TEZ | səbəb deyil |
+> | Üç fazalı kro modeli | OPM defoltu ilə orta 0.174 %, istiqamət TƏRS | səbəb deyil |
+> | Doymamış qolun forması | Q-34 ilə düzəldildi, təsir ±10 gün | səbəb deyil |
+>
+> **Ölçülərək TƏSDİQLƏNƏNLƏR** (bunlara qayıtmayın): Bg, μg, Bo, μo,
+> Rs_sat, c_o deck ilə **0.00 %**; quyu indeksi analitik Peaceman ilə eyni;
+> `PERMZ = PERMX`, `PORO 0.3` deck ilə eyni.
+>
+> **Növbəti namizədlər ⏳** (heç biri ölçülməyib): qaz-neft sistemində
+> upstream çəkiləməsi; cazibə/şaquli axının cəbhəyə təsiri (G9-dan sonra
+> yenidən); istismarçının qaz hasilatının bölünməsi; `DRSDT`-siz Rs
+> artımının sürəti. Bir müşahidə: 1034-cü gündə quyudibi təzyiqimiz
+> 3965 psia, OPM-də 4013 — hər ikisi doyma nöqtəsinin (4014.7) düz
+> ətrafındadır və sistem orada həddindən həssasdır (48 psi → FGOR-da 38 %).
+
+Aşağıdakı bölmələr TARİXİ kontekstdir (Seans 39-da yazılıb).
 
 ### 5.1 · Vurucu bağlantısının mobilliyi — tövsiyə olunan başlanğıc
 
@@ -263,7 +298,15 @@ dəyişməzdən əvvəl qərarı sahibkara verin.
 * **TB-2:** üç fazalı axın Jakobianının təzyiq sütunu qarışıq vəziyyətdə —
   0.03–0.19. Seans 38-də ölçüldü: **cazibədən DEYİL** (cazibəsiz modeldə də
   var, G9a dəyişmədi). Mənbə ⏳.
-* **TB-3:** `_saturation_pressure_slope` ən üst Rs düyünündə 2 dəfə fərq (G7 ilə eyni kök).
+* **TB-3:** `_saturation_pressure_slope` ən üst Rs düyünündə 2 dəfə fərq —
+  **deck yolunda Seans 41-də (G7/Q-32) həll olundu**, korrelyasiya yolunda qalır.
+* **Vurucu qaydası birləşmiş həllediciyə (`implicit/standard_well.py`)
+  TƏTBİQ OLUNMAYIB** (Q-33 Qərar 4). O yol heç bir mühərrik tərəfindən
+  işlədilmir (yatmış kod), lakin fayla toxunanda uyğunlaşdırılmalıdır.
+* **OPM-in defolt üç fazalı kro modeli əlavə edilməyib** (Seans 43-də
+  ölçüldü: SPE1-də fərq cəmi 0.174 %). Su HƏRƏKƏT EDƏN modellərdə fərq
+  50 %-ə çatır, ona görə gələcəkdə əlavə edilməlidir. Düstur və mənbə
+  sətirləri `SPE1.md` §8.1-də yazılıb.
 
 **Açıq qalan ⏳:**
 
@@ -287,6 +330,16 @@ dəyişməzdən əvvəl qərarı sahibkara verin.
 
 ## 8 · Bilinən tələlər (vaxt itirməmək üçün)
 
+* **`SPE1.md` CRLF-dir** (bu sənədin aşağısındakı sətir sonları cədvəli onu
+  səhvən LF kimi göstərirdi — Seans 43-də `file` ilə yoxlanıldı). Hər fayl
+  dəyişməzdən ƏVVƏL `file <ad>` işlədin, siyahıya güvənməyin.
+* **Bash-da ikiqat dırnaq içində backtick ` KOMANDA KİMİ işləyir** —
+  Azərbaycanca şərh yazanda mətn səssizcə itir (Seans 43-də bir şərh
+  belə zədələndi). Heredoc (`<<'PYEOF'`) işlədin.
+* **Ölçməni tətbiqdən ƏVVƏL iki dəfə yoxlayın.** Seans 43-də kro
+  müqayisəsində `krow`-u səhv arqumentdə (sw, halbuki OPM sg+sw işlədir)
+  hesabladım və sahibkara YANLIŞ rəqəm verdim (1.78 % ↔ həqiqi 0.174 %).
+  Düsturu mənbədən oxuyanda HƏR arqumentin nə olduğunu yoxlayın.
 * **Windows konsolu cp1254-dür.** Azərbaycan hərfləri çap edən skriptin
   əvvəlinə: `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")`.
 * **Sətir sonları qarışıqdır.** Bəzi fayllar CRLF-dir (`ISH_HESABATI.md`,
