@@ -1,7 +1,8 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
 **Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 17 sentyabr 2026 (Seans 43)
-**Təhvil anındakı commit:** `647ac78`
+**Son kod commit-i:** `647ac78` · son sənəd commit-i bu faylın öz commit-idir
+(`git log --oneline -3` ilə yoxlayın)
 **Növbəti iş:** SPE1CASE2-nin QALAN fərqi üçün yeni namizəd tapmaq (§5) —
 əsas səbəb (G7) tapılıb və bağlanıb, üç namizəd isə ölçülərək istisna olunub.
 
@@ -123,8 +124,37 @@ PY tools/eclipse_summary.py <qovluq>/SPE1CASE2 "TIME,FOPR,FGOR,WBHP:PROD,WBHP:IN
 PY tools/spe1_compare.py <qovluq>/SPE1CASE2.DATA <qovluq>/SPE1CASE2    # ~80 san
 ```
 
-İkinci əmr §4-dəki cədvəli **eyni rəqəmlərlə** verməlidir (Seans 38-də iki dəfə
-işlədilib, nəticə təkrarlanıb). Fərqli çıxarsa — işə başlamadan səbəbini tapın.
+İkinci əmr §4-dəki cədvəlin **«İNDİ» sütununu eyni rəqəmlərlə** verməlidir
+(375 addım; Seans 43-də bir neçə dəfə işlədilib, nəticə təkrarlanıb). Fərqli
+çıxarsa — işə başlamadan səbəbini tapın.
+
+Alət cədvəldən əlavə **qaz cəbhəsi cədvəlini** (etalonun 9 `BGSAT` bloku)
+və FOPR < 19 900 anını çap edir. **FGOR > 2 anını ÇAP ETMİR** — Seans 43-də
+o, `imex2d.benchmarks.spe1.first_time_above(zaman, FGOR, 2.0)` ilə ayrıca
+hesablandı. Zaman addımı həssaslığı: `--max-dt 10`.
+
+Seans 40–43-ün maşınında etalon faylları `C:\Users\Acer\spe1-ref`
+qovluğunda idi (repodan KƏNARDA, checksum yuxarıdakı ilə eyni çıxdı).
+
+#### OPM mənbə faylları — qaydalar buradan oxundu
+
+Seans 40–43-də hər qayda OPM-in mənbəyindən oxundu. Backlog-dakı N-1…N-4
+(`SPE1.md` §8.2) üçün də eyni yol lazımdır:
+
+| Fayl (`https://raw.githubusercontent.com/OPM/...`) | Nə üçün |
+|---|---|
+| `opm-common/master/opm/material/fluidsystems/blackoilpvt/LiveOilPvt.hpp` | G7 — `extrapolate=true` (sətir 512) |
+| `opm-common/master/opm/material/common/Tabulated1DFunction.hpp` | xətti interpolyasiya və ekstrapolyasiya (266–283) |
+| `opm-simulators/master/opm/simulators/wells/StandardWell_impl.hpp` | vurucu: `total_mob` (264–315) |
+| `opm-simulators/master/opm/simulators/wells/WellInterface_impl.hpp` | `getMobility` (2261–2278) |
+| `opm-common/master/opm/material/fluidmatrixinteractions/EclDefaultMaterial.hpp` | defolt kro (390–421, 447–458) |
+| `opm-common/master/opm/material/fluidmatrixinteractions/EclMaterialLawManager.cpp` | kro modelinin seçimi (540–545) |
+
+⚠️ **Tələlər:** `opm-simulators/opm/material/...` yolu **404** verir —
+cari fayllar `opm-common`-dadır. `opm-material` deposu hələ də açılır, lakin
+**köhnə versiyanı** verir (`LiveOilPvt.hpp` orada 706 sətir, `opm-common`-da
+418) — onu İŞLƏTMƏYİN. Sətir nömrələri 17 sentyabr 2026-dakı `master`-ə
+aiddir və dəyişə bilər: funksiya adı ilə axtarın.
 
 ### 2.4 · graphify
 
@@ -132,6 +162,33 @@ işlədilib, nəticə təkrarlanıb). Fərqli çıxarsa — işə başlamadan s�
 maşınında qurulu idi (`graphify-out/` `.gitignore`-dadır, repoya düşmür).
 Sizdə yoxdursa bu addımı buraxa bilərsiniz; varsa kod dəyişəndən sonra
 `graphify update .` işlədin.
+
+### 2.5 · Proqramı işə salmaq və gözlənilməz bağlanmanı tutmaq
+
+Arxa plan terminal əmri ilə açılan proqram seans bağlananda bağlanır (§8).
+Seans 40–43-də proqram PowerShell ilə **stderr tutulması** ilə açıldı ki,
+özbaşına bağlanarsa səbəbi itməsin:
+
+```powershell
+$env:PYTHONFAULTHANDLER = "1"; $env:PYTHONUNBUFFERED = "1"
+Start-Process -FilePath "<PY>" -ArgumentList "app.py" -WorkingDirectory "<repo>" -RedirectStandardError "<qovluq>\app_stderr.log" -RedirectStandardOutput "<qovluq>\app_stdout.log"
+```
+
+`PYTHONFAULTHANDLER=1` C səviyyəli çökmədə (Qt, numpy) də yığın dökümünü
+stderr-ə yazır. Proqram gözlənilmədən bağlananda bu ardıcıllıqla yoxlayın:
+
+1. `app_stderr.log` — traceback və ya `Fatal Python error`;
+2. `logs/imex2d.log` — son yazılar (proqram özü də jurnal aparır);
+3. Windows hadisə jurnalı — `Get-WinEvent -FilterHashtable
+   @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-30)}`,
+   `Application Error` / `Application Hang` qeydləri.
+
+**Seans 40–43-də ölçülüb:** proqram iki dəfə "yox oldu", lakin nə jurnalda,
+nə stderr-də, nə də Windows hadisə jurnalında çökmə izi tapılmadı — yəni
+normal bağlanma idi. İkinci halda ölüm anı 3 saat 45 dəqiqəlik pəncərədə
+idi, ona görə "qaçış bitəndən sonra çökür" fərziyyəsi TƏKZİB olundu.
+Çıxışında `MainWindowTitle` boş görünən ikinci `python.exe` prosesi normaldır
+— `main()` yalnız uşaq prosesdə işləyir (jurnalda bir "başladıldı" sətri).
 
 ---
 
@@ -180,6 +237,28 @@ Tam cədvəl və qaz cəbhəsi: `SPE1.md` §8;  alət:
 Qalan fərq 1399–1580-ci günlərdə toplanıb: qaz hələ ~145 gün tez gəlir.
 
 **Etalon (golden) fayl YAZILMAYIB** — fərqlər izah olunmayana qədər yazılmamalıdır (Q-31 Qərar 7).
+
+### 4.1 · Seans 40–43-ün MÖVCUD modellərə təsiri — köhnə nəticələrlə müqayisədə nəzərə alın
+
+| Dəyişiklik | Hansı modellərə təsir edir | Ölçülmüş təsir |
+|---|---|---|
+| G7 (Q-32) — doymuş qolun xətti uzadılması | YALNIZ deck qolları (`pvt_oil_branches`) olan modellər | SPE1: WBHP PROD, 1034-cü gün −60.7 % → −1.2 % |
+| **Q-33 — vurucuda tam mobillik** | **vurucusu olan BÜTÜN modellər, iki fazalı su vurulması da** | qazsız sınaq modelində RF 62.86 → 62.83 %, addım 31 → 29; vurmanın başlanğıcında BHP daha YÜKSƏK |
+| Q-34 — doymamış qol xətti | YALNIZ deck qolları olan modellər | SPE1: FGOR > 2 1142 → 1132 gün |
+
+**Sahibkarın iş faylı `layihe.imx` (Seans 43-də faylın özündə yoxlanıldı):**
+PVT mənbəyi `correlation(API=32, γg=0.75, T=70°C)`, doyma təzyiqi 240 bar,
+`pvt_oil_branches` açarı YOXDUR (fayl 14 sentyabrda, qollar layihə faylına
+əlavə olunmazdan əvvəl saxlanılıb). Quyular: 1 su vurucusu (INJ) + 2
+istismarçı. Deməli:
+
+* G7 və Q-34 bu modelə **təsir ETMİR**;
+* Q-33 **təsir EDİR** — köhnə qaçışlarla müqayisədə vurucunun BHP-si
+  başlanğıcda daha yüksək, RF isə cüzi fərqli çıxacaq. Bu, səhv deyil,
+  sahibkarın təsdiqlədiyi dəyişiklikdir.
+
+`.imx` faylı **gzip ilə sıxılmış JSON-dur** — `grep` ilə oxunmur, Python
+`gzip.open(..., "rt")` + `json.load` işlədin.
 
 ---
 
@@ -307,6 +386,12 @@ Aşağıdakı bölmələr TARİXİ kontekstdir (Seans 39-da yazılıb).
   ölçüldü: SPE1-də fərq cəmi 0.174 %). Su HƏRƏKƏT EDƏN modellərdə fərq
   50 %-ə çatır, ona görə gələcəkdə əlavə edilməlidir. Düstur və mənbə
   sətirləri `SPE1.md` §8.1-də yazılıb.
+* **Q-33-ün yığılmaya yan təsiri** (sahibkar bilərək qəbul etdi, Seans 43):
+  vurma debiti doyuma bağlandığı üçün quyu ətrafındakı sərt ssenaridə CNV
+  minimumu **0.001004 → 0.001322** (`test_implicit_newton.py`-nin
+  oscillasiya ssenarisi; hər iki halda həmin addım yığılmır, mühərrik Δt-ni
+  kəsir). Geri-izləmə hələ də işləyir — qalığın sıçrayışı 1.4, geri-izləməsiz
+  9.6. Test mütləq həddən (0.0012) oscillasiyanı ölçən şərtə keçirilib.
 
 **Açıq qalan ⏳:**
 
