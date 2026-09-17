@@ -134,6 +134,18 @@ def test_water_injector_is_unchanged():
 
 
 def test_gas_injection_rate_matches_the_peaceman_formula():
+    """Vurma debiti: `WI · λt(hüceyrə) · Δp / Bg` — Q-33.
+
+    ƏVVƏL burada vurulan fazanın SON NÖQTƏ mobilliyi (`krg_end/μg`)
+    gözlənilirdi. Qayda OPM-in MƏNBƏYİNDƏN oxundu (Seans 42):
+    `opm-simulators/opm/simulators/wells/StandardWell_impl.hpp`
+    (sətir 264-315) vurucu bağlantısında hüceyrənin TAM mobilliyini
+    işlədir: `total_mob = Σ mob[faza]`, `cqt_i = − Tw · total_mob · Δp`.
+
+    ÖLÇÜLMÜŞ SƏBƏB (SPE1CASE2): köhnə qayda vurmanın 1-ci günündə
+    BHP-ni 5271 psia verirdi, etalonda 8082 (−34.8 %); 304-cü gündə
+    blok həqiqətən qazla dolduğu üçün fərq −1.2 %-ə enirdi.
+    """
     model = _model(Phase.GAS)
     grid, connections, relperm, pvt, well_model = _pieces(model)
     state = _state(model)
@@ -142,9 +154,28 @@ def test_gas_injection_rate_matches_the_peaceman_formula():
 
     connection = next(c for c in connections if c.is_injector)
     cell = connection.cell
-    expected = (connection.well_index * GAS.krg_end / fluid.mu_g[cell]
+    total_mobility = (fluid.lam_w[cell] + fluid.lam_o[cell] + fluid.lam_g[cell])
+    expected = (connection.well_index * total_mobility
                 * (connection.target - state.pressure[cell]) / fluid.bg[cell])
     assert rates.gas[cell] == pytest.approx(expected, rel=1e-12)
+
+
+def test_injection_mobility_is_not_the_endpoint_rule(caplog):
+    """KÖHNƏ qayda ilə YENİSİ eyni deyil — fərq ölçülə bilər.
+
+    Bu test qaydanın təsadüfən geri qayıtmasının qarşısını alır.
+    """
+    model = _model(Phase.GAS)
+    grid, connections, relperm, pvt, well_model = _pieces(model)
+    state = _state(model)
+    fluid = _fluid(state, relperm, pvt)
+    connection = next(c for c in connections if c.is_injector)
+    cell = connection.cell
+    endpoint = GAS.krg_end / fluid.mu_g[cell]
+    total = fluid.lam_w[cell] + fluid.lam_o[cell] + fluid.lam_g[cell]
+    # Vurmanın başlanğıcında blokda qaz yoxdur, ona görə son nöqtə
+    # mobilliyi hüceyrənin həqiqi mobilliyindən XEYLİ böyükdür.
+    assert endpoint > 2.0 * total, (endpoint, total)
 
 
 def test_rate_controlled_gas_injector_uses_the_target_directly():
@@ -284,3 +315,40 @@ def test_well_panel_offers_the_injected_phase_column():
     from imex2d.ui import panels
     source = inspect.getsource(panels)
     assert "Vurulan faza" in source and "COL_PHASE" in source
+
+
+def test_injector_saturation_columns_match_finite_difference():
+    """Q-33: vurucunun BHP budağı artıq Sw və 3-cü dəyişəndən asılıdır.
+
+    Tam mobillik `λw + λo + λg`-dir, yəni doyumlardan asılıdır — əvvəl
+    bu iki sütun SIFIR idi (son nöqtə mobilliyi yalnız təzyiqdən
+    asılıydı). ÖLÇÜLDÜ (mühərrik yolu ilə, qarışıq vəziyyətdə): Sw
+    sütunu 1.4×10⁻¹⁰, 3-cü dəyişən 1.4×10⁻¹⁰.
+
+    Təzyiq sütunu BURADA yoxlanılmır: orada axın həddinin mövcud
+    qeyri-dəqiqliyi var (TB-2, `ROADMAP.md`) və o, quyu həddindən
+    gəlmir.
+    """
+    model = _model(Phase.GAS)
+    _, connections, _, _, _ = _pieces(model)
+    cell = next(c.cell for c in connections if c.is_injector)
+    error = _jacobian_error(model, columns=[3 * cell + 1, 3 * cell + 2])
+    assert error < 1e-8, error
+
+
+def test_injector_block_is_no_longer_saturation_independent():
+    """Jakobianın vurucu sətrində doyum sütunları SIFIR DEYİL.
+
+    Davranışın özünü kilidləyir: köhnə qaydada `blocks[c, 2, 1]` və
+    `blocks[c, 2, 2]` həmişə sıfır idi.
+    """
+    model = _model(Phase.GAS)
+    grid, connections, relperm, pvt, well_model = _pieces(model)
+    accumulator = ThreePhaseAccumulator(model, grid.pore_volume)
+    flux = ThreePhaseFlux(model, grid)
+    assembler = ThreePhaseJacobianAssembler(model, accumulator, flux,
+                                            well_model, relperm, pvt)
+    state = _state(model)
+    jacobian = assembler.assemble(state, _fluid(state, relperm, pvt), dt=1.0)
+    cell = next(c.cell for c in connections if c.is_injector)
+    assert jacobian[3 * cell + 2, 3 * cell + 1] != 0.0, "qaz sətri ↔ Sw sütunu"

@@ -111,9 +111,19 @@ def _setup(nx=5, ny=5, with_wells=True):
 def _fluid_builder(relperm, pvt, n, pcow=None, pcog=None):
     def build(state):
         sw, sg = state.water_saturation, state.gas_saturation
+        # SU XASSƏLƏRİ PVT-DƏN OLMALIDIR (ölçülmüş düzəliş, Seans 42).
+        # Əvvəl burada `mu_w = 0.5`, `bw = 1.0` SABİT verilirdi, Jakobian
+        # isə PVT-nin `water_viscosity_derivative`/`water_fvf_derivative`
+        # törəmələrini oxuyur — yəni sonlu fərq testində flüid modeli
+        # Jakobianla UYĞUN DEYİLDİ. Q-33-dən sonra vurucu bağlantısı da
+        # μw-dən asılı olduğu üçün bu uyğunsuzluq üzə çıxdı:
+        #     testin öz qurucusu (sabit)   1.09×10⁻⁵   ← ən pis yer: vurucu
+        #     PVT-dən (uyğun)              9.78×10⁻¹¹
         fluid = ThreePhaseFluidState(
-            mu_w=np.full(n, 0.5), mu_o=pvt.oil_viscosity(state.pressure),
-            mu_g=pvt.gas_viscosity(state.pressure), bw=np.full(n, 1.0),
+            mu_w=pvt.water_viscosity(state.pressure),
+            mu_o=pvt.oil_viscosity(state.pressure),
+            mu_g=pvt.gas_viscosity(state.pressure),
+            bw=pvt.water_fvf(state.pressure),
             bo=pvt.oil_fvf(state.pressure), bg=pvt.gas_fvf(state.pressure),
             rs=state.solution_gor(pvt), krw=relperm.krw(sw),
             kro=relperm.kro_three_phase(sw, sg), krg=relperm.krg(sg))

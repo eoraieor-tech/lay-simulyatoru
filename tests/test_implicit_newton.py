@@ -315,11 +315,26 @@ def test_line_search_prevents_infinite_oscillation_near_a_well():
     else:
         return  # bütün addımlar yığılıb — oscillasiya artıq baş vermir
 
-    # Dövr edən (unfixed) hal 0.00137-dən aşağı heç vaxt düşmürdü;
-    # geri-izləmə ilə monoton azalma tolerantlığın (1e-3) lap yaxınına
-    # çatır (~1.0035e-3). Hər ikisini ayıran hədd.
-    assert min(result.cnv_history) < 0.0012, (
+    # NİYƏ MÜTLƏQ HƏDD DEYİL (Seans 42-də yenidən ölçüldü): Q-33
+    # (vurucu bağlantısında tam mobillik) bu ssenarini SƏRTLƏŞDİRDİ —
+    # CNV artıq 1.0×10⁻³-ə enmir, ~1.3–1.5×10⁻³ zolağında ilişir. Yəni
+    # köhnə hədd (0.0012) iki halı daha ayırmır. Onun yerinə testin ƏSL
+    # MƏQSƏDİ ölçülür: geri-izləmə OSCİLLASİYANI dayandırırmı?
+    #
+    # EYNİ KOD VƏZİYYƏTİNDƏ ölçüldü (`_line_search` müvəqqəti
+    # söndürülərək):
+    #
+    #     geri-izləmə İLƏ      min 0.001322,  maks/min = 1.4
+    #     geri-izləmə OLMADAN  min 0.001824,  maks/min = 9.6
+    #
+    # Yəni geri-izləmə qalığı DAR ZOLAQDA saxlayır, onsuz qalıq 9-10
+    # dəfə sıçrayır. Hədlər həmin iki ölçmənin arasındadır.
+    history = [float(value) for value in result.cnv_history]
+    assert min(history) < 0.0015, (
         "CNV gözlənilən qədər aşağı düşmür — geri-izləmə reqressiyası?")
+    tail = history[1:]          # birinci qiymət başlanğıc qalığıdır
+    assert max(tail) / min(tail) < 3.0, (
+        "qalıq dar zolaqda qalmır (dövr edir) — geri-izləmə reqressiyası?")
 
 
 def test_compressibility_allows_production_beyond_injected_volume():

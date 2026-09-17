@@ -98,6 +98,12 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > fərqlənir (qaz ~375 gün tez çatır) — səbəblər ⏳. Layihə faylının qaz
 > sütunlarını atması düzəldildi.
 >
+> **17 sentyabr 2026 (Seans 42):** vurucu bağlantısı HƏR İKİ mühərrikdə
+> hüceyrənin TAM mobilliyini işlədir (Q-33, OPM mənbəyindən). WBHP INJ
+> 1-ci gündə −34.8 % → **+1.1 %**; iki fazalı modellərdə RF 62.86 → 62.83 %.
+> Jakobianda vurucunun doyum sütunları yarandı (sonlu fərq 1.4×10⁻¹⁰).
+> Birləşmiş həlledici (`standard_well.py`) hələ köhnə qaydadadır ⏳.
+>
 > **17 sentyabr 2026 (Seans 41):** **G7** ✅ tətbiq olundu (Q-32) —
 > doymuş qol deck-dən yuxarı OPM kimi xətti uzanır. ÖLÇÜLDÜ: istismarçının
 > BHP-si 1034-cü gündə −60.7 % → −1.2 %, FGOR +389 % → +38.7 %, addım sayı

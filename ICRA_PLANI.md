@@ -557,6 +557,10 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 > müqayisə aləti hazırdır, nəticə etalondan fərqlənir — araşdırma ⏳.
 > Qalan SPE1 boşluqları və sıra: [SPE1.md](SPE1.md) §5.
 >
+> **Seans 42:** vurucu mobilliyi ✅ (Q-33, hər iki mühərrik) — WBHP INJ
+> +1.1 %. Növbəti: doymamış qolun xətti interpolyasiyası, sonra qalan
+> cəbhə fərqi.
+>
 > **Seans 41:** G7 ✅ tətbiq olundu (Q-32) — ölçülmüş təsir:
 > istismarçının BHP-si −60.7 % → −1.2 %. Növbəti: doymamış qolun xətti
 > interpolyasiyası, sonra vurucu mobilliyi.

@@ -396,7 +396,6 @@ class JacobianAssembler:
         """R = … − q,  ona görə ∂R/∂x = −∂q/∂x."""
         pressure = state.pressure
         sw = state.water_saturation
-        endpoint = self.R.relperm.endpoint_water_mobility(1.0)
 
         dmuw = self.derivatives.dmuw_dp(pressure)
         dmuo = self.derivatives.dmuo_dp(pressure)
@@ -417,16 +416,28 @@ class JacobianAssembler:
             wi = connection.well_index
 
             if connection.is_injector:
-                # q = WI · (krw_end/μw) · (target − p) / Bw,  q = max(q, 0)
-                transport = endpoint / (fluid.mu_w[c] * fluid.bw[c])
+                # Q-33: q = WI · (λw + λo) · (target − p) / Bw
+                # (əvvəl `krw_end/μw` — son nöqtə mobilliyi idi).
+                # Mobillik indi DOYUMDAN da asılıdır, ona görə Sw sütunu
+                # da doldurulur — sonlu fərqlə yoxlanılıb.
+                lam_t = fluid.lam_w[c] + fluid.lam_o[c]
+                transport = lam_t / fluid.bw[c]
                 drawdown = connection.target - pressure[c]
                 if connection.mode is ControlMode.BHP:
                     if wi * transport * drawdown <= 0.0:
                         continue                      # kəsilmiş (q = 0)
-                    d_transport = -endpoint * (
-                        dmuw[c] * fluid.bw[c] + fluid.mu_w[c] * dbw[c]) / (
-                        (fluid.mu_w[c] * fluid.bw[c]) ** 2)
+                    # dλ/dp = −λ·μ'/μ  (λ = kr/μ, kr təzyiqdən asılı deyil)
+                    dlam_dp = (-fluid.lam_w[c] * dmuw[c] / fluid.mu_w[c]
+                               - fluid.lam_o[c] * dmuo[c] / fluid.mu_o[c])
+                    d_transport = ((dlam_dp * fluid.bw[c] - lam_t * dbw[c])
+                                   / fluid.bw[c] ** 2)
                     water_p[c] += wi * (-transport + drawdown * d_transport)
+                    # dλ/dSw: mövcud nəqliyyat törəmələrindən çıxarılır —
+                    # `dmw_dsw = dkrw/dSw /(μw·Bw)`, yəni `dkrw/dSw/μw`
+                    # üçün Bw-yə vurmaq kifayətdir (eyni məntiq neftdə).
+                    dlam_dsw = (dmw_dsw[c] * fluid.bw[c]
+                                + dmo_dsw[c] * fluid.bo[c])
+                    water_s[c] += wi * drawdown * dlam_dsw / fluid.bw[c]
                 else:
                     rate = abs(connection.target) * connection.rate_share
                     water_p[c] += -rate * dbw[c] / fluid.bw[c] ** 2

@@ -1196,3 +1196,56 @@ sayı 514 → 375.
 
 Vurucu bağlantısının mobilliyi (1-ci gündə −34.8 %) bu qərara DAXİL
 DEYİL — ayrı məsələdir və OPM qaydası hələ mənbədən oxunmayıb ⏳.
+
+
+## Q-33 — Vurucu bağlantısı hüceyrənin TAM mobilliyini işlədir (hər iki mühərrik)
+
+**Tarix:** 17 sentyabr 2026 · **Kontekst:** SPE1CASE2-də vurucunun 1-ci
+gündəki BHP-si −34.8 % (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 42)
+
+### Qayda MƏNBƏDƏN
+
+`StandardWell_impl.hpp:264-315` — `total_mob = Σ mob[faza]`,
+`cqt_i = − Tw · total_mob · Δp`; `WellInterface_impl.hpp:2261-2278` —
+mobilliklər birbaşa hüceyrədən götürülür, vurucu üçün xüsusi hal yoxdur.
+
+### Qərar 1 — üç fazalı mühərrikdə tam mobillik
+
+`λw + λo + λg`. Köhnə qayda (vurulan fazanın son nöqtə mobilliyi) bloku
+əvvəlcədən vurulan faza ilə dolmuş sayırdı. ÖLÇÜLDÜ: səhv məhz vurmanın
+BAŞLANĞICINDA böyükdür (1-ci gün −34.8 %, 304-cü gün −1.2 %) — blok
+həqiqətən dolandan sonra iki qayda üst-üstə düşür.
+
+### Qərar 2 — Jakobian genişlənir
+
+Mobillik doyumlardan asılı olduğu üçün vurucunun sətrində Sw (və üç
+fazalıda 3-cü dəyişən) sütunları YARANIR. Sonlu fərqlə yoxlanılıb
+(1.4×10⁻¹⁰).
+
+### Qərar 3 — İKİ FAZALI mühərrikdə də eyni qayda (sahibkarın qərarı)
+
+Yalnız üç fazalı yol dəyişəndə iki mühərrikin uyğunluq testi düşdü
+(62.86 ↔ 62.83). Seçim sahibkara verildi; qərar: qayda hər iki yolda eyni
+olsun. ÖLÇÜLMÜŞ TƏSİR: mövcud iki fazalı modellərdə RF 62.86 → 62.83 %
+(0.03 pp), addım sayı 31 → 29. Bu, su vuran bütün iki fazalı modellərə
+aiddir — vurmanın başlanğıcında BHP daha yüksək çıxır.
+
+### Qərar 4 — birləşmiş həlledici (`standard_well.py`) TOXUNULMADI
+
+Həmin yol heç bir mühərrik tərəfindən işlədilmir (yatmış kod) və Jakobian
+quruluşu fərqlidir. Uyğunsuzluq AÇIQ yazılıb ki, səssiz qalmasın; həmin
+fayla növbəti dəfə toxunanda uyğunlaşdırılmalıdır ⏳.
+
+### Ölçülmüş nəticə
+
+WBHP INJ, 1-ci gün: 5271 psia (−34.8 %) → **8173 (+1.1 %)**, etalon 8082.
+SPE1-in axın nəticələri dəyişməyib (vurucu RATE rejimindədir).
+
+### Ölçülmüş YAN TƏSİR (gizlədilmir)
+
+Vurma debiti artıq doyumdan asılı olduğu üçün quyu ətrafındakı sərt
+ssenari sərtləşdi: `test_implicit_newton.py`-nin oscillasiya ssenarisində
+CNV minimumu 0.001004 → 0.001322 (hər iki halda addım onsuz da
+yığılmırdı). Geri-izləmə isə hələ də işləyir — qalığın sıçrayışı 1.4,
+geri-izləməsiz 9.6. Sahibkar bunu bilərək qərar verə bilsin deyə burada
+yazılıb; qayda geri qaytarılarsa, yığılma bərpa olunar.

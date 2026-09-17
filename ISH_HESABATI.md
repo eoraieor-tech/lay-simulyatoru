@@ -4867,3 +4867,127 @@ tətbiq olunacaq ⏳.
 tests/test_saturated_extrapolation.py   15 keçdi (YENİ)
 tam dəst                                2698 keçdi, 1 buraxıldı, 1 xfailed (6 dəq 22 san)
 ```
+
+
+## 17 sentyabr 2026 — Seans 42: vurucu bağlantısının mobilliyi (Q-33)
+
+Seans 40-da göstərilmişdi ki, vurucunun 1-ci gündəki BHP fərqi (−34.8 %)
+cəbhə ilə ƏLAQƏSİ OLMAYAN ayrı məsələdir. Bu seans onu bağlayır.
+
+### 1 · OPM-in qaydası — MƏNBƏDƏN oxundu
+
+`opm-simulators/opm/simulators/wells/StandardWell_impl.hpp` (sətir 264-315):
+
+```cpp
+Value total_mob_dense = mob[0];
+for (...) total_mob_dense += mob[componentIdx];   // hüceyrənin ÖZ mobillikləri
+...
+const Value cqt_i = - Tw[componentIdx] * (total_mob_dense * drawdown);
+```
+
+`getMobility` isə (`WellInterface_impl.hpp:2261-2278`) mobillikləri birbaşa
+hüceyrənin intensiv kəmiyyətlərindən götürür — vurucu üçün xüsusi hal YOXDUR.
+
+Bizdə isə vurulan fazanın SON NÖQTƏ mobilliyi (`krg_end/μg`, `krw_end/μw`)
+işlədilirdi, yəni blok əvvəlcədən vurulan faza ilə dolmuş sayılırdı.
+
+### 2 · Dəyişdirilən yerlər
+
+| Mühərrik | Fayl | Nə |
+|---|---|---|
+| üç fazalı | `three_phase_residual.py` | `connection_mobilities`, `well_rates` → `λw + λo + λg`; Jakobianda vurucunun **Sw və 3-cü dəyişən sütunları YARANDI** |
+| iki fazalı | `residual.py` | `connection_mobilities`, `well_rates` → `λw + λo` |
+| iki fazalı | `jacobian.py` | vurucu budağında tam mobilliyin təzyiq törəməsi + **YENİ Sw sütunu** |
+
+Doymamış halda 3-cü dəyişən Rs-dir və yalnız λo ona μo vasitəsilə bağlıdır
+— G2b ilə eyni hədd.
+
+**Sonlu fərqlə yoxlandı.** Üç fazalı (mühərrik yolu, qarışıq vəziyyət, BHP
+rejimli qaz vurucusu): Sw sütunu **1.4×10⁻¹⁰**, 3-cü dəyişən **1.4×10⁻¹⁰**.
+İki fazalı: `tests/test_implicit_jacobian.py` (36 test) yaşıl.
+
+### 3 · ÖLÇÜLMÜŞ TƏSİR — SPE1CASE2
+
+| gün | WBHP INJ əvvəl | **sonra** | OPM Flow |
+|---|---|---|---|
+| 1 | 5271 (**−34.8 %**) | **8173 (+1.1 %)** | 8082 |
+| 304 | 6376 (−0.8 %) | 6467 (+0.6 %) | 6429 |
+| 1034 | 7172 (−3.8 %) | 7241 (−2.9 %) | 7459 |
+| 1399 | 6896 (−9.7 %) | 6955 (−8.9 %) | 7633 |
+
+**Axın nəticələri DƏYİŞMƏDİ** (FOPR, FGOR, BPR, qaz cəbhəsi). Səbəb
+ölçülüb: SPE1-də vurucu RATE rejimindədir və BHP limitinə (9014 psia) heç
+vaxt çatmır, ona görə mobillik qaydası yalnız HESABLANAN BHP-yə təsir
+edir. BHP rejimli vurucuda və ya limit işə düşəndə axına da təsir edərdi.
+
+### 4 · İki mühərrikin uyğunluğu — niyə iki fazalı yol da dəyişdi
+
+Yalnız üç fazalı yol dəyişəndə tam dəst DÜŞDÜ:
+`test_three_phase_matches_two_phase_when_no_gas_is_liberated` — qazsız
+ssenaridə iki fazalı RF 62.86 %, üç fazalı 62.83 %. Yəni iki mühərrik
+FƏRQLİ vurucu qaydası işlədirdi.
+
+Seçim sahibkara verildi (qayda 7); cavab: **iki fazalı yolda da eyni
+qayda**. Nəticə ölçüldü — indi hər ikisi **RF = 62.83 %** və hər ikisi
+29 addım:
+
+| | əvvəl | sonra |
+|---|---|---|
+| iki fazalı | 62.86 %, 31 addım | **62.83 %, 29 addım** |
+| üç fazalı | 62.83 %, 29 addım | 62.83 %, 29 addım |
+
+Yəni mövcud iki fazalı modellərdə dəyişiklik ~0.03 pp-dir (vurmanın
+başlanğıcında BHP daha yüksək çıxır).
+
+### 5 · Yol boyu tapılan test qüsuru
+
+`tests/test_three_phase_capillary.py`-nin flüid qurucusu `μw = 0.5` və
+`Bw = 1.0` SABİT verirdi, Jakobian isə PVT-nin su törəmələrini oxuyur —
+sonlu fərq testində flüid modeli Jakobianla UYĞUN DEYİLDİ. Əvvəl bu, 1e-5
+həddinin altında gizlənirdi; tam mobillik μw-ni işə saldığı üçün üzə çıxdı:
+
+| flüid qurucusu | Jakobian xətası | ən pis yer |
+|---|---|---|
+| testin özünkü (sabit) | 1.0934×10⁻⁵ | **vurucu hüceyrəsi** |
+| PVT-dən (uyğun) | **9.78×10⁻¹¹** | — |
+
+Həll: həddi boşaltmaq YOX, testin flüidini uyğunlaşdırmaq.
+
+### 6 · ÖLÇÜLMÜŞ YAN TƏSİR — yığılma
+
+Tam mobillik vurma debitini hüceyrənin doyumuna bağlayır, ona görə quyu
+ətrafındakı SƏRT ssenari daha da sərtləşdi.
+`test_implicit_newton.py`-nin oscillasiya ssenarisində (Δt = 0.25,
+15×15 five-spot) ölçüldü:
+
+| | CNV minimumu | maks/min sıçrayış |
+|---|---|---|
+| Q-33-dən ƏVVƏL | **0.001004** (monoton azalır) | — |
+| Q-33-dən SONRA | 0.001322 (1.3–1.5×10⁻³ zolağında ilişir) | **1.4** |
+| geri-izləməsiz (cari kod) | 0.001824 | **9.6** |
+
+Yəni geri-izləmə hələ də oscillasiyanı dayandırır (sıçrayış 1.4 ↔ 9.6),
+lakin həmin addım artıq tolerantlığa çatmır — mühərrik Δt-ni kəsir.
+Ssenari QƏSDƏN sərt seçilib və hər iki halda addım yığılmırdı; fərq
+yalnız qalığın nə qədər aşağı düşməsindədir.
+
+Test mütləq həddən (0.0012) OSCİLLASİYANIN ÖZÜNÜ ölçən şərtlərə keçdi —
+səbəbi və hər iki ölçmə testin şərhində yazılıb.
+
+### 7 · Açıq qalan ⏳
+
+* **`implicit/standard_well.py`** (birləşmiş `CoupledNewtonSolver` yolu)
+  hələ də son nöqtə qaydasındadır. Bu yol HEÇ BİR mühərrik tərəfindən
+  işlədilmir (yatmış koddur, öz testləri var) və Jakobian quruluşu
+  fərqlidir — ona görə bu commit-ə salınmadı. Növbəti dəfə həmin fayla
+  toxunanda uyğunlaşdırılmalıdır.
+* `relperm_endpoint_water_mobility` / `relperm_endpoint_gas` parametrləri
+  üç fazalı quyu modelində artıq işlədilmir; imzada saxlanılıblar (yuxarıdakı
+  yatmış yol onları hələ işlədir) və konstruktorda açıq şərh var.
+
+### 8 · Yoxlama
+
+```
+hədəf test faylları   83 + 36 + 32 keçdi
+tam dəst              2701 keçdi, 1 buraxıldı, 1 xfailed (13 dəq 56 san)
+```

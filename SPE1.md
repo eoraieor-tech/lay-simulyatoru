@@ -163,10 +163,14 @@ Vaxt imzası göstərir ki, bu, cəbhə ilə bağlı deyil:
 | 1 | **−34.8 %** (ΔP bizdə 449, OPM 3019 psi) |
 | 304 | −1.2 % |
 
-Bizim qayda vurulan fazanın SON NÖQTƏ mobilliyini işlədir, yəni bloku
-əvvəlcədən qazla dolmuş sayır. Blok həqiqətən qazla dolanda (≈300 gün)
-fərq itir. Debit sabit olduğu üçün bu, cəbhənin sürətinə təsir etmir.
-OPM-in vurucu bağlantısındakı qaydası hələ mənbədən oxunmayıb ⏳.
+Bizim qayda vurulan fazanın SON NÖQTƏ mobilliyini işlədirdi, yəni bloku
+əvvəlcədən qazla dolmuş sayırdı. Blok həqiqətən qazla dolanda (≈300 gün)
+fərq itirdi. Debit sabit olduğu üçün bu, cəbhənin sürətinə təsir etmirdi.
+
+✅ **Seans 42 (Q-33)** — OPM-in qaydası mənbədən oxundu
+(`StandardWell_impl.hpp:264-315`: `total_mob = Σ mob[faza]`) və hər iki
+mühərrikdə tətbiq olundu. Nəticə: 1-ci gündə **8173 psia (+1.1 %)**,
+etalon 8082.
 
 ### 7.3 · Ölçülərək TƏKZİB olunanlar
 
@@ -203,6 +207,9 @@ Qaz cəbhəsi (Sg > 0.05):
 | 200 (10,10,2) | — | **1132** | 1246 |
 | 300 (10,10,3) | — | **1157** | 1307 |
 
-**Qalan fərqlər:** vurucunun 1-ci gündəki BHP-si (−34.8 %, §7.2 — ayrı
-məsələ), cəbhənin 110–150 gün tez gəlməsi, FGOR-un 1034-cü gündə +38.7 %
-olması. Etalon (golden) fayl hələ YAZILMAYIB.
+**Vurucunun BHP-si** Seans 42-də bağlandı (§7.2): 1-ci gündə −34.8 % →
+**+1.1 %**. Axın nəticələri dəyişmədi, çünki vurucu RATE rejimindədir.
+
+**Qalan fərqlər:** cəbhənin 110–150 gün tez gəlməsi, FGOR-un 1034-cü
+gündə +38.7 % olması, FOPR-un 3650-ci gündə −9.7 % olması. Etalon
+(golden) fayl hələ YAZILMAYIB.

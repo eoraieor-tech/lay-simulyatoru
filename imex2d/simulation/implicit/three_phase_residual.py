@@ -436,11 +436,21 @@ class ThreePhaseWellModel:
     """Quyu mənbə həddləri — A7, mərhələ 6b.
 
     VURUCULAR su və ya QAZ vura bilər (B7 — SPE1 etalonu qaz vurur).
-    Faza bağlantıdan oxunur (`WellConnection.injected_phase`). Vurulan
-    fazanın mobilliyi SON NÖQTƏ mobilliyidir: vurulan faza öz doyma
-    həddində quyu dibini doldurur, ona görə qarışıq nisbi keçiricilik
-    deyil, həmin fazanın son nöqtəsi işlədilir — su vurulmasında
-    əvvəldən belə idi (`relperm_endpoint_water_mobility`).
+    Faza bağlantıdan oxunur (`WellConnection.injected_phase`).
+
+    MOBİLLİK QAYDASI (Q-33, Seans 42): vurucu bağlantısı hüceyrənin
+    **TAM mobilliyini** (λw + λo + λg) işlədir. Qayda OPM-in mənbəyindən
+    oxundu — `opm-simulators/opm/simulators/wells/StandardWell_impl.hpp`
+    (sətir 264-315):
+
+        total_mob = Σ mob[faza];   cqt_i = − Tw · total_mob · Δp
+
+    ƏVVƏL burada vurulan fazanın SON NÖQTƏ mobilliyi (`krg_end/μg`)
+    işlədilirdi, yəni blok əvvəlcədən vurulan faza ilə dolmuş sayılırdı.
+    ÖLÇÜLDÜ (SPE1CASE2): vurmanın 1-ci günündə BHP 5271 psia çıxırdı,
+    etalonda isə 8082 (−34.8 %); 304-cü gündə blok həqiqətən qazla
+    dolduğu üçün fərq −1.2 %-ə enirdi — yəni səhv məhz vurmanın
+    BAŞLANĞICINDA idi.
 
     İSTİSMARÇILARDA qaz İKİ mənbədən çıxır — axın modulundakı (mərhələ
     6a) eyni məntiq:
@@ -457,6 +467,12 @@ class ThreePhaseWellModel:
     def __init__(self, model: ReservoirModel, wells: list,
                 relperm_endpoint_water_mobility: float,
                 relperm_endpoint_gas: float = 0.8):
+        # ⚠️ Q-33-dən sonra bu İKİ parametr BU SİNİFDƏ İŞLƏDİLMİR:
+        # vurucu bağlantısı hüceyrənin TAM mobilliyini oxuyur. QƏSDƏN
+        # saxlanılıblar — iki fazalı mühərrikdə (`standard_well.py`) son
+        # nöqtə qaydası hələ qüvvədədir və sahibkar onu da dəyişməyi
+        # seçsə, bu parametrlər yenidən lazım olacaq. Səssiz qalmasın
+        # deyə burada açıq yazılıb.
         self.model = model
         self.wells = wells
         self.ncell = model.ncell
@@ -477,10 +493,10 @@ class ThreePhaseWellModel:
             cell = connection.cell
             if not connection.is_injector:
                 mobilities.append(fluid.lam_w[cell] + fluid.lam_o[cell])
-            elif connection.injected_phase is Phase.GAS:
-                mobilities.append(self._endpoint_gas / fluid.mu_g[cell])
             else:
-                mobilities.append(self._endpoint_water_mobility / fluid.mu_w[cell])
+                # Q-33: vurucuda hüceyrənin TAM mobilliyi (OPM qaydası).
+                mobilities.append(fluid.lam_w[cell] + fluid.lam_o[cell]
+                                  + fluid.lam_g[cell])
         return mobilities
 
     def connection_surface_factors(self, fluid: ThreePhaseFluidState) -> list:
@@ -522,12 +538,11 @@ class ThreePhaseWellModel:
             cell = connection.cell
             if connection.is_injector:
                 gas_injector = connection.injected_phase is Phase.GAS
-                if gas_injector:
-                    mobility = self._endpoint_gas / fluid.mu_g[cell]
-                    volume_factor = fluid.bg[cell]
-                else:
-                    mobility = self._endpoint_water_mobility / fluid.mu_w[cell]
-                    volume_factor = fluid.bw[cell]
+                # Q-33: TAM mobillik — vurulan fazadan ASILI DEYİL.
+                mobility = (fluid.lam_w[cell] + fluid.lam_o[cell]
+                            + fluid.lam_g[cell])
+                volume_factor = (fluid.bg[cell] if gas_injector
+                                 else fluid.bw[cell])
                 if connection.mode is ControlMode.BHP:
                     rate = (connection.well_index * mobility
                             * (connection.target - state.pressure[cell]))
@@ -1024,27 +1039,53 @@ class ThreePhaseWellJacobian:
             c = connection.cell
             wi = connection.well_index
 
+            # Nisbi keçiriciliyin törəmələri HƏR İKİ budaqda lazımdır:
+            # Q-33-dən sonra vurucu da hüceyrənin tam mobilliyini işlədir,
+            # yəni Sw və 3-cü dəyişəndən asılıdır.
+            dkro_dsw, dkro_dsg = self.relperm.kro_three_phase_derivatives(
+                np.array([state.water_saturation[c]]),
+                np.array([state.gas_saturation[c]]))
+            dkro_dsw, dkro_dsg = float(dkro_dsw[0]), float(dkro_dsg[0])
+            dkrw_dsw = float(getattr(
+                self.relperm, "krw_derivative",
+                lambda s, r=None: np.zeros(1))(
+                    np.array([state.water_saturation[c]]))[0])
+            dkrg_dsg = float(self.relperm.gas.krg_derivative(
+                np.array([state.gas_saturation[c]]), self.relperm.swc)[0])
+
             if connection.is_injector:
                 # Vurulan fazaya görə SƏTİR də dəyişir: su → 0-cı tənlik,
                 # qaz → 2-ci tənlik (B7). Törəmənin forması eynidir.
                 if connection.injected_phase is Phase.GAS:
-                    row = 2
-                    endpoint = self.well_model._endpoint_gas
-                    viscosity, factor = fluid.mu_g[c], fluid.bg[c]
-                    mu_p, b_p = mu_g_p[c], bg_p[c]
+                    row, factor, b_p = 2, fluid.bg[c], bg_p[c]
                 else:
-                    row = 0
-                    endpoint = self.well_model._endpoint_water_mobility
-                    viscosity, factor = fluid.mu_w[c], fluid.bw[c]
-                    mu_p, b_p = mu_w_p[c], bw_p[c]
-                transport = endpoint / (viscosity * factor)
+                    row, factor, b_p = 0, fluid.bw[c], bw_p[c]
+                # Q-33: TAM mobillik → BHP budağı indi Sw və 3-cü
+                # dəyişəndən də asılıdır (əvvəl yalnız təzyiqdən idi).
+                lam_t = fluid.lam_w[c] + fluid.lam_o[c] + fluid.lam_g[c]
+                transport = lam_t / factor
                 drawdown = connection.target - state.pressure[c]
                 if connection.mode is ControlMode.BHP:
                     if wi * transport * drawdown <= 0.0:
                         continue
-                    d_transport = -endpoint * (mu_p * factor + viscosity * b_p) \
-                        / (viscosity * factor) ** 2
-                    blocks[c, row, 0] += wi * (-transport + drawdown * d_transport)
+                    dlam_dp = (-fluid.krw[c] * mu_w_p[c] / fluid.mu_w[c] ** 2
+                               - fluid.kro[c] * mu_o_p[c] / fluid.mu_o[c] ** 2
+                               - fluid.krg[c] * mu_g_p[c] / fluid.mu_g[c] ** 2)
+                    d_transport = (dlam_dp * factor - lam_t * b_p) / factor ** 2
+                    blocks[c, row, 0] += wi * (-transport
+                                               + drawdown * d_transport)
+                    blocks[c, row, 1] += wi * drawdown * (
+                        dkrw_dsw / fluid.mu_w[c]
+                        + dkro_dsw / fluid.mu_o[c]) / factor
+                    if state.is_saturated[c]:
+                        dlam_dthird = (dkrg_dsg / fluid.mu_g[c]
+                                       + dkro_dsg / fluid.mu_o[c])
+                    else:
+                        # Doymamışda 3-cü dəyişən Rs-dir və yalnız λo
+                        # ondan (μo vasitəsilə) asılıdır — G2b ilə eyni.
+                        dlam_dthird = (-fluid.lam_o[c] * mu_o_rs[c]
+                                       / fluid.mu_o[c])
+                    blocks[c, row, 2] += wi * drawdown * dlam_dthird / factor
                 else:
                     rate = abs(connection.target) * connection.rate_share
                     blocks[c, row, 0] += -rate * b_p / factor ** 2
@@ -1067,17 +1108,6 @@ class ThreePhaseWellJacobian:
             dmg_dp = -fluid.krg[c] * (mu_g_p[c] * fluid.bg[c]
                                       + fluid.mu_g[c] * bg_p[c]) \
                 / (fluid.mu_g[c] * fluid.bg[c]) ** 2
-
-            dkro_dsw, dkro_dsg = self.relperm.kro_three_phase_derivatives(
-                np.array([state.water_saturation[c]]),
-                np.array([state.gas_saturation[c]]))
-            dkro_dsw, dkro_dsg = float(dkro_dsw[0]), float(dkro_dsg[0])
-            dkrw_dsw = float(getattr(
-                self.relperm, "krw_derivative",
-                lambda s, r=None: np.zeros(1))(
-                    np.array([state.water_saturation[c]]))[0])
-            dkrg_dsg = float(self.relperm.gas.krg_derivative(
-                np.array([state.gas_saturation[c]]), self.relperm.swc)[0])
 
             if connection.mode is ControlMode.BHP:
                 # SƏRT QAPI ARTIQ YOXDUR — `well_rates()` ilə eyni

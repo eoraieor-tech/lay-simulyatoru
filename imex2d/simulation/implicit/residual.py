@@ -288,12 +288,14 @@ class ResidualAssembler:
     # ══════════════════════════════════════════════════════════ quyular
     def connection_mobilities(self, fluid: FluidState) -> list:
         """Hər bağlantının LAY HƏCMİ mobilliyi — `well_rates`-in BHP
-        budağındakı EYNİ ifadə: vurucu `krw_end/μw`, istismarçı `λw + λo`.
+        budağındakı EYNİ ifadə.
+
+        Q-33 (Seans 42): HƏM vurucuda, HƏM istismarçıda hüceyrənin TAM
+        mobilliyi `λw + λo` işlədilir. Əvvəl vurucuda `krw_end/μw` (son
+        nöqtə) idi — OPM isə vurucu bağlantısında da hüceyrənin öz
+        mobilliklərinin cəmini işlədir (`StandardWell_impl.hpp:264-315`).
         RATE payı (`well_constraints.assign_rate_shares`) bununla verilir."""
-        endpoint = self.relperm.endpoint_water_mobility(1.0)
-        return [endpoint / fluid.mu_w[c.cell] if c.is_injector
-                else fluid.lam_w[c.cell] + fluid.lam_o[c.cell]
-                for c in self.wells]
+        return [fluid.lam_w[c.cell] + fluid.lam_o[c.cell] for c in self.wells]
 
     def connection_surface_factors(self, fluid: FluidState) -> list:
         """Lay həcmi RATE hədəfinin SƏTH debitinə çevrilmə əmsalı — bağlantı
@@ -318,12 +320,12 @@ class ResidualAssembler:
                           self._producer_names + self._injector_names}
         per_well_oil = dict(per_well_water)
 
-        endpoint_mobility = self.relperm.endpoint_water_mobility(1.0)
-
         for connection in self.wells:
             cell = connection.cell
             if connection.is_injector:
-                mobility = endpoint_mobility / fluid.mu_w[cell]
+                # Q-33: hüceyrənin TAM mobilliyi (OPM qaydası) — vurulan
+                # su bütün mobilliklə girir, lakin SU tənliyinə yazılır.
+                mobility = fluid.lam_w[cell] + fluid.lam_o[cell]
                 if connection.mode is ControlMode.BHP:
                     rate = (connection.well_index * mobility
                             * (connection.target - state.pressure[cell]))
