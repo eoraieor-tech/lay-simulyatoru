@@ -5105,3 +5105,86 @@ fərqə çevrilir.
 tests/test_undersaturated_linear.py   14 keçdi (YENİ)
 tam dəst                              2715 keçdi, 1 buraxıldı, 1 xfailed (5 dəq 52 san)
 ```
+
+---
+
+## 19–20 sentyabr 2026 — Seans 44: proqramın iş prinsipi üçün təqdimat materialları
+
+Sahibkar proqramın necə işlədiyini (girişlər, hesablama yerləri, modellər,
+kitabxanalar) soruşdu, sonra onu təqdim etmək üçün izah yolları istədi.
+Yeddi variant təklif olundu, sahibkar **hamısını** istədi. `imex2d/` kodu
+DƏYİŞMƏDİ — yalnız iki alət skripti, sənədlər və təqdimat materialları.
+
+### 1 · Hazırlananlar
+
+| Material | Mənbə |
+|---|---|
+| İnteraktiv xəritə: iş axını (7 mərhələ, 31 blok) + graphify tipli modul qrafiki | `docs/teqdimat/xerite.html` |
+| Slayd dəsti, 18 slayd, danışıq qeydləri ilə | `docs/teqdimat/slaydlar/` |
+| «Zaman addımının içi» — Nyuton döngüsü, nümunə qaçışının real CNV dəyərləri ilə | `docs/teqdimat/zaman-addimi.html` |
+| Demo planı: hazırlıq, 9 addım, ehtiyat planı, 7 sual-cavab | `docs/teqdimat/demo-plani.html` |
+| İcmal + terminlər lüğəti (39 termin), A4 PDF | `docs/teqdimat/icmal.html`, `IMEX-2D_icmal.pdf` |
+
+Linklər və bütün ölçülmüş rəqəmlər: `docs/teqdimat/README.md`.
+Materiallar claude.ai artifaktı kimi dərc olunub və **şəxsidir** — paylaşmaq
+sahibkarın işidir.
+
+### 2 · Yeni alətlər
+
+- `tools/module_graph.py` — `imex2d/` paketinin AST təhlili: 130 modul,
+  491 idxal əlaqəsi, 45 098 sətir. Xəritənin modul qrafiki buradandır.
+- `tools/presentation_demo.py` — slaydlardakı nümunə qaçışı və
+  Buckley-Leverett metrikaları. İki dəfə işlədildi, vaxtdan başqa bütün
+  rəqəmlər eyni çıxdı.
+
+### 3 · Ölçmələr (slaydlarda işlədilən)
+
+Nümunə: `numune_quyular.csv` → Kriging → 41 × 41 × 3 → five-spot →
+`FullyImplicitEngine`, TPFA, 1500 gün.
+
+| | |
+|---|---|
+| RF, 1500-cü gün | 57.80 % |
+| Suyun çatması | 557-ci gün |
+| Addım / iterasiya | 88 / 268, orta Δt 17.0 gün, 2 təkrar |
+| OOIP | 896 963 m³ |
+| Vaxt | 39 s və 27 s (iki qaçış — maşının yükündən asılıdır) |
+
+Buckley-Leverett (orta nöqtə metrikası, `run_validation` ilə eyni): RMS
+0.0231, cəbhə 190.9 / 182.6 m (**4.53 %**), həcm balansı 2.71 %.
+`tests/test_physics.py`-dəki docstring-in 4.53 % ölçməsi ilə üst-üstə düşür.
+
+**Müşahidə:** qaçışın ilk iki Nyuton cəhdi (Δt = 1.0 və 0.5 gün) YIĞILIB,
+amma `max_saturation_change = 0.2` keçildiyi üçün rədd edilib; addım
+Δt = 0.25 gündə qəbul olunub. Animasiyada məhz bu ardıcıllıq göstərilir.
+
+### 4 · Yol boyu yoxlananlar
+
+- Interfeys adları koddan götürüldü (`main_window.py`, `panels.py`):
+  «MODELİ İŞƏ SAL», bölmələr «1 · GRID» … «8 · ƏDƏDİ PARAMETRLƏR»,
+  tablar, menyu əmrləri.
+- Standart açılışda geologiya cədvəlində yalnız quyu MÖVQELƏRİ var
+  (`_wells_to_geology_rows` petrofizika köçürmür). Ona görə demo planı
+  Kriging-i canlı göstərməyi yalnız əvvəlcədən hazırlanmış layihə faylı
+  ilə təklif edir.
+- `docs/README.md`-dəki «Mövcud sənədlər: hələ yoxdur» köhnəlmişdi —
+  mövcud MPFA-O sənədləri və `teqdimat/` siyahıya yazıldı.
+
+### 5 · Qərarlar
+
+Texniki qərar verilmədi (`QARARLAR.md` dəyişmədi). `ROADMAP.md`-də mərhələ
+statusu dəyişmədi.
+
+### 6 · Açıq qalanlar
+
+- ⏳ Standart açılış modelində (41 × 41 × 1) «MODELİ İŞƏ SAL»-ın vaxtı
+  ölçülməyib — demo planında sahibkar üçün boş sahə var.
+- ⏳ Kommersiya paketləri ilə müqayisə (slayd 15) ümumi imkanlar
+  səviyyəsindədir, konkret versiya ilə yoxlanılmayıb.
+- SPE1-in qalan fərqi (Seans 43, §8.2 backlog) toxunulmadı.
+
+### 7 · Yoxlama
+
+```
+tam dəst   2715 keçdi, 1 buraxıldı, 1 xfailed (8 dəq 9 san, arxa planda digər işlərlə paralel)
+```

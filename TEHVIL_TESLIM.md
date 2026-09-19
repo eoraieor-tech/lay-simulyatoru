@@ -1,7 +1,7 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
-**Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 17 sentyabr 2026 (Seans 43)
-**Son kod commit-i:** `647ac78` · son sənəd commit-i bu faylın öz commit-idir
+**Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 20 sentyabr 2026 (Seans 44)
+**Son kod commit-i:** `647ac78` (`imex2d/`; Seans 44 yalnız `tools/` və sənəd əlavə etdi) · son sənəd commit-i bu faylın öz commit-idir
 (`git log --oneline -3` ilə yoxlayın)
 **Növbəti iş:** SPE1CASE2-nin QALAN fərqi üçün yeni namizəd tapmaq (§5) —
 əsas səbəb (G7) tapılıb və bağlanıb, üç namizəd isə ölçülərək istisna olunub.
@@ -11,7 +11,8 @@ Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI kö
 
 | Harada | Nə |
 |---|---|
-| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son: **Seans 43**) |
+| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son: **Seans 44**) |
+| `docs/teqdimat/` | təqdimat materialları və onların linkləri (Seans 44) |
 | `QARARLAR.md` | texniki qərarların səbəbləri (son: **Q-34**) |
 | `SPE1.md` | SPE1-in mənbəsi, deck parametrləri, boşluq cədvəli, **§7 səbəb**, **§8 cari müqayisə** |
 | `ROADMAP.md` | mərhələ statusu, texniki borc (TB-1…TB-3) |
@@ -28,9 +29,16 @@ Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI kö
 |---|---|
 | Budaq | `main` = `origin/main`, açıq budaq yoxdur |
 | Test dəsti | **2715 keçdi, 1 buraxıldı, 1 xfailed** (~6 dəqiqə boş maşında) |
-| Son hesabat bölməsi | **Seans 43** → növbəti yazılacaq: **Seans 44** |
+| Son hesabat bölməsi | **Seans 44** → növbəti yazılacaq: **Seans 45** |
 | Son qərar | **Q-34** → növbəti: **Q-35** |
 | Aktiv blok | **B7 / SPE1** — əsas fərq bağlandı, qalan ~145 günlük fərqin səbəbi ⏳ |
+
+### Seans 44 (19–20 sentyabr 2026) — təqdimat materialları
+
+Kod dəyişmədi. Proqramın iş prinsipini təqdim etmək üçün slayd dəsti, interaktiv
+xəritə, zaman addımı animasiyası, demo planı, icmal və lüğət hazırlandı —
+bax `docs/teqdimat/README.md`. Yeni alətlər: `tools/module_graph.py`,
+`tools/presentation_demo.py`. Növbəti iş dəyişmədi (SPE1 qalan fərqi).
 
 ### Seans 40–43-də bitənlər (17 sentyabr 2026)
 
