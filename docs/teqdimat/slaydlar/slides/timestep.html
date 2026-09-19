@@ -1,0 +1,63 @@
+<section id="timestep" data-transition="fade" style="background:#13212B; color:#E8EDEE; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#7FC0D8">İçəridə</p>
+    <h2 style="font-family:'Archivo', Arial, sans-serif; font-size:72px; font-weight:700; line-height:1.05; color:#E8EDEE">Bir zaman addımında nə baş verir</h2>
+  </div>
+  <div style="display:flex; flex-direction:row; align-items:stretch; gap:0px">
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1C2F3B; border:1px solid #2E4553; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#E3A15E">1</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Xassələr</h3>
+      <p style="font-size:24px; line-height:1.4; color:#A9BAC2">PVT, kr, Pc cari p və Sw ilə</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7FC0D8"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1C2F3B; border:1px solid #2E4553; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#E3A15E">2</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Qalıq R(x)</h3>
+      <p style="font-size:24px; line-height:1.4; color:#A9BAC2">hər hüceyrədə kütlə balansı</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7FC0D8"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1C2F3B; border:1px solid #2E4553; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#E3A15E">3</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Jakobian</h3>
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; line-height:1.4; color:#A9BAC2">J = ∂R/∂x</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7FC0D8"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1C2F3B; border:1px solid #2E4553; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#E3A15E">4</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Xətti sistem</h3>
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; line-height:1.4; color:#A9BAC2">J·δx = −R</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7FC0D8"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1C2F3B; border:1px solid #2E4553; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#E3A15E">5</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Yenilə</h3>
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; line-height:1.4; color:#A9BAC2">x ← x + δx</p>
+    </div>
+  </div>
+  <div style="display:flex; flex-direction:row; gap:32px">
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; border:1px solid #2E4553; border-radius:12px; padding:32px">
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Yığıldımı?</h3>
+      <ul style="font-size:24px; line-height:1.5; color:#A9BAC2">
+        <li>Ən pis hüceyrənin qalığı (CNV) &lt; 0.001</li>
+        <li>Qlobal kütlə balansı (MB) &lt; 0.0000001</li>
+        <li>Bəli — addım qəbul, az iterasiya olubsa Δt böyüyür</li>
+        <li>Xeyr — 2-yə qayıt; 20 iterasiyada yığılmasa Δt yarıya</li>
+      </ul>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; border:1px solid #2E4553; border-radius:12px; padding:32px">
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700; color:#E8EDEE">Nümunədən real addım, Δt = 8.9 gün</h3>
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; line-height:1.5; color:#E3A15E">CNV: 0.180 → 0.111 → 0.183 → 0.030 → 0.0014 → 0.000003</p>
+      <p style="font-size:24px; line-height:1.5; color:#A9BAC2">5 iterasiyada yığıldı. Bütün qaçış üzrə orta 3.0 iterasiya.</p>
+    </div>
+  </div>
+  <p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#A9BAC2">IMEX-2D · Fully implicit mühərrik, Nyuton-Rafson · 10</p>
+  <aside>Proqramın ürəyi budur. Hər zaman addımında naməlumlar — hər hüceyrədə təzyiq və doyumluluq — elə tapılmalıdır ki, kütlə balansı pozulmasın. Pozulma qalıq R ilə ölçülür. Nyuton üsulu qalığın törəməsini, yəni Jakobianı qurur, xətti sistemi həll edir, düzəlişi tətbiq edir və qalığı yenidən yoxlayır. Sağdakı rəqəmlər nümunə qaçışından real addımdır: qalıq beş iterasiyada 0.18-dən 0.000003-ə düşür. Yığılmasa, proqram addımı kiçildib yenidən cəhd edir. Bunun interaktiv animasiyası ayrıca səhifədədir.</aside>
+</section>

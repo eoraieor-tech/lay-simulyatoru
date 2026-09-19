@@ -1,0 +1,52 @@
+<section id="pipeline" data-transition="fade" style="background:#E5EBE8; color:#13212B; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#9A5319">Arxitektura</p>
+    <h2 style="font-family:'Archivo', Arial, sans-serif; font-size:72px; font-weight:700; line-height:1.05; color:#13212B">Beş mərhələ, bir istiqamət</h2>
+  </div>
+  <div style="display:flex; flex-direction:row; align-items:stretch; gap:0px">
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FBFCFA; border:1px solid #C9D3CF; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#9A5319">1</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700">Giriş</h3>
+      <p style="font-size:24px; line-height:1.4; color:#2E3D47">Quyu CSV, GRDECL grid, PVT, SCAL, quyu rejimləri</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7E939E"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FBFCFA; border:1px solid #C9D3CF; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#9A5319">2</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700">Geologiya</h3>
+      <p style="font-size:24px; line-height:1.4; color:#2E3D47">Keyfiyyət yoxlaması, variogram, Kriging, SGS, SIS</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7E939E"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FBFCFA; border:1px solid #C9D3CF; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#9A5319">3</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700">Rezervuar modeli</h3>
+      <p style="font-size:24px; line-height:1.4; color:#2E3D47">Geologiya + flüidlər + quyular + ilkin şərtlər</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7E939E"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FBFCFA; border:1px solid #C9D3CF; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#9A5319">4</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700">Simulyasiya</h3>
+      <p style="font-size:24px; line-height:1.4; color:#2E3D47">Diskretizasiya (TPFA, MPFA-O) və mühərrik (IMPES, Nyuton)</p>
+    </div>
+    <div style="display:flex; flex-direction:column; justify-content:center; width:44px; align-items:center">
+      <x-shape kind="arrow-right" style="width:28px; height:18px; background:#7E939E"></x-shape>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FBFCFA; border:1px solid #C9D3CF; border-radius:12px; padding:28px">
+      <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; color:#9A5319">5</p>
+      <h3 style="font-family:'Archivo', Arial, sans-serif; font-size:32px; font-weight:700">Nəticə</h3>
+      <p style="font-size:24px; line-height:1.4; color:#2E3D47">Qrafik, 3D, ixrac, tarixçəyə uyğunlaşdırma</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex; flex-direction:row; gap:64px; border-top:2px solid #C9D3CF; padding:32px 0px 0px 0px">
+    <p style="flex:1; font-size:28px; line-height:1.4; color:#13212B">Qatlar ayrıdır: interfeys hesablamaya toxunmur, mühərrik yalnız hazır <b>ReservoirModel</b> obyektini oxuyur.</p>
+    <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:28px; line-height:1.4; color:#4B5B66; white-space:nowrap">130 modul · 45 min sətir</p>
+  </div>
+  <p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#4B5B66">IMEX-2D · Arxitektura · 3</p>
+  <aside>Məlumat həmişə bir istiqamətdə axır. Əvvəlcə fayllar oxunur, sonra quyular arasındakı boşluq geostatistika ilə doldurulur, üzərinə flüidlər və quyular əlavə olunub rezervuar modeli yaranır. Mühərrik yalnız bu modeli oxuyur, özü heç nə qurmur — ona görə eyni modeli müxtəlif ssenarilərlə təkrar işlətmək olur. Kod 130 moduldan, təxminən 45 min sətir Python-dan ibarətdir. Ətraflı xəritə ayrıca interaktiv səhifədədir.</aside>
+</section>

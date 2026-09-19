@@ -1,0 +1,23 @@
+{
+  "v": 4,
+  "attachments": {},
+  "createdOnFiles": {
+    "at": "2026-09-19T20:55:34.634Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "faces": {
+    "archivo": {"family": "Archivo", "href": "https://fonts.googleapis.com/css2?family=Archivo:wght@500..800&display=swap"},
+    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"},
+    "ibm-plex-mono": {"family": "IBM Plex Mono", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"}
+  },
+  "order": ["cover", "what", "pipeline", "example", "inputs", "geology", "model", "front", "results", "timestep", "models", "trust", "bl", "spe1", "quality", "compare", "status", "close"],
+  "sections": {
+    "s1": {"description": "Proqram nə edir və hansı mərhələlərdən keçir", "start": "cover"},
+    "s2": {"description": "Bir nümunə yataq başdan sona: giriş, geologiya, model, simulyasiya, nəticə", "start": "example"},
+    "s3": {"description": "Hesablamanın içi: Nyuton addımı və fiziki modellər", "start": "timestep"},
+    "s4": {"description": "Doğrulama: analitik həll, SPE1 etalonu, testlər", "start": "trust"},
+    "s5": {"description": "Yerimiz, vəziyyət və suallar", "start": "compare"}
+  },
+  "title": "IMEX-2D: lay simulyatoru necə işləyir"
+}

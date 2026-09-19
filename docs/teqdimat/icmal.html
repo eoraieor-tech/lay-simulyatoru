@@ -1,0 +1,268 @@
+<title>IMEX-2D İcmalı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#E9EEEC; --paper:#FBFCFA; --ink:#13212B; --soft:#2E3D47; --muted:#56666F; --line:#D3DCD8; --band:#EEF2F0;
+  --oil:#9A5319; --oil-soft:#F6E9DA; --water:#1F6683; --water-soft:#DDEDF3; --shadow:0 1px 3px rgba(19,33,43,.12),0 8px 24px rgba(19,33,43,.08);
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1418; --paper:#152028; --ink:#E4EBEE; --soft:#C9D5DB; --muted:#95A6B0; --line:#2B3B45; --band:#1A2831;
+    --oil:#E8AE72; --oil-soft:#33261A; --water:#7FC0D8; --water-soft:#15313D; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1418; --paper:#152028; --ink:#E4EBEE; --soft:#C9D5DB; --muted:#95A6B0; --line:#2B3B45; --band:#1A2831;
+  --oil:#E8AE72; --oil-soft:#33261A; --water:#7FC0D8; --water-soft:#15313D; --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--body);font-size:13.5px;line-height:1.45;padding-inline:16px;padding-block:24px 48px}
+.bar{max-width:210mm;margin:0 auto 14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.bar p{margin:0;color:var(--muted);font-size:13px}
+.btn{font:600 13px var(--body);color:var(--paper);background:var(--ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--oil);outline-offset:2px}
+.sheet{max-width:210mm;margin:0 auto 24px;background:var(--paper);box-shadow:var(--shadow);border:1px solid var(--line);padding:14mm 13mm;display:flex;flex-direction:column;gap:12px}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:10px}
+.head h1{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;margin:0;letter-spacing:-.01em}
+.head h1 span{color:var(--oil)}
+.head .meta{font-size:12px;color:var(--muted);text-align:right}
+.lede{font-size:15px;line-height:1.5;margin:0;color:var(--soft);max-width:none}
+h2{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 6px;color:var(--ink)}
+.cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:640px){.cols3,.cols2{grid-template-columns:1fr}}
+.box{background:var(--band);border-radius:6px;padding:10px 12px}
+ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:2px}
+li::marker{color:var(--muted)}
+.mono{font-family:var(--mono);font-size:12px}
+.flow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
+.flow div{flex:1 1 90px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;background:var(--paper)}
+.flow b{display:block;font-size:12.5px}
+.flow i{font-style:normal;color:var(--muted)}
+.flow .arr{flex:0 0 auto;border:0;padding:0;align-self:center;color:var(--muted);background:none}
+.example{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:14px;align-items:center}
+@media (max-width:640px){.example{grid-template-columns:1fr}}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:6px}
+.kpi b{display:block;font-family:var(--display);font-weight:700;font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+td.n{text-align:right;white-space:nowrap}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 7px}
+.tag.yes{background:var(--water-soft);color:var(--water)}
+.tag.no{background:var(--oil-soft);color:var(--oil)}
+.foot{margin-top:auto;border-top:1px solid var(--line);padding-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.gloss{columns:2;column-gap:20px}
+@media (max-width:640px){.gloss{columns:1}}
+.gloss section{margin-bottom:10px}
+.gloss h3{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--oil);margin:0 0 5px;break-after:avoid}
+.gloss .term{margin:0 0 6px;font-size:12.5px;line-height:1.42;color:var(--soft);break-inside:avoid}
+.gloss .term b{color:var(--ink);font-weight:600}
+.gloss .term small{font-weight:400;color:var(--muted);font-family:var(--mono);font-size:11px}
+svg text{font-family:var(--mono)}
+@page{size:A4;margin:0}
+@media print{
+  :root{--bg:#fff;--paper:#fff;--ink:#13212B;--soft:#2E3D47;--muted:#56666F;--line:#D3DCD8;--band:#EEF2F0;--oil:#9A5319;--oil-soft:#F6E9DA;--water:#1F6683;--water-soft:#DDEDF3;--shadow:none}
+  body{padding:0}
+  .bar{display:none}
+  .sheet{max-width:none;width:210mm;min-height:297mm;margin:0;border:0;box-shadow:none;break-after:page}
+  .sheet:last-child{break-after:auto}
+}
+</style>
+
+<div class="bar">
+  <p>İki səhifə: icmal və terminlər lüğəti, A4 formatında. Çap üçün PDF variantı ayrıca faylda verilir.</p>
+</div>
+
+<article class="sheet" aria-label="Səhifə 1: icmal">
+  <div class="head">
+    <h1>IMEX<span>-2D</span></h1>
+    <div class="meta">Lay simulyatoru · bir səhifəlik icmal<br>eoraieor-tech · Sentyabr 2026</div>
+  </div>
+  <p class="lede">Neft-qaz yatağının 3D kompüter modeli. Kəşfiyyat quyularının ölçmələrindən geoloji model qurur, həmin modeldə neftin, suyun və qazın axınını gün-gün hesablayır və hasilatı, neftvermə əmsalını, təzyiqləri proqnozlaşdırır. Python-da yazılıb; fizika və ədədi üsullar layihənin öz kodudur.</p>
+
+  <div>
+    <h2>Necə işləyir</h2>
+    <div class="flow" role="list">
+      <div role="listitem"><b>1 · Giriş</b><i>quyu ölçmələri, GRDECL, PVT, SCAL, quyu rejimi</i></div><span class="arr" aria-hidden="true">→</span>
+      <div role="listitem"><b>2 · Geologiya</b><i>variogram, Kriging, SGS, SIS</i></div><span class="arr" aria-hidden="true">→</span>
+      <div role="listitem"><b>3 · Model</b><i>geologiya + flüid + quyular</i></div><span class="arr" aria-hidden="true">→</span>
+      <div role="listitem"><b>4 · Simulyasiya</b><i>TPFA / MPFA-O, IMPES / Nyuton</i></div><span class="arr" aria-hidden="true">→</span>
+      <div role="listitem"><b>5 · Nəticə</b><i>debit, RF, xəritə, 3D, ixrac</i></div>
+    </div>
+  </div>
+
+  <div class="cols3">
+    <div>
+      <h2>Girişlər</h2>
+      <ul>
+        <li>Quyu koordinatları, məsaməlik, keçiricilik, NTG</li>
+        <li>Grid: əl ilə və ya Eclipse GRDECL</li>
+        <li>PVT: korrelyasiya və ya PVTW/PVDG/PVTO</li>
+        <li>SCAL: Corey, CSV, SWOF/SGOF</li>
+        <li>Quyular: BHP, debit, THP, limitlər</li>
+        <li>Faktiki hasilat tarixçəsi (CSV)</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Modellər</h2>
+      <ul>
+        <li>PVT: Standing, Vazquez-Beggs, Beggs-Robinson</li>
+        <li>Nisbi keçiricilik: Corey, Stone II</li>
+        <li>Kapilyar təzyiq: Brooks-Corey</li>
+        <li>Quyu: Peaceman, nodal analiz</li>
+        <li>Axın: TPFA, MPFA-O (tam tenzor)</li>
+        <li>Mühərrik: IMPES, Nyuton, 3 fazalı black-oil</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Çıxışlar</h2>
+      <ul>
+        <li>Neft, su, qaz debiti; sulaşma; GOR</li>
+        <li>Neftvermə əmsalı (RF)</li>
+        <li>BHP, THP, lay təzyiqi</li>
+        <li>Xəritə, kəsik, 3D, GIF animasiya</li>
+        <li>Tarixçəyə uyğunlaşdırma, həssaslıq</li>
+        <li>PDF, CSV/JSON, Eclipse .DATA</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="box example">
+    <div>
+      <h2>Nümunə: 5 quyu, 1500 gün</h2>
+      <p style="margin:0;font-size:12.5px;color:var(--soft)">15 ölçmə nöqtəsindən Kriging ilə 41 × 41 × 3 grid, bir vurucu və bir istismarçı, fully implicit mühərrik.</p>
+      <div class="kpis">
+        <div class="kpi"><b>57.8 %</b><span>neftvermə, 1500 gün</span></div>
+        <div class="kpi"><b>557</b><span>suyun çatdığı gün</span></div>
+        <div class="kpi"><b>88</b><span>zaman addımı</span></div>
+        <div class="kpi"><b>39 s</b><span>hesablama vaxtı</span></div>
+      </div>
+    </div>
+    <svg id="rf" viewBox="0 0 230 110" role="img" aria-label="Nümunədə neftvermə əmsalı və sulaşmanın zamanla artması" style="width:100%;height:auto"></svg>
+  </div>
+
+  <div class="cols2">
+    <div>
+      <h2>Doğrulama</h2>
+      <table>
+        <tr><th>Yoxlama</th><th>Nəticə</th></tr>
+        <tr><td>Buckley-Leverett analitik həlli</td><td>cəbhə fərqi 4.5 %, RMS 0.023</td></tr>
+        <tr><td>SPE1 və OPM Flow, 1034-cü günə qədər</td><td>debit eyni, quyu BHP ±1.2 %</td></tr>
+        <tr><td>SPE1, açıq qalan fərq</td><td>qaz ~145 gün tez çatır</td></tr>
+        <tr><td>Avtomatik testlər</td><td>2715 test keçir</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2>Əhatə dairəsi</h2>
+      <table>
+        <tr><td>Black-oil: neft, su, qaz</td><td><span class="tag yes">var</span></td></tr>
+        <tr><td>Corner-point grid, faylar, anizotropluq</td><td><span class="tag yes">var</span></td></tr>
+        <tr><td>Geostatistika eyni proqramda</td><td><span class="tag yes">var</span></td></tr>
+        <tr><td>Kompozisiya (EOS), termal proseslər</td><td><span class="tag no">yoxdur</span></td></tr>
+        <tr><td>Paralel və GPU hesablama</td><td><span class="tag no">yoxdur</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>Kitabxanalar: NumPy, SciPy (seyrək həlledicilər, optimallaşdırma), Matplotlib, VTK, PyQt5</span>
+    <span>130 modul · ~45 min sətir · 34 sənədlənmiş texniki qərar</span>
+  </div>
+</article>
+
+<article class="sheet" aria-label="Səhifə 2: terminlər lüğəti">
+  <div class="head">
+    <h1>Terminlər <span>lüğəti</span></h1>
+    <div class="meta">Təqdimatda keçən anlayışlar, sadə dillə</div>
+  </div>
+  <div class="gloss">
+    <section>
+      <h3>Geologiya</h3>
+      <div>
+        <p class="term"><b>Məsaməlik <small>PORO</small></b> — Süxurdakı boşluqların həcm payı. Neft, su və qaz bu boşluqlarda saxlanılır.</p>
+        <p class="term"><b>Keçiricilik <small>PERMX, mD</small></b> — Süxurun flüidi nə qədər asan buraxması. İstiqamətdən asılı ola bilər — onda tenzor kimi verilir.</p>
+        <p class="term"><b>NTG <small>net-to-gross</small></b> — Qatın məhsuldar hissəsinin payı.</p>
+        <p class="term"><b>Fasiya</b> — Süxur tipi (məsələn, qum və ya gil). Rəqəm yox, kateqoriyadır.</p>
+        <p class="term"><b>Variogram</b> — İki nöqtə arasında məsafə artdıqca xassənin nə qədər fərqləndiyini göstərən əyri. Kriging çəkiləri ondan alır.</p>
+        <p class="term"><b>Kriging</b> — Ölçülməmiş nöqtənin dəyərini yaxın ölçmələrin çəkili ortası ilə təxmin edən üsul. Təxminin xətasını da verir.</p>
+        <p class="term"><b>IDW</b> — Məsafənin tərsi ilə çəkili orta — sadə interpolyasiya.</p>
+        <p class="term"><b>SGS, SIS</b> — Stoxastik simulyasiya: eyni ölçmələrə uyğun gələn, lakin təbii dəyişkənliyi saxlayan çoxlu mümkün xəritə. SGS kəsilməz xassələr, SIS fasiyalar üçündür.</p>
+        <p class="term"><b>Çarpaz-doğrulama</b> — Hər quyunu növbə ilə gizlədib qalanlarla proqnozlaşdırmaq — interpolyasiyanın real dəqiqliyini ölçür.</p>
+        <p class="term"><b>Corner-point grid</b> — Hüceyrələrin künc nöqtələri ilə verildiyi grid. Əyilmiş qatları və fayları dəqiq izləyir; Eclipse və Petrel standartıdır.</p>
+      </div>
+    </section>
+    <section>
+      <h3>Flüid və süxur fizikası</h3>
+      <div>
+        <p class="term"><b>Black-oil modeli</b> — Üç faza — neft, su, qaz. Qazın neftdə həll olması nəzərə alınır, amma neftin kimyəvi tərkibi izlənmir.</p>
+        <p class="term"><b>PVT</b> — Flüid xassələrinin təzyiqdən asılılığı: həcm əmsalı, həll olmuş qaz, özlülük.</p>
+        <p class="term"><b>Həcm əmsalı <small>Bo</small></b> — Lay şəraitindəki neft həcminin səthdəki həcminə nisbəti.</p>
+        <p class="term"><b>Həll olmuş qaz <small>Rs</small></b> — Bir kub metr neftdə həll olmuş qazın səth həcmi.</p>
+        <p class="term"><b>Doyma təzyiqi <small>Pb</small></b> — Bu təzyiqdən aşağıda qaz neftdən ayrılmağa başlayır.</p>
+        <p class="term"><b>Doyumluluq <small>Sw, So, Sg</small></b> — Məsamə həcminin hansı payını su, neft və qaz tutur. Cəmi 1-dir.</p>
+        <p class="term"><b>Nisbi keçiricilik <small>kr</small></b> — Başqa fazalar da olanda bir fazanın axma qabiliyyəti, 0 ilə 1 arasında. Corey düsturu, üç faza üçün Stone II.</p>
+        <p class="term"><b>Kapilyar təzyiq <small>Pc</small></b> — Dar məsamələrdə iki faza arasında yaranan təzyiq fərqi.</p>
+        <p class="term"><b>SCAL</b> — Xüsusi kern analizi. Nisbi keçiricilik və kapilyar təzyiq əyriləri buradan gəlir.</p>
+      </div>
+    </section>
+    <section>
+      <h3>Ədədi üsullar</h3>
+      <div>
+        <p class="term"><b>Diskretizasiya</b> — Kəsilməz fizika tənliklərinin hər hüceyrə üçün ayrıca yazılması.</p>
+        <p class="term"><b>TPFA</b> — İki qonşu hüceyrə arasındakı axını yalnız onların təzyiq fərqindən hesablayır. Sadə və sürətlidir.</p>
+        <p class="term"><b>MPFA-O</b> — Axını bir neçə qonşu hüceyrədən hesablayır. Anizotrop keçiricilikdə və əyri gridlərdə daha dəqiqdir.</p>
+        <p class="term"><b>IMPES</b> — Hər addımda əvvəlcə təzyiqi, sonra doyumluluğu ayrıca hesablayır. Sadədir, amma kiçik addım tələb edir.</p>
+        <p class="term"><b>Fully implicit</b> — Bütün naməlumları hər addımda birlikdə həll edir; böyük addımlarda da dayanıqlıdır.</p>
+        <p class="term"><b>Nyuton-Rafson</b> — Qeyri-xətti tənlikləri ardıcıl xətti yaxınlaşmalarla həll edən iterativ üsul.</p>
+        <p class="term"><b>Qalıq <small>R, CNV, MB</small></b> — Tənliyin nə qədər ödənmədiyinin ölçüsü. CNV — ən pis hüceyrədə, MB — bütün model üzrə kütlə balansı.</p>
+        <p class="term"><b>Jakobian</b> — Qalığın hər naməluma görə törəmələrindən ibarət matris.</p>
+        <p class="term"><b>BiCGStab, ILU, CPR</b> — Böyük seyrək xətti sistemləri sürətlə həll edən iterativ həlledici və ön-şərtçilər.</p>
+        <p class="term"><b>Zaman addımı <small>Δt</small></b> — Hesablamanın bir sıçrayışda keçdiyi vaxt. Proqram onu yığılmaya görə özü böyüdür və ya kiçildir.</p>
+      </div>
+    </section>
+    <section>
+      <h3>Quyu və nəticələr</h3>
+      <div>
+        <p class="term"><b>BHP, THP</b> — Quyu dibi təzyiqi və quyu başı (ağız) təzyiqi.</p>
+        <p class="term"><b>Peaceman modeli</b> — Quyu ilə onun keçdiyi hüceyrə arasındakı axını quyu indeksi ilə hesablayır.</p>
+        <p class="term"><b>Nodal analiz</b> — Laydan quyuya axın (IPR) və lülədə qalxma (VLP) əyrilərinin kəsişməsindən quyunun iş nöqtəsini tapır.</p>
+        <p class="term"><b>Five-spot</b> — Kvadratın künclərində dörd, mərkəzində bir əks tipli quyu. Proqramdakı hazır ssenari bu sxemin dörddə biridir.</p>
+        <p class="term"><b>OOIP</b> — Laydakı başlanğıc neft ehtiyatı.</p>
+        <p class="term"><b>Neftvermə əmsalı <small>RF</small></b> — Çıxarılmış neftin başlanğıc ehtiyata nisbəti, faizlə.</p>
+        <p class="term"><b>Sulaşma <small>water cut</small></b> — Hasil olunan mayedə suyun payı.</p>
+        <p class="term"><b>GOR</b> — Qaz-neft nisbəti: hər vahid neftlə gələn qazın həcmi.</p>
+        <p class="term"><b>History matching</b> — Model parametrlərini faktiki hasilat tarixçəsinə uyğunlaşdırmaq.</p>
+        <p class="term"><b>SPE1</b> — Neft Mühəndisləri Cəmiyyətinin 1981-ci il üç fazalı etalon məsələsi — simulyatorları müqayisə üçün.</p>
+      </div>
+    </section>
+  </div>
+  <div class="foot">
+    <span>IMEX-2D · terminlər lüğəti</span>
+    <span>Mənbə: layihə sənədləri və kod (imex2d/)</span>
+  </div>
+</article>
+
+<script>
+const S = {"t": [0.2, 0.6, 1.0, 1.7, 2.7, 4.3, 6.5, 9.5, 13.4, 18.2, 24.3, 31.7, 40.6, 51.3, 64.1, 79.0, 96.7, 116.7, 136.7, 156.7, 176.7, 196.7, 216.7, 236.7, 256.7, 276.7, 296.7, 316.7, 336.7, 356.7, 376.7, 396.7, 416.7, 436.7, 456.7, 476.7, 496.7, 516.7, 536.7, 556.7, 576.7, 596.7, 616.7, 636.7, 656.7, 676.7, 696.7, 716.7, 736.7, 756.7, 776.7, 796.7, 816.7, 836.7, 856.7, 876.7, 896.7, 916.7, 936.7, 956.7, 976.7, 996.7, 1016.7, 1036.7, 1056.7, 1076.7, 1096.7, 1116.7, 1136.7, 1156.7, 1176.7, 1196.7, 1216.7, 1236.7, 1256.7, 1276.7, 1296.7, 1316.7, 1336.7, 1356.7, 1376.7, 1396.7, 1416.7, 1436.7, 1456.7, 1476.7, 1496.7, 1500.0], "rf": [0.04, 0.07, 0.12, 0.19, 0.28, 0.41, 0.59, 0.81, 1.09, 1.42, 1.83, 2.31, 2.9, 3.61, 4.47, 5.49, 6.72, 8.12, 9.54, 10.97, 12.42, 13.88, 15.35, 16.84, 18.33, 19.83, 21.34, 22.86, 24.39, 25.92, 27.46, 29.0, 30.55, 32.1, 33.65, 35.21, 36.76, 38.29, 39.74, 40.95, 41.96, 42.83, 43.62, 44.34, 45.01, 45.63, 46.22, 46.78, 47.3, 47.81, 48.29, 48.75, 49.19, 49.61, 50.01, 50.4, 50.78, 51.14, 51.48, 51.82, 52.14, 52.45, 52.76, 53.05, 53.33, 53.6, 53.87, 54.12, 54.37, 54.61, 54.84, 55.07, 55.29, 55.5, 55.71, 55.91, 56.1, 56.29, 56.48, 56.66, 56.83, 57.0, 57.16, 57.32, 57.48, 57.63, 57.78, 57.8], "wc": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.89, 11.75, 27.77, 39.13, 46.83, 52.46, 56.86, 60.44, 63.45, 66.03, 68.29, 70.29, 72.07, 73.68, 75.13, 76.46, 77.68, 78.8, 79.84, 80.8, 81.69, 82.52, 83.3, 84.02, 84.7, 85.34, 85.95, 86.51, 87.05, 87.55, 88.03, 88.48, 88.91, 89.31, 89.7, 90.07, 90.41, 90.75, 91.06, 91.36, 91.65, 91.92, 92.19, 92.44, 92.68, 92.91, 93.13, 93.34, 93.54, 93.57]};
+(function(){
+  const svg = document.getElementById("rf"), NS = "http://www.w3.org/2000/svg";
+  const W = 230, H = 110, L = 26, R = 6, T = 8, B = 20, tmax = S.t[S.t.length - 1];
+  const x = t => L + t / tmax * (W - L - R), y = v => T + (1 - v / 100) * (H - T - B);
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+  [0, 50, 100].forEach(v => { add("line", {x1: L, x2: W - R, y1: y(v), y2: y(v), style: "stroke:var(--line)"}); const t = add("text", {x: L - 4, y: y(v) + 3, "text-anchor": "end", style: "font-size:8px;fill:var(--muted)"}); t.textContent = v; });
+  [0, 750, 1500].forEach(v => { const t = add("text", {x: x(v), y: H - 6, "text-anchor": v === 1500 ? "end" : v ? "middle" : "start", style: "font-size:8px;fill:var(--muted)"}); t.textContent = v + (v === 1500 ? " gün" : ""); });
+  const path = (vals, style) => add("path", {d: vals.map((v, i) => (i ? "L" : "M") + x(S.t[i]).toFixed(1) + "," + y(v).toFixed(1)).join(""), style});
+  path(S.wc, "fill:none;stroke:var(--water);stroke-width:1.6");
+  path(S.rf, "fill:none;stroke:var(--ink);stroke-width:2");
+  const a = add("text", {x: x(tmax) - 2, y: y(S.rf[S.rf.length - 1]) + 12, "text-anchor": "end", style: "font-size:8.5px;fill:var(--ink);font-weight:600"}); a.textContent = "RF";
+  const b = add("text", {x: x(tmax) - 2, y: y(S.wc[S.wc.length - 1]) - 4, "text-anchor": "end", style: "font-size:8.5px;fill:var(--water);font-weight:600"}); b.textContent = "sulaşma";
+})();
+</script>

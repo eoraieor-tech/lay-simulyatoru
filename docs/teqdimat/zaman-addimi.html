@@ -1,0 +1,340 @@
+<title>Zaman Addımının İçi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EEF2F1; --panel:#FFFFFF; --panel2:#F5F7F6; --ink:#13212B; --muted:#52636E; --line:#D0D9D6;
+  --oil:#C8742A; --oil-t:#9A5319; --oil-soft:#F6E6D4; --water:#2A7FA0; --water-t:#1F6683; --water-soft:#DDEEF4;
+  --node:#FFFFFF; --edge:#A3B3BB; --good:#2E7D4F; --bad:#B23B3B;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E161B; --panel:#15212A; --panel2:#1A2831; --ink:#E4EBEE; --muted:#95A6B0; --line:#2B3B45;
+    --oil:#E3A15E; --oil-t:#E8AE72; --oil-soft:#3A2A1A; --water:#5FB2D2; --water-t:#7FC0D8; --water-soft:#163340;
+    --node:#1A2831; --edge:#4A5E69; --good:#5BC285; --bad:#E57373;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E161B; --panel:#15212A; --panel2:#1A2831; --ink:#E4EBEE; --muted:#95A6B0; --line:#2B3B45;
+  --oil:#E3A15E; --oil-t:#E8AE72; --oil-soft:#3A2A1A; --water:#5FB2D2; --water-t:#7FC0D8; --water-soft:#163340;
+  --node:#1A2831; --edge:#4A5E69; --good:#5BC285; --bad:#E57373;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--body);font-size:15px;line-height:1.5;padding-inline:clamp(16px,3vw,32px);padding-block:22px 40px}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4vw,40px);line-height:1.05;margin:0;text-wrap:balance}
+.lede{margin:6px 0 0;color:var(--muted);max-width:70ch}
+.picks{display:flex;flex-wrap:wrap;gap:8px}
+.pick{font:500 13.5px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.pick[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pick:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--oil);outline-offset:2px}
+.grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:880px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+svg text{font-family:var(--body)}
+.node rect,.node polygon{fill:var(--node);stroke:var(--edge);stroke-width:1.5;transition:fill .25s,stroke .25s}
+.node text{fill:var(--ink);font-size:13.5px;font-weight:600;text-anchor:middle;dominant-baseline:middle}
+.node .sub{font-weight:400;font-size:11.5px;fill:var(--muted);font-family:var(--mono)}
+.node.on rect,.node.on polygon{fill:var(--oil-soft);stroke:var(--oil);stroke-width:2.5}
+.node.done rect,.node.done polygon{stroke:var(--water)}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.6}
+.edge.on{stroke:var(--oil);stroke-width:2.6}
+.elabel{font-size:12px;fill:var(--muted);font-weight:600}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.btn{font:600 13.5px var(--body);border-radius:8px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
+.btn.primary{background:var(--oil-t);border-color:var(--oil-t);color:#FFF8F0}
+.controls label{font-size:13px;color:var(--muted);display:inline-flex;gap:8px;align-items:center;margin-left:auto}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:480px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{background:var(--panel2);border-radius:8px;padding:8px 10px}
+.stat span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.stat b{font-family:var(--mono);font-weight:500;font-size:17px;font-variant-numeric:tabular-nums}
+.stage{margin-top:12px;display:flex;flex-direction:column;gap:6px;min-height:118px}
+.stage .eyebrow{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--oil-t);font-weight:600}
+.stage h2{font-family:var(--display);font-weight:700;font-size:22px;margin:0}
+.stage p{margin:0;max-width:62ch}
+.pill{display:inline-block;font:600 12px var(--body);border-radius:999px;padding:2px 9px;margin-left:6px;vertical-align:2px}
+.pill.ok{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.pill.no{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.charttitle{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 4px;font-weight:600}
+.axis text{font-size:11px;fill:var(--muted);font-family:var(--mono)}
+.axis line{stroke:var(--line)}
+.strip-wrap{overflow-x:auto}
+.bar{fill:var(--water);opacity:.35;cursor:pointer}
+.bar.rej{fill:var(--bad);opacity:.55}
+.bar.sel{opacity:1}
+.dot{fill:var(--oil)}
+.note{font-size:13px;color:var(--muted);max-width:95ch}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Zaman addımının içi</h1>
+    <p class="lede">IMEX-2D-nin fully implicit mühərriki hər zaman addımında Nyuton üsulu ilə kütlə balansını həll edir. Aşağıdakı iterasiyalar və qalıq dəyərləri nümunə qaçışından götürülüb: five-spot, 41 × 41 × 3 grid, 1500 gün.</p>
+  </header>
+
+  <div class="picks" role="group" aria-label="Addım seçimi" id="picks"></div>
+
+  <div class="grid">
+    <div class="card">
+      <svg id="flow" viewBox="0 0 580 540" role="img" aria-label="Nyuton döngüsünün sxemi" style="width:100%;height:auto;display:block"></svg>
+      <div class="controls">
+        <button class="btn primary" id="play">Oynat</button>
+        <button class="btn" id="next">Növbəti mərhələ</button>
+        <button class="btn" id="reset">Əvvələ qayıt</button>
+        <label for="speed">Sürət <input type="range" id="speed" min="1" max="5" value="3"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><span>Cəhd</span><b id="s-att">—</b></div>
+        <div class="stat"><span>Δt, gün</span><b id="s-dt">—</b></div>
+        <div class="stat"><span>İterasiya</span><b id="s-it">—</b></div>
+        <div class="stat"><span>CNV</span><b id="s-cnv">—</b></div>
+      </div>
+      <div class="stage" aria-live="polite">
+        <div class="eyebrow" id="st-eyebrow"></div>
+        <h2 id="st-title"></h2>
+        <p id="st-text"></p>
+      </div>
+      <div class="charttitle">Qalıq (CNV), loqarifmik şkala · qırıq xətt = tolerans 0.001</div>
+      <svg id="cnv" viewBox="0 0 520 220" role="img" aria-label="CNV qalığının iterasiyalar üzrə azalması" style="width:100%;height:auto;display:block"></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="charttitle" style="margin-top:0">Bütün qaçış: hər sütun bir cəhddir (hündürlük = Δt), nöqtə = Nyuton iterasiyası. Qırmızı = rədd edilən cəhd. Sütuna toxun → həmin addım.</div>
+    <div class="strip-wrap"><svg id="strip" role="img" aria-label="Bütün qaçış üzrə zaman addımları"></svg></div>
+  </div>
+  <p class="note" id="foot"></p>
+</div>
+
+<script>
+const D = {"newton": [{"dt": 1.0, "it": 4, "cnv": [5.834517635015, 2.882957445408, 0.087765974306, 0.020975966863, 8.1508622e-05]}, {"dt": 0.5, "it": 4, "cnv": [2.917258817508, 1.437931603259, 0.021106097545, 0.000238606808, 1.7176e-08]}, {"dt": 0.25, "it": 4, "cnv": [1.458629408754, 0.715346215065, 0.00939469086, 6.5167069e-05, 2.981e-09]}, {"dt": 0.30418910249985615, "it": 2, "cnv": [0.181718543098, 0.012830464683, 0.00031282824]}, {"dt": 0.4562836537497842, "it": 3, "cnv": [0.139294039045, 0.013666810022, 0.000246943985, 2.4164e-08]}, {"dt": 0.6844254806246763, "it": 3, "cnv": [0.12869893795, 0.052254549354, 0.002287453424, 6.432227e-06]}, {"dt": 1.0266382209370146, "it": 3, "cnv": [0.139233779961, 0.074748007155, 0.007782594544, 6.9038284e-05]}, {"dt": 1.539957331405522, "it": 3, "cnv": [0.167058134512, 0.103389244613, 0.009558587453, 0.000109423556]}, {"dt": 2.2460772795302453, "it": 3, "cnv": [0.180603424866, 0.185419775495, 0.027651405885, 0.000700835828]}, {"dt": 2.9452562174958716, "it": 4, "cnv": [0.179687270973, 0.268494981521, 0.044118736152, 0.002337724737, 5.448521e-06]}, {"dt": 3.90901717110781, "it": 4, "cnv": [0.180474612852, 0.078984291896, 0.05342314336, 0.004198690255, 3.01514e-05]}, {"dt": 4.865324676519389, "it": 4, "cnv": [0.180360907559, 0.089706892004, 0.086757570337, 0.009266759889, 0.000150681742]}, {"dt": 6.098633681924246, "it": 4, "cnv": [0.180313938464, 0.097272653036, 0.103643534017, 0.013544092311, 0.000353458408]}, {"dt": 7.368879126223852, "it": 4, "cnv": [0.180286827541, 0.096237179153, 0.120476502261, 0.017336370878, 0.000564168185]}, {"dt": 8.892381286459148, "it": 5, "cnv": [0.18023024577, 0.111091818789, 0.183037543135, 0.029594179673, 0.001380878896, 3.005976e-06]}, {"dt": 10.664203680342567, "it": 5, "cnv": [0.180167130266, 0.143437495717, 0.226973942935, 0.037437949522, 0.001915185138, 5.217613e-06]}, {"dt": 12.826218625045575, "it": 5, "cnv": [0.180145044156, 0.152188962612, 0.228767698022, 0.040508226745, 0.002253822801, 2.0010319e-05]}, {"dt": 14.941027030474883, "it": 5, "cnv": [0.180081335316, 0.152010724677, 0.058957002855, 0.038096669034, 0.002824358207, 2.166845e-05]}, {"dt": 17.731080540755446, "it": 5, "cnv": [0.180047912734, 0.180815178238, 0.055065459261, 0.038380033553, 0.003452077974, 1.8193403e-05]}, {"dt": 20.0, "it": 5, "cnv": [0.175649097099, 0.188569786032, 0.064113053822, 0.046952135137, 0.00407975628, 3.5889833e-05]}, {"dt": 20.0, "it": 5, "cnv": [0.153412845311, 0.134735648968, 0.045098705499, 0.029744508951, 0.002350986826, 7.611647e-06]}, {"dt": 20.0, "it": 5, "cnv": [0.140912692985, 0.103964537415, 0.190438609585, 0.030648508387, 0.001421295708, 3.121674e-06]}, {"dt": 20.0, "it": 4, "cnv": [0.138328083396, 0.103030718937, 0.151097340029, 0.022906039342, 0.000796806104]}, {"dt": 20.0, "it": 4, "cnv": [0.134161984239, 0.091897185299, 0.119561186673, 0.016043356415, 0.00039748397]}, {"dt": 20.0, "it": 4, "cnv": [0.133770698832, 0.083309226974, 0.098882318731, 0.012071732988, 0.0002507108]}, {"dt": 20.0, "it": 4, "cnv": [0.132751337642, 0.077104954518, 0.086133241185, 0.010812428643, 0.000195501822]}, {"dt": 20.0, "it": 4, "cnv": [0.131305140688, 0.073043876771, 0.088735703354, 0.009987387822, 0.000208388398]}, {"dt": 20.0, "it": 4, "cnv": [0.130317512209, 0.329269299253, 0.061230252766, 0.003523148099, 2.2223041e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.129705035348, 0.330921438378, 0.062273110584, 0.003387654536, 1.0388904e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.129498059244, 0.335500025936, 0.063639800339, 0.003341470051, 1.1157154e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.129678016468, 0.346845825286, 0.065149444286, 0.003410917042, 1.2237705e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.130128247227, 0.36895399707, 0.066656504395, 0.003513313811, 1.4755427e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.130748871503, 0.403294410333, 0.067076788286, 0.00355073276, 2.298335e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.131399216846, 0.429770860118, 0.066322008015, 0.003927871084, 3.8104806e-05]}, {"dt": 20.0, "it": 4, "cnv": [0.131754902722, 0.471332493074, 0.09097326954, 0.007084629435, 0.00013706553]}, {"dt": 20.0, "it": 4, "cnv": [0.136520509114, 0.440921627633, 0.136341358024, 0.015134194546, 0.000393536414]}, {"dt": 20.0, "it": 5, "cnv": [0.140177047914, 0.107730751602, 0.250144316453, 0.044904194065, 0.002508599635, 8.626448e-06]}, {"dt": 20.0, "it": 5, "cnv": [0.140109785948, 0.115003552022, 0.33645250377, 0.073015556455, 0.006290747379, 4.970237e-05]}, {"dt": 20.0, "it": 5, "cnv": [0.146711942388, 0.151680277596, 0.42292070694, 0.103269517856, 0.010309566684, 0.000128062367]}, {"dt": 20.0, "it": 6, "cnv": [0.151852172699, 0.156016700343, 0.147709230076, 0.170398933163, 0.025202100852, 0.001227442783, 3.917642e-06]}, {"dt": 20.0, "it": 7, "cnv": [0.151150605523, 0.199560977025, 0.229708494846, 0.465254150185, 0.243608765012, 0.0280669418, 0.002233615938, 2.1049062e-05]}, {"dt": 20.0, "it": 5, "cnv": [0.144916969282, 0.284920047714, 0.178609489589, 0.055346087358, 0.002844571621, 1.010748e-06]}, {"dt": 20.0, "it": 4, "cnv": [0.121138362983, 0.196273058763, 0.031426516446, 0.000655784586, 1.5369e-07]}, {"dt": 20.0, "it": 3, "cnv": [0.068399759831, 0.017938811598, 0.000500706395, 1.72515e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.053054501345, 0.004482677628, 3.8612373e-05]}, {"dt": 20.0, "it": 2, "cnv": [0.048795337813, 0.00329843098, 1.5954836e-05]}, {"dt": 20.0, "it": 2, "cnv": [0.045923031502, 0.002667679644, 1.0131379e-05]}, {"dt": 20.0, "it": 2, "cnv": [0.043721210824, 0.002272782354, 7.216032e-06]}, {"dt": 20.0, "it": 2, "cnv": [0.041714304812, 0.001972374385, 6.397925e-06]}, {"dt": 20.0, "it": 2, "cnv": [0.039839034166, 0.001734889336, 4.363382e-06]}, {"dt": 20.0, "it": 2, "cnv": [0.038026495943, 0.001516235814, 3.287047e-06]}, {"dt": 20.0, "it": 2, "cnv": [0.034072910935, 0.001056419021, 1.346787e-06]}, {"dt": 20.0, "it": 2, "cnv": [0.033400184749, 0.000853430675, 8.78953e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.032963879034, 0.000817319674, 7.99608e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.03239510669, 0.000784796404, 7.44367e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.031792078921, 0.000751187364, 6.89567e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.030888382459, 0.000715200483, 6.43308e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.028763906304, 0.000596252639, 4.60505e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.025940999199, 0.000436694586, 2.4602e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.02374054404, 0.000409560981, 2.18582e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.022151211077, 0.000382942461, 1.94267e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021974798844, 0.000355511319, 1.72637e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021994371442, 0.000327726731, 1.5333e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021919907662, 0.000316472972, 1.3609e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021790336673, 0.00031557237, 1.20365e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021582205746, 0.000312091014, 1.05849e-07]}, {"dt": 20.0, "it": 2, "cnv": [0.021042165957, 0.000306049433, 9.2458e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.020219869522, 0.000297597549, 8.2452e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.019192120981, 0.00034208014, 7.3694e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.018030495142, 0.000275892729, 7.0809e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.016798500961, 0.000261827023, 6.5754e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.015549368717, 0.000246612505, 6.1132e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.014324805927, 0.00023067622, 5.6903e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.014076464221, 0.000214372875, 5.3031e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.014078896293, 0.00019801084, 4.9487e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.01397453865, 0.000182959957, 4.6241e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.013769066125, 0.000177615479, 4.3268e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.013471439278, 0.000171492696, 4.0544e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.013092958186, 0.000164716841, 3.8044e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.012646339043, 0.000157416431, 3.5754e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.01214491931, 0.000149718751, 3.3649e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.01160202483, 0.000141746084, 3.1709e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.01103048855, 0.000133612762, 2.992e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.010442293867, 0.000125423049, 2.8263e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.009848316501, 0.000117269793, 2.6727e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.009258146709, 0.000109233743, 2.5299e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.008679981334, 0.000101383437, 2.3969e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.008120579256, 9.3775521e-05, 2.2725e-08]}, {"dt": 20.0, "it": 2, "cnv": [0.007585274125, 8.6455386e-05, 2.1561e-08]}, {"dt": 3.250406894904245, "it": 1, "cnv": [0.001150324935, 3.9705e-07]}], "steps": [{"t": 0.0, "dt": 0.25, "it": 4, "ds": 0.1479}, {"t": 0.25, "dt": 0.3042, "it": 2, "ds": 0.0922}, {"t": 0.5542, "dt": 0.4563, "it": 3, "ds": 0.0854}, {"t": 1.0105, "dt": 0.6844, "it": 3, "ds": 0.0923}, {"t": 1.6949, "dt": 1.0266, "it": 3, "ds": 0.1109}, {"t": 2.7215, "dt": 1.54, "it": 3, "ds": 0.1234}, {"t": 4.2615, "dt": 2.2461, "it": 3, "ds": 0.1373}, {"t": 6.5076, "dt": 2.9453, "it": 4, "ds": 0.1356}, {"t": 9.4528, "dt": 3.909, "it": 4, "ds": 0.1446}, {"t": 13.3618, "dt": 4.8653, "it": 4, "ds": 0.1436}, {"t": 18.2272, "dt": 6.0986, "it": 4, "ds": 0.149}, {"t": 24.3258, "dt": 7.3689, "it": 4, "ds": 0.1492}, {"t": 31.6947, "dt": 8.8924, "it": 5, "ds": 0.1501}, {"t": 40.5871, "dt": 10.6642, "it": 5, "ds": 0.1497}, {"t": 51.2513, "dt": 12.8262, "it": 5, "ds": 0.1545}, {"t": 64.0775, "dt": 14.941, "it": 5, "ds": 0.1517}, {"t": 79.0185, "dt": 17.7311, "it": 5, "ds": 0.1557}, {"t": 96.7496, "dt": 20.0, "it": 5, "ds": 0.1534}, {"t": 116.7496, "dt": 20.0, "it": 5, "ds": 0.141}, {"t": 136.7496, "dt": 20.0, "it": 5, "ds": 0.1384}, {"t": 156.7496, "dt": 20.0, "it": 4, "ds": 0.1343}, {"t": 176.7496, "dt": 20.0, "it": 4, "ds": 0.134}, {"t": 196.7496, "dt": 20.0, "it": 4, "ds": 0.1329}, {"t": 216.7496, "dt": 20.0, "it": 4, "ds": 0.1315}, {"t": 236.7496, "dt": 20.0, "it": 4, "ds": 0.1305}, {"t": 256.7496, "dt": 20.0, "it": 4, "ds": 0.1299}, {"t": 276.7496, "dt": 20.0, "it": 4, "ds": 0.1297}, {"t": 296.7496, "dt": 20.0, "it": 4, "ds": 0.1299}, {"t": 316.7496, "dt": 20.0, "it": 4, "ds": 0.1304}, {"t": 336.7496, "dt": 20.0, "it": 4, "ds": 0.131}, {"t": 356.7496, "dt": 20.0, "it": 4, "ds": 0.1317}, {"t": 376.7496, "dt": 20.0, "it": 4, "ds": 0.1321}, {"t": 396.7496, "dt": 20.0, "it": 4, "ds": 0.1369}, {"t": 416.7496, "dt": 20.0, "it": 4, "ds": 0.1406}, {"t": 436.7496, "dt": 20.0, "it": 5, "ds": 0.1405}, {"t": 456.7496, "dt": 20.0, "it": 5, "ds": 0.1472}, {"t": 476.7496, "dt": 20.0, "it": 5, "ds": 0.1525}, {"t": 496.7496, "dt": 20.0, "it": 6, "ds": 0.1518}, {"t": 516.7496, "dt": 20.0, "it": 7, "ds": 0.1456}, {"t": 536.7496, "dt": 20.0, "it": 5, "ds": 0.1216}, {"t": 556.7496, "dt": 20.0, "it": 4, "ds": 0.0688}, {"t": 576.7496, "dt": 20.0, "it": 3, "ds": 0.0531}, {"t": 596.7496, "dt": 20.0, "it": 2, "ds": 0.0489}, {"t": 616.7496, "dt": 20.0, "it": 2, "ds": 0.046}, {"t": 636.7496, "dt": 20.0, "it": 2, "ds": 0.0438}, {"t": 656.7496, "dt": 20.0, "it": 2, "ds": 0.0417}, {"t": 676.7496, "dt": 20.0, "it": 2, "ds": 0.0399}, {"t": 696.7496, "dt": 20.0, "it": 2, "ds": 0.038}, {"t": 716.7496, "dt": 20.0, "it": 2, "ds": 0.0341}, {"t": 736.7496, "dt": 20.0, "it": 2, "ds": 0.0334}, {"t": 756.7496, "dt": 20.0, "it": 2, "ds": 0.033}, {"t": 776.7496, "dt": 20.0, "it": 2, "ds": 0.0324}, {"t": 796.7496, "dt": 20.0, "it": 2, "ds": 0.0318}, {"t": 816.7496, "dt": 20.0, "it": 2, "ds": 0.0309}, {"t": 836.7496, "dt": 20.0, "it": 2, "ds": 0.0288}, {"t": 856.7496, "dt": 20.0, "it": 2, "ds": 0.026}, {"t": 876.7496, "dt": 20.0, "it": 2, "ds": 0.0238}, {"t": 896.7496, "dt": 20.0, "it": 2, "ds": 0.0222}, {"t": 916.7496, "dt": 20.0, "it": 2, "ds": 0.022}, {"t": 936.7496, "dt": 20.0, "it": 2, "ds": 0.022}, {"t": 956.7496, "dt": 20.0, "it": 2, "ds": 0.0219}, {"t": 976.7496, "dt": 20.0, "it": 2, "ds": 0.0218}, {"t": 996.7496, "dt": 20.0, "it": 2, "ds": 0.0216}, {"t": 1016.7496, "dt": 20.0, "it": 2, "ds": 0.0211}, {"t": 1036.7496, "dt": 20.0, "it": 2, "ds": 0.0202}, {"t": 1056.7496, "dt": 20.0, "it": 2, "ds": 0.0192}, {"t": 1076.7496, "dt": 20.0, "it": 2, "ds": 0.0181}, {"t": 1096.7496, "dt": 20.0, "it": 2, "ds": 0.0168}, {"t": 1116.7496, "dt": 20.0, "it": 2, "ds": 0.0156}, {"t": 1136.7496, "dt": 20.0, "it": 2, "ds": 0.0144}, {"t": 1156.7496, "dt": 20.0, "it": 2, "ds": 0.0141}, {"t": 1176.7496, "dt": 20.0, "it": 2, "ds": 0.0141}, {"t": 1196.7496, "dt": 20.0, "it": 2, "ds": 0.014}, {"t": 1216.7496, "dt": 20.0, "it": 2, "ds": 0.0138}, {"t": 1236.7496, "dt": 20.0, "it": 2, "ds": 0.0135}, {"t": 1256.7496, "dt": 20.0, "it": 2, "ds": 0.0131}, {"t": 1276.7496, "dt": 20.0, "it": 2, "ds": 0.0127}, {"t": 1296.7496, "dt": 20.0, "it": 2, "ds": 0.0122}, {"t": 1316.7496, "dt": 20.0, "it": 2, "ds": 0.0116}, {"t": 1336.7496, "dt": 20.0, "it": 2, "ds": 0.0111}, {"t": 1356.7496, "dt": 20.0, "it": 2, "ds": 0.0105}, {"t": 1376.7496, "dt": 20.0, "it": 2, "ds": 0.0099}, {"t": 1396.7496, "dt": 20.0, "it": 2, "ds": 0.0093}, {"t": 1416.7496, "dt": 20.0, "it": 2, "ds": 0.0087}, {"t": 1436.7496, "dt": 20.0, "it": 2, "ds": 0.0081}, {"t": 1456.7496, "dt": 20.0, "it": 2, "ds": 0.0076}, {"t": 1476.7496, "dt": 20.0, "it": 2, "ds": 0.0071}, {"t": 1496.7496, "dt": 3.2504, "it": 1, "ds": 0.0011}], "ncell": 5043, "seconds": 39.1};
+const $ = s => document.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const SUP = {"-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"};
+const fmtCnv = v => {
+  if (v == null) return "—";
+  if (v >= 0.01) return v.toFixed(3);
+  const [m, e] = v.toExponential(1).split("e");
+  return m + "×10" + String(+e).split("").map(c => SUP[c]).join("");
+};
+const fmtDt = v => v >= 1 ? v.toFixed(1) : v.toFixed(2);
+
+/* cəhdlər: newton jurnalı; 0 və 1 rədd edilib (ΔSw > 0.2), 2-dən sonra step[i-2] */
+const ATT = D.newton.map((n, i) => {
+  const step = i >= 2 ? D.steps[i - 2] : null;
+  return {...n, idx: i, rejected: i < 2, t: step ? step.t : 0, ds: step ? step.ds : null,
+          nextDt: step && D.steps[i - 1] ? D.steps[i - 1].dt : null};
+});
+
+/* ---------- sxem ---------- */
+const N = {
+  start:{x:290,y:36,  t:"Addımı başla", s:"xⁿ, Δt"},
+  props:{x:290,y:118, t:"Xassələr", s:"PVT · kr · Pc"},
+  res:  {x:290,y:200, t:"Qalıq R(x)", s:"kütlə balansı"},
+  conv: {x:290,y:292, t:"Yığıldımı?", s:"CNV · MB", d:true},
+  jac:  {x:480,y:292, t:"Jakobian", s:"J = ∂R/∂x"},
+  lin:  {x:480,y:200, t:"Xətti sistem", s:"J·δx = −R"},
+  upd:  {x:480,y:118, t:"Yenilə", s:"x ← x + δx"},
+  dsw:  {x:290,y:392, t:"ΔSw ≤ 0.2?", s:"dəqiqlik", d:true},
+  acc:  {x:290,y:494, t:"Qəbul", s:"t ← t + Δt"},
+  cut:  {x:92, y:392, t:"Δt ÷ 2", s:"təkrarla"},
+};
+const flow = $("#flow");
+const E = [
+  ["start","props","M290,58 V96"], ["props","res","M290,140 V178"], ["res","conv","M290,222 V260"],
+  ["conv","jac","M358,292 H405","xeyr",380,284], ["jac","lin","M480,270 V222"], ["lin","upd","M480,178 V140"],
+  ["upd","props","M405,118 H365"], ["conv","dsw","M290,324 V360","bəli",304,344],
+  ["dsw","acc","M290,424 V472","bəli",304,452], ["dsw","cut","M222,392 H167","xeyr",194,384],
+  ["cut","start","M92,370 V36 H215"],
+];
+const edgeEls = {};
+E.forEach(([a, b, d, lab, lx, ly]) => {
+  edgeEls[a + ">" + b] = el("path", {d, class: "edge", "marker-end": "url(#arr)"}, flow);
+  if (lab) { const t = el("text", {x: lx, y: ly, class: "elabel", "text-anchor": "start"}, flow); t.textContent = lab; }
+});
+const defs = el("defs", {}, flow);
+const mk = el("marker", {id: "arr", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"}, defs);
+el("path", {d: "M0,0 L10,5 L0,10 z", style: "fill:var(--edge)"}, mk);
+const nodeEls = {};
+for (const k in N) {
+  const n = N[k], g = el("g", {class: "node"}, flow);
+  if (n.d) el("polygon", {points: `${n.x},${n.y - 32} ${n.x + 68},${n.y} ${n.x},${n.y + 32} ${n.x - 68},${n.y}`}, g);
+  else el("rect", {x: n.x - 75, y: n.y - 22, width: 150, height: 44, rx: 8}, g);
+  const t1 = el("text", {x: n.x, y: n.y - 7}, g); t1.textContent = n.t;
+  const t2 = el("text", {x: n.x, y: n.y + 10, class: "sub"}, g); t2.textContent = n.s;
+  nodeEls[k] = g;
+}
+
+/* ---------- mərhələ mətnləri ---------- */
+const TXT = {
+  start: a => ["Başlanğıc", "Zaman addımı başlayır", `Məlum vəziyyət xⁿ: hər hüceyrədə təzyiq p və su doyumluluğu Sw (${(D.ncell*2).toLocaleString("az")} naməlum). Addım ölçüsü Δt = ${fmtDt(a.dt)} gün. İlk təxmin: x⁰ = xⁿ.`],
+  props: a => ["Nyuton iterasiyası", "Xassələr cari təxminlə hesablanır", "Flüid xassələri (həcm əmsalı, özlülük), nisbi keçiricilik kr(Sw) və kapilyar təzyiq Pc(Sw) — hamısı hər hüceyrə üçün, cari p və Sw ilə."],
+  res: (a, k) => ["Nyuton iterasiyası", "Qalıq: kütlə balansı nə qədər pozulub", `Hər hüceyrədə su və neft üçün: yığılma − (girən − çıxan) − quyu = R. Tənlik tam ödənsə R = 0 olardı. Ən pis hüceyrənin ölçüsüz qalığı CNV = ${fmtCnv(a.cnv[k])}.`],
+  convNo: (a, k) => ["Yoxlama", "Hələ yığılmayıb", `CNV = ${fmtCnv(a.cnv[k])}. Tələb: CNV < 0.001 hər hüceyrədə və qlobal kütlə balansı MB < 10⁻⁷. Düzəliş lazımdır.`],
+  convYes: (a, k) => ["Yoxlama", `Yığıldı: ${a.it} iterasiya`, `CNV = ${fmtCnv(a.cnv[k])} və kütlə balansı tolerans daxilindədir. Nyuton öz işini bitirdi.`],
+  jac: () => ["Nyuton iterasiyası", "Jakobian qurulur", "Qalığın hər naməluma görə törəməsi analitik hesablanır: J = ∂R/∂x. Matris seyrəkdir — hər hüceyrə yalnız qonşuları ilə bağlıdır."],
+  lin: () => ["Nyuton iterasiyası", "Xətti sistem həll olunur", "J·δx = −R. SciPy-nin BiCGStab həlledicisi ILU ön-şərtçi ilə işləyir; kiçik sistemlərdə birbaşa LU."],
+  upd: () => ["Nyuton iterasiyası", "Düzəliş tətbiq olunur", "x ← x + δx. Bir iterasiyada təzyiq 50 bar-dan, doyumluluq 0.2-dən çox dəyişə bilməz — addım kəsilir ki, həll fiziki intervalda qalsın."],
+  dswNo: () => ["Dəqiqlik yoxlaması", "ΔSw həddi keçildi", "Nyuton yığıldı, amma bir hüceyrədə Sw bir addımda 0.2-dən çox dəyişdi. Cəbhə bir addımda çox irəliləyib — nəticə kobud olardı."],
+  dswYes: a => ["Dəqiqlik yoxlaması", "ΔSw həddi daxilində", `Bu addımda ən böyük doyumluluq dəyişməsi ${a.ds.toFixed(3)} — hədd 0.2.`],
+  acc: a => ["Nəticə", "Addım qəbul edildi", `Zaman ${fmtDt(a.t)} → ${fmtDt(a.t + a.dt)} gün. ` + (a.nextDt ? `Növbəti Δt = ${fmtDt(a.nextDt)} gün: az iterasiya olanda addım böyüyür (1.5 dəfəyədək), ΔSw həddə yaxınlaşanda böyümə ləngiyir.` : "Simulyasiya sona çatdı.")],
+  cut: a => ["Nəticə", "Addım rədd edildi", `Δt yarıya endirilir: ${fmtDt(a.dt)} → ${fmtDt(a.dt / 2)} gün, eyni addım yenidən həll olunur. Nyuton 20 iterasiyada yığılmasa da belə olur.`],
+};
+
+/* ---------- hadisə ardıcıllığı ---------- */
+function buildTimeline(atts){
+  const tl = [];
+  atts.forEach(a => {
+    tl.push({node: "start", a, k: 0, txt: TXT.start(a)});
+    for (let k = 0; k <= a.it; k++){
+      tl.push({node: "props", a, k, edge: k ? "upd>props" : "start>props", txt: TXT.props(a)});
+      tl.push({node: "res", a, k, edge: "props>res", txt: TXT.res(a, k), cnv: true});
+      if (k < a.it){
+        tl.push({node: "conv", a, k, edge: "res>conv", txt: TXT.convNo(a, k)});
+        tl.push({node: "jac", a, k, edge: "conv>jac", txt: TXT.jac()});
+        tl.push({node: "lin", a, k, edge: "jac>lin", txt: TXT.lin()});
+        tl.push({node: "upd", a, k, edge: "lin>upd", txt: TXT.upd()});
+      } else {
+        tl.push({node: "conv", a, k, edge: "res>conv", txt: TXT.convYes(a, k), ok: true});
+      }
+    }
+    if (a.rejected){
+      tl.push({node: "dsw", a, k: a.it, edge: "conv>dsw", txt: TXT.dswNo(), bad: true});
+      tl.push({node: "cut", a, k: a.it, edge: "dsw>cut", txt: TXT.cut(a), bad: true});
+    } else {
+      tl.push({node: "dsw", a, k: a.it, edge: "conv>dsw", txt: TXT.dswYes(a), ok: true});
+      tl.push({node: "acc", a, k: a.it, edge: "dsw>acc", txt: TXT.acc(a), ok: true});
+    }
+  });
+  return tl;
+}
+
+/* ---------- CNV qrafiki ---------- */
+const cnvSvg = $("#cnv");
+const CX0 = 54, CX1 = 506, CY0 = 14, CY1 = 190, LMIN = -9, LMAX = 1;
+const cy = v => CY0 + (LMAX - Math.log10(Math.max(v, 1e-9))) / (LMAX - LMIN) * (CY1 - CY0);
+let cxMax = 7;
+const cx = i => CX0 + i / cxMax * (CX1 - CX0);
+function drawCnvAxes(){
+  cnvSvg.innerHTML = "";
+  const ax = el("g", {class: "axis"}, cnvSvg);
+  [1, -1, -3, -5, -7, -9].forEach(p => {
+    el("line", {x1: CX0, x2: CX1, y1: cy(10 ** p), y2: cy(10 ** p)}, ax);
+    const t = el("text", {x: CX0 - 6, y: cy(10 ** p) + 4, "text-anchor": "end"}, ax); t.textContent = p === 1 ? "10" : p === -1 ? "0.1" : "1e" + p;
+  });
+  for (let i = 0; i <= cxMax; i++){ const t = el("text", {x: cx(i), y: CY1 + 18, "text-anchor": "middle"}, ax); t.textContent = i; }
+  el("line", {x1: CX0, x2: CX1, y1: cy(1e-3), y2: cy(1e-3), style: "stroke:var(--oil);stroke-dasharray:5 4;stroke-width:1.5"}, cnvSvg);
+}
+function drawCnv(points){ // points: [{a, k}] shown so far
+  drawCnvAxes();
+  const byAtt = new Map();
+  points.forEach(p => { if (!byAtt.has(p.a.idx)) byAtt.set(p.a.idx, []); byAtt.get(p.a.idx).push(p); });
+  const keys = [...byAtt.keys()];
+  keys.forEach((key, j) => {
+    const pts = byAtt.get(key), last = j === keys.length - 1;
+    const col = pts[0].a.rejected ? "var(--bad)" : "var(--water)";
+    const op = last ? 1 : 0.35;
+    el("path", {d: pts.map((p, i) => (i ? "L" : "M") + cx(p.k) + "," + cy(p.a.cnv[p.k])).join(" "), style: `fill:none;stroke:${col};stroke-width:2.2;opacity:${op}`}, cnvSvg);
+    pts.forEach(p => el("circle", {cx: cx(p.k), cy: cy(p.a.cnv[p.k]), r: last ? 4.5 : 3, style: `fill:${col};opacity:${op}`}, cnvSvg));
+  });
+}
+
+/* ---------- vəziyyət və oynatma ---------- */
+let TL = [], pos = -1, timer = null, current = null;
+function render(){
+  for (const k in nodeEls) nodeEls[k].classList.remove("on", "done");
+  for (const k in edgeEls) edgeEls[k].classList.remove("on");
+  if (pos < 0){
+    $("#st-eyebrow").textContent = "Hazır"; $("#st-title").textContent = "«Oynat» düyməsini bas";
+    $("#st-text").textContent = "Və ya «Növbəti mərhələ» ilə addım-addım irəlilə. Yuxarıdan başqa addım seç, ya da aşağıdakı zolaqdan istənilən cəhdi.";
+    ["s-att","s-dt","s-it","s-cnv"].forEach(id => $("#" + id).textContent = "—");
+    drawCnv([]); return;
+  }
+  const ev = TL[pos];
+  const seen = new Set(TL.slice(0, pos).map(e => e.node));
+  seen.forEach(n => nodeEls[n].classList.add("done"));
+  nodeEls[ev.node].classList.add("on");
+  if (ev.edge && edgeEls[ev.edge]) edgeEls[ev.edge].classList.add("on");
+  if (ev.node === "start" && pos > 0) edgeEls["cut>start"].classList.add("on");
+  const [eb, title, text] = ev.txt;
+  $("#st-eyebrow").textContent = eb;
+  $("#st-title").innerHTML = title.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])) + (ev.ok ? '<span class="pill ok">bəli</span>' : ev.bad ? '<span class="pill no">xeyr</span>' : "");
+  $("#st-text").textContent = text;
+  $("#s-att").textContent = "#" + (ev.a.idx + 1);
+  $("#s-dt").textContent = fmtDt(ev.a.dt);
+  $("#s-it").textContent = ev.k + " / " + ev.a.it;
+  const pts = TL.slice(0, pos + 1).filter(e => e.cnv).map(e => ({a: e.a, k: e.k}));
+  const lastC = pts.length ? pts[pts.length - 1] : null;
+  $("#s-cnv").textContent = lastC ? fmtCnv(lastC.a.cnv[lastC.k]) : "—";
+  drawCnv(pts);
+  document.querySelectorAll(".bar").forEach(b => b.classList.toggle("sel", +b.dataset.i === ev.a.idx));
+}
+const delay = () => [1400, 1000, 700, 420, 220][+$("#speed").value - 1];
+function tick(){ if (pos < TL.length - 1){ pos++; render(); timer = setTimeout(tick, delay()); } else stop(); }
+function play(){ if (pos >= TL.length - 1) pos = -1; $("#play").textContent = "Dayandır"; timer = setTimeout(tick, 60); }
+function stop(){ clearTimeout(timer); timer = null; $("#play").textContent = pos >= TL.length - 1 ? "Yenidən oynat" : "Oynat"; }
+$("#play").onclick = () => timer ? stop() : play();
+$("#next").onclick = () => { stop(); if (pos < TL.length - 1){ pos++; render(); } };
+$("#reset").onclick = () => { stop(); pos = -1; render(); };
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input,button")) return;
+  if (e.key === " "){ e.preventDefault(); timer ? stop() : play(); }
+  if (e.key === "ArrowRight"){ $("#next").click(); }
+});
+
+function select(atts, label){
+  stop(); current = label; TL = buildTimeline(atts); pos = -1;
+  cxMax = Math.max(4, ...atts.map(a => a.it));
+  document.querySelectorAll(".pick").forEach(b => b.setAttribute("aria-pressed", b.dataset.label === label));
+  render();
+}
+
+/* ---------- hazır seçimlər (real qaçışdan) ---------- */
+const hardest = ATT.reduce((m, a) => a.it > m.it ? a : m, ATT[0]);
+const fiveIt = ATT.find(a => a.it === 5);
+const typical = ATT.find(a => a.idx > 40 && a.it === 2);
+const PICKS = [
+  {label: "İlk addım: 2 dəfə rədd", atts: ATT.slice(0, 3)},
+  {label: `Qalıq əvvəl artır: ${fiveIt.it} iterasiya, Δt ${fmtDt(fiveIt.dt)} gün`, atts: [fiveIt]},
+  {label: `Ən çətin: ${hardest.it} iterasiya, t ≈ ${Math.round(hardest.t)} gün`, atts: [hardest]},
+  {label: `Adi addım: ${typical.it} iterasiya, Δt ${fmtDt(typical.dt)} gün`, atts: [typical]},
+];
+PICKS.forEach(p => {
+  const b = document.createElement("button"); b.className = "pick"; b.textContent = p.label; b.dataset.label = p.label;
+  b.onclick = () => select(p.atts, p.label); $("#picks").appendChild(b);
+});
+
+/* ---------- zolaq: bütün cəhdlər ---------- */
+const strip = $("#strip");
+const BW = 11, SH = 150, pad = 30;
+const W = pad + ATT.length * BW + 10;
+strip.setAttribute("viewBox", `0 0 ${W} ${SH + 26}`); strip.setAttribute("width", W); strip.setAttribute("height", SH + 26);
+strip.style.minWidth = W + "px"; strip.style.display = "block";
+const maxDt = Math.max(...ATT.map(a => a.dt)), maxIt = Math.max(...ATT.map(a => a.it));
+const ax = el("g", {class: "axis"}, strip);
+[0, 10, 20].forEach(v => { const y = SH - v / maxDt * (SH - 20); el("line", {x1: pad, x2: W, y1: y, y2: y}, ax); const t = el("text", {x: pad - 4, y: y + 4, "text-anchor": "end"}, ax); t.textContent = v; });
+ATT.forEach((a, i) => {
+  const h = a.dt / maxDt * (SH - 20);
+  const r = el("rect", {x: pad + i * BW + 1, y: SH - h, width: BW - 2, height: Math.max(h, 1.5), class: "bar" + (a.rejected ? " rej" : ""), "data-i": i, tabindex: 0}, strip);
+  const tt = el("title", {}, r); tt.textContent = `Cəhd #${i + 1}: Δt ${fmtDt(a.dt)} gün, ${a.it} iterasiya` + (a.rejected ? ", rədd" : `, t = ${fmtDt(a.t)} gün`);
+  r.addEventListener("click", () => select([a], "zolaq-" + i));
+  r.addEventListener("keydown", e => { if (e.key === "Enter"){ select([a], "zolaq-" + i); } });
+  el("circle", {cx: pad + i * BW + BW / 2, cy: SH - a.it / maxIt * (SH - 20), r: 2.6, class: "dot"}, strip);
+});
+const t0 = el("text", {x: pad, y: SH + 20}, ax); t0.textContent = "cəhd 1";
+const t1 = el("text", {x: W - 10, y: SH + 20, "text-anchor": "end"}, ax); t1.textContent = "cəhd " + ATT.length + " · t = 1500 gün";
+
+$("#foot").textContent = `Mənbə: IMEX-2D nümunə qaçışı (numune_quyular.csv → Kriging → five-spot, FullyImplicitEngine, TPFA). ${D.steps.length} qəbul olunmuş addım, ${ATT.length - D.steps.length} rədd, ${D.steps.reduce((s, x) => s + x.it, 0)} Nyuton iterasiyası; hesablama ${D.seconds} saniyə. Meyarlar kodda: simulation/implicit/newton.py və time_stepping.py.`;
+select(PICKS[0].atts, PICKS[0].label);
+</script>

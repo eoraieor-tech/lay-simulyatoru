@@ -1,0 +1,237 @@
+<title>IMEX-2D Demo Planı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EEF2F1; --panel:#FFFFFF; --panel2:#F5F7F6; --ink:#13212B; --soft:#2E3D47; --muted:#54656F; --line:#D0D9D6;
+  --oil:#9A5319; --oil-soft:#F6E9DA; --water:#1F6683; --water-soft:#DDEDF3; --bad:#A33A3A; --bad-soft:#F6E1E1;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E161B; --panel:#15212A; --panel2:#1A2831; --ink:#E4EBEE; --soft:#C6D2D8; --muted:#95A6B0; --line:#2B3B45;
+    --oil:#E8AE72; --oil-soft:#33261A; --water:#7FC0D8; --water-soft:#15313D; --bad:#E88080; --bad-soft:#3A2020;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E161B; --panel:#15212A; --panel2:#1A2831; --ink:#E4EBEE; --soft:#C6D2D8; --muted:#95A6B0; --line:#2B3B45;
+  --oil:#E8AE72; --oil-soft:#33261A; --water:#7FC0D8; --water-soft:#15313D; --bad:#E88080; --bad-soft:#3A2020;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--body);font-size:15px;line-height:1.55;padding-inline:clamp(16px,3vw,32px);padding-block:24px 48px}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+header{display:flex;flex-direction:column;gap:8px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,4.5vw,44px);line-height:1.02;margin:0;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:68ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+h2{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h2 small{font-family:var(--body);font-weight:400;font-size:13px;color:var(--muted)}
+.ui{font-family:var(--mono);font-size:12.5px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;white-space:nowrap}
+code{font-family:var(--mono);font-size:12.5px;background:var(--panel2);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
+.check{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 16px}
+.check label{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.check label:last-child{border-bottom:0}
+.check input[type=checkbox]{margin-top:4px;width:17px;height:17px;accent-color:var(--water);flex:0 0 auto}
+.check .t{display:flex;flex-direction:column;gap:2px}
+.check .t span{color:var(--muted);font-size:13.5px}
+.check input:checked + .t b{text-decoration:line-through;text-decoration-color:var(--muted)}
+.measure{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+.measure input{font:14px var(--mono);color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:9em}
+.progress{font-size:13px;color:var(--muted)}
+.step{display:grid;grid-template-columns:92px minmax(0,1fr);gap:0 18px;padding:18px 0;border-top:1px solid var(--line)}
+.step:first-of-type{border-top:0}
+.time{font-family:var(--mono);font-size:14px;color:var(--oil);font-variant-numeric:tabular-nums;padding-top:3px}
+.time span{display:block;color:var(--muted);font-size:12px}
+.step h3{font-family:var(--display);font-weight:700;font-size:19px;margin:0 0 8px}
+.rows{display:grid;grid-template-columns:118px minmax(0,1fr);gap:6px 12px}
+.rows dt{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;padding-top:3px}
+.rows dd{margin:0}
+.rows dd.say{font-style:italic;color:var(--soft)}
+.rows dd.fb{color:var(--bad)}
+.timeline{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 20px}
+@media (max-width:600px){.step{grid-template-columns:1fr}.time{padding:0 0 6px}.rows{grid-template-columns:1fr}.rows dt{padding-top:6px}}
+table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;background:var(--panel2)}
+tr:last-child td{border-bottom:0}
+.tablewrap{overflow-x:auto}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:0 16px;margin-bottom:8px}
+summary{cursor:pointer;padding:12px 0;font-weight:600;list-style-position:outside}
+details p{margin:0 0 12px;color:var(--soft)}
+.note{font-size:13px;color:var(--muted)}
+.links{display:flex;flex-wrap:wrap;gap:8px}
+.links a{font-weight:600;color:var(--water);text-decoration:none;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 12px}
+.links a:hover{border-color:var(--water)}
+a:focus-visible,summary:focus-visible,input:focus-visible,label:focus-within{outline:2px solid var(--oil);outline-offset:2px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Demo planı: 7 dəqiqə canlı proqram</h1>
+    <p class="lede">Təqdimat zamanı proqramı canlı göstərmək üçün yoxlanılmış ardıcıllıq. Hər addımda nə basılır, nə deyilir, ekranda nə görünməlidir və alınmasa nə edilir. Düymə və bölmə adları proqramın öz interfeysindən götürülüb.</p>
+    <div class="meta"><span>Başlanğıc: <b>açılışdakı standart model</b> (five-spot 1/4, 41 × 41 grid)</span><span>Fayl yükləmək lazım deyil</span></div>
+  </header>
+
+  <section>
+    <h2>Bir gün əvvəl <small id="prog-prep"></small></h2>
+    <div class="check" id="prep">
+      <label><input type="checkbox" id="c1"><span class="t"><b>Son versiyanı çək</b><span><code>git pull --ff-only origin main</code></span></span></label>
+      <label><input type="checkbox" id="c2"><span class="t"><b>Testləri işlət</b><span><code>PY -m pytest -q -p no:cacheprovider -o addopts=""</code> — gözlənilən: 2715 keçdi, 1 buraxıldı, 1 xfailed (~6 dəqiqə). Fərqli çıxsa, demodan əvvəl səbəbini tap.</span></span></label>
+      <label><input type="checkbox" id="c3"><span class="t"><b>Proqramı aç</b><span><code>run.bat</code> — o, <code>.venv</code>, <code>..\venv</code>, <code>venv</code> qovluqlarını ardıcıl axtarır.</span></span></label>
+      <label><input type="checkbox" id="c4"><span class="t"><b>Demonu bir dəfə tam keç və vaxtı ölç</b><span>Aşağıdakı 1–9 addımları. «MODELİ İŞƏ SAL»-ın nə qədər çəkdiyini yaz — bu rəqəm maşından asılıdır, burada ölçülməyib.</span>
+        <span class="measure">Ölçülmüş vaxt: <input id="t-run" aria-label="Ölçülmüş vaxt" placeholder="məs. 25 s"></span></span></label>
+      <label><input type="checkbox" id="c5"><span class="t"><b>Nəticəli ehtiyat faylı saxla</b><span>Qaçış bitəndən sonra <span class="ui">Layihə → Layihəni yadda saxla…</span> (nəticələrlə birlikdə). Demoda hesablama alınmasa, bu faylı açıb birbaşa nəticələri göstərəcəksən.</span></span></label>
+      <label><input type="checkbox" id="c6"><span class="t"><b>Ekranı hazırla</b><span>1920 × 1080, bildirişləri söndür, lazımsız pəncərələri bağla. Proqramı tam ekranda aç.</span></span></label>
+      <label><input type="checkbox" id="c7"><span class="t"><b>Ehtiyat materialları aç</b><span>Slayd dəsti, zaman addımı animasiyası və interaktiv xəritə brauzerdə (internet lazımdır). PDF icmal kompüterdə — internetsiz də açılır.</span></span></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Demo <small>cəmi ~7 dəqiqə</small></h2>
+    <div class="timeline">
+      <div class="step">
+        <div class="time">0:00<span>45 s</span></div>
+        <div><h3>1 · Pəncərə ilə tanışlıq</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd>Proqram açıqdır. Sol paneldə 8 bölməni göstər: <span class="ui">1 · GRID</span> … <span class="ui">8 · ƏDƏDİ PARAMETRLƏR</span>. Sağda tablar: <span class="ui">Model</span>, <span class="ui">Nəticələr</span>, <span class="ui">3D görüntü</span>…</dd>
+            <dt>De</dt><dd class="say">«Solda giriş məlumatları iş axını sırası ilə, 1-dən 8-ə. Sağda nəticələr. Açılışda hazır bir model var — bir vurucu, bir istismarçı.»</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">0:45<span>60 s</span></div>
+        <div><h3>2 · Girişlərə qısa baxış</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">3 · SÜXUR &amp; FLÜİD</span> aç, sonra <span class="ui">5 · NİSBİ KEÇİRİCİLİK</span> və sağda <span class="ui">Nisbi keçiricilik</span> tabı. Sonra <span class="ui">7 · QUYULAR (rezervuar modeli)</span>.</dd>
+            <dt>De</dt><dd class="say">«Bunlar süxur və flüid xassələri, nisbi keçiricilik əyriləri — su ilə neftin birlikdə necə axdığı. Burada isə quyular və onların iş rejimi.»</dd>
+            <dt>Görünməli</dt><dd>krw və kro əyriləri; quyu cədvəlində vurucu və istismarçı.</dd>
+            <dt>Geologiya</dt><dd>Standart açılışda <span class="ui">2 · GEOLOJİ MƏLUMAT</span> cədvəlində yalnız quyu mövqeləri var — xassələri istifadəçi doldurur. Kriging-i canlı göstərmək istəsən, xassələri əvvəlcədən doldurub layihə kimi saxla və <span class="ui">İnterpolyasiya et</span> bas. Əks halda slayd 6-nı göstər.</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">1:45<span>30 s</span></div>
+        <div><h3>3 · Mühərriki seç</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">8 · ƏDƏDİ PARAMETRLƏR</span> → <span class="ui">Hesablama sxemi</span> = <span class="ui">Fully implicit (Nyuton)</span>, <span class="ui">Axın diskretizasiyası</span> = <span class="ui">TPFA (iki-nöqtəli)</span>.</dd>
+            <dt>De</dt><dd class="say">«Defolt IMPES-dir. Nyuton mühərriki bütün tənlikləri birlikdə həll edir və daha böyük zaman addımı ata bilir.»</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">2:15<span>45 s</span></div>
+        <div><h3>4 · Hesablamanı başlat</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">MODELİ İŞƏ SAL</span>. Gedişatı <span class="ui">Jurnal</span> tabında göstər.</dd>
+            <dt>De</dt><dd class="say">«Hər zaman addımında hər hüceyrə üçün kütlə balansı həll olunur. Addım ölçüsünü proqram özü seçir.»</dd>
+            <dt>Görünməli</dt><dd>İrəliləmə mesajları; sonda «Tamamlandı: N addım…» sətri. Vaxt: <b id="t-run-view">hazırlıqda ölçülməyib</b>.</dd>
+            <dt>Alınmasa</dt><dd class="fb"><span class="ui">Dayandır</span> → ehtiyat faylını <span class="ui">Layihə → Layihəni aç…</span> ilə aç və 5-ci addıma keç.</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">3:00<span>60 s</span></div>
+        <div><h3>5 · Nəticələr</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">Nəticələr</span> tabı.</dd>
+            <dt>De</dt><dd class="say">«Əvvəlcə yalnız neft gəlir. Su istismarçıya çatanda neft debiti düşür, sulaşma artır. Bu əyri neftvermə əmsalıdır — başlanğıc neftin neçə faizi çıxarılıb.»</dd>
+            <dt>Görünməli</dt><dd>Debit, sulaşma, kumulyativ hasilat, RF, quyu təzyiqləri.</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">4:00<span>45 s</span></div>
+        <div><h3>6 · Su cəbhəsinin hərəkəti</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">Model</span> tabı → görünüş <span class="ui">Areal xəritə (təbəqə)</span>, xassə <span class="ui">Su doyumluluğu (Sw)</span> → <span class="ui">▶  Oynat</span>.</dd>
+            <dt>De</dt><dd class="say">«Mavi zona vurulan sudur. Görün, vurucudan istismarçıya necə yayılır.»</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">4:45<span>45 s</span></div>
+        <div><h3>7 · 3D görüntü</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">3D görüntü</span> tabı → motor <span class="ui">VTK (sürətli)</span>; siçanla fırlat; kəsik oxu <span class="ui">X</span> və ya <span class="ui">Z — dərinlik</span>.</dd>
+            <dt>De</dt><dd class="say">«Eyni nəticə üç ölçüdə. Kəsik müstəvisi ilə layın içinə baxmaq olur.»</dd>
+            <dt>Alınmasa</dt><dd class="fb">Görüntü boşdursa motoru <span class="ui">matplotlib</span>-ə keçir.</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">5:30<span>45 s</span></div>
+        <div><h3>8 · Analitik həll ilə yoxlama</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">Validasiya (B-L)</span> tabı → <span class="ui">1D Bukley-Leverett testini işə sal</span>.</dd>
+            <dt>De</dt><dd class="say">«Bu məsələnin dəqiq riyazi həlli var. Qara xətt analitik həll, nöqtələr proqramın hesabı.»</dd>
+            <dt>Görünməli</dt><dd>RMS xəta, cəbhə fərqi, həcm balansı. Skriptlə eyni qurğuda ölçülüb: cəbhə fərqi ≈ 4.5 %, RMS ≈ 0.023 — ekranda bu qaydada rəqəmlər gözlə.</dd>
+          </dl></div>
+      </div>
+      <div class="step">
+        <div class="time">6:15<span>45 s</span></div>
+        <div><h3>9 · İxrac və bağlanış</h3>
+          <dl class="rows">
+            <dt>Et</dt><dd><span class="ui">Layihə</span> menyusunu aç: <span class="ui">PDF hesabat yaz…</span>, <span class="ui">Eclipse deck yaz (.DATA)…</span>, <span class="ui">Nəticələri ixrac et (CSV/JSON)…</span> — birini göstər. Sonra slayd dəstinə qayıt.</dd>
+            <dt>De</dt><dd class="say">«Model və nəticələr Eclipse formatında da yazılır — başqa simulyatorda yoxlamaq olur.»</dd>
+          </dl></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ehtiyat planı</h2>
+    <div class="tablewrap">
+      <table>
+        <tr><th style="width:34%">Problem</th><th>Nə etmək</th></tr>
+        <tr><td>Proqram açılmır</td><td>Slayd 5–10 və zaman addımı animasiyası ilə davam et. Sonra <code>run.bat</code>-ın tapdığı venv yolunu yoxla.</td></tr>
+        <tr><td>Hesablama gözləniləndən uzun çəkir</td><td><span class="ui">Dayandır</span>, ehtiyat faylını aç, nəticə tablarını göstər.</td></tr>
+        <tr><td>3D görüntü boşdur və ya xəta verir</td><td>Motoru <span class="ui">matplotlib</span>-ə keçir və ya <span class="ui">Model</span> tabındakı 2D xəritə ilə davam et.</td></tr>
+        <tr><td>Proqram özbaşına bağlanır</td><td>Yenidən aç, ehtiyat faylını yüklə. Sonra səbəbi <code>logs/imex2d.log</code>-da axtar (TEHVIL_TESLIM.md §2.5).</td></tr>
+        <tr><td>İnternet yoxdur</td><td>PDF icmal lokal açılır. Slaydları əvvəlcədən PPTX və ya PDF kimi endir.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Gözlənilən suallar</h2>
+    <details><summary>Eclipse və ya tNavigator-dan nə ilə fərqlənir?</summary>
+      <p>Black-oil səviyyəsində eyni sinif məsələləri həll edir: üç faza, corner-point grid, quyu idarəsi. Kompozisiya (EOS) modeli, termal proseslər və paralel hesablama yoxdur. Üstünlüyü: geologiya və simulyasiya bir proqramdadır, kod açıqdır, hər texniki qərar sənədlənib.</p></details>
+    <details><summary>Nəticələrə nə qədər etibar etmək olar?</summary>
+      <p>Buckley-Leverett analitik həlli ilə cəbhə fərqi 4.5 %. SPE1 etalonunda OPM Flow ilə müqayisədə 1034-cü günə qədər debit eynidir, quyu təzyiqləri ±1.2 % daxilindədir. Açıq qalan fərq: qaz istismarçıya ~145 gün tez çatır, səbəbi araşdırılır. 2715 avtomatik test hər dəyişiklikdən sonra işlədilir.</p></details>
+    <details><summary>Böyük modellərdə nə qədər sürətlidir?</summary>
+      <p>Ölçülmüş: 5043 hüceyrə, 1500 gün — 39 saniyə; SPE1 (300 hüceyrə, 10 il) — təxminən 2 dəqiqə. Paralel hesablama yoxdur; yüz minlərlə hüceyrəlik modellərdə sürət hələ ölçülməyib.</p></details>
+    <details><summary>Real yataq məlumatını yükləmək olarmı?</summary>
+      <p>Bəli, Eclipse formatlarının bir hissəsi oxunur: GRDECL grid, PVT (PVTW, PVDG, PVTO), SCAL (SWOF, SGOF), FAULTS. Quyu ölçmələri CSV-dən və ya cədvəldən. Model Eclipse .DATA kimi yazıla bilir.</p></details>
+    <details><summary>Qaz nə vaxt nəzərə alınır?</summary>
+      <p>PVT modelində qaz fazası aktiv olanda proqram avtomatik üç fazalı mühərrikə keçir — IMPES və ya Nyuton seçimindən asılı olmayaraq.</p></details>
+    <details><summary>MPFA-O nəyə lazımdır?</summary>
+      <p>Keçiricilik istiqamətdən asılı olanda (tam tenzor, Kxy ≠ 0) və ya grid əyri olanda TPFA axını düzgün hesablaya bilmir — əlavə komponentləri atır və bu barədə xəbərdarlıq yazır. MPFA-O onları nəzərə alır; yalnız Nyuton mühərriki ilə işləyir.</p></details>
+    <details><summary>Kodun düzgünlüyünə necə əmin olursunuz?</summary>
+      <p>Avtomatik testlər (fizika qanunları, kütlə balansı, analitik həllər, fayl formatları), hər qərarın səbəbi ilə yazıldığı QARARLAR.md və hər iş seansının jurnalı. SPE1 fərqləri düzəldilərkən qaydalar OPM Flow-un mənbə kodundan oxunub.</p></details>
+  </section>
+
+  <section>
+    <h2>Əlaqəli materiallar</h2>
+    <div class="links">
+      <a href="https://claude.ai/artifact/8GC5g2DRyDasc4eWUdXR8T" target="_blank" rel="noopener">Slayd dəsti</a>
+      <a href="https://claude.ai/artifact/EPBLhf7YB6Tx1Dkvr97oFL" target="_blank" rel="noopener">Zaman addımı animasiyası</a>
+      <a href="https://claude.ai/artifact/8DmUT7Qwhu1Zfi3dk6AifE" target="_blank" rel="noopener">İnteraktiv xəritə</a>
+      <a href="https://claude.ai/artifact/3xGmWTWXQ3ttYsUvAJXdme" target="_blank" rel="noopener">İcmal və lüğət</a>
+    </div>
+    <p class="note" style="margin-top:10px">Qeydlər (işarələr və ölçülmüş vaxt) yalnız bu brauzerdə saxlanılır.</p>
+  </section>
+</div>
+
+<script>
+const KEY = "imex-demo-v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+const boxes = [...document.querySelectorAll("#prep input[type=checkbox]")];
+const prog = () => { const n = boxes.filter(b => b.checked).length; document.getElementById("prog-prep").textContent = n + " / " + boxes.length + " hazırdır"; };
+boxes.forEach(b => { b.checked = !!state[b.id]; b.addEventListener("change", () => { state[b.id] = b.checked; save(); prog(); }); });
+const tr = document.getElementById("t-run"), trv = document.getElementById("t-run-view");
+const showT = () => { trv.textContent = tr.value.trim() || "hazırlıqda ölçülməyib"; };
+tr.value = state.tRun || "";
+tr.addEventListener("input", () => { state.tRun = tr.value; save(); showT(); });
+tr.addEventListener("click", e => e.stopPropagation());
+prog(); showT();
+</script>
