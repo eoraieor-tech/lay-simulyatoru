@@ -89,6 +89,8 @@ class FullyImplicitEngine(ISimulationEngine):
 
         self._producers = sorted({c.well_name for c in wells
                                   if not c.is_injector})
+        self._injectors = sorted({c.well_name for c in wells
+                                  if c.is_injector})
         #: Çox perforasiyalı RATE quyusu varmı (Seans 27) — yoxdursa pay
         #: heç vaxt yenilənmir və qaçış əvvəlki kimidir
         self._rate_allocation = needs_rate_allocation(wells)
@@ -174,6 +176,7 @@ class FullyImplicitEngine(ISimulationEngine):
         result.ooip = self.original_oil_in_place()
         result.well_oil_rate = {name: [] for name in self._producers}
         result.well_water_rate = {name: [] for name in self._producers}
+        result.well_water_injection_rate = {name: [] for name in self._injectors}
         series = result.series
 
         snapshot_interval = max(config.end_time / max(output.snapshot_count, 1),
@@ -244,6 +247,9 @@ class FullyImplicitEngine(ISimulationEngine):
                         float(-rates.per_well_oil.get(name, 0.0)))
                     result.well_water_rate[name].append(
                         float(-rates.per_well_water.get(name, 0.0)))
+                for name in self._injectors:
+                    result.well_water_injection_rate[name].append(
+                        float(max(rates.per_well_water.get(name, 0.0), 0.0)))
 
             # B4-B: bu addımda İŞLƏDİLƏN BHP qeyd olunur (yenilənməsi
             # artıq `_thp_outer_loop`-da addımın öz debitləri ilə olub).

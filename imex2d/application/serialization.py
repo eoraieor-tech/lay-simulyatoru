@@ -737,6 +737,10 @@ class ProjectSerializer:
                 "average_pressure", "recovery_factor")},
             "well_oil_rate": {k: list(v) for k, v in result.well_oil_rate.items()},
             "well_water_rate": {k: list(v) for k, v in result.well_water_rate.items()},
+            "well_water_injection_rate": {
+                k: list(v) for k, v in result.well_water_injection_rate.items()},
+            "well_gas_injection_rate": {
+                k: list(v) for k, v in result.well_gas_injection_rate.items()},
             "snapshots": ([{"time": s.time,
                             "pressure": _array(s.pressure),
                             "water_saturation": _array(s.water_saturation)}
@@ -759,6 +763,10 @@ class ProjectSerializer:
             message=data.get("message", ""))
         result.well_oil_rate = {k: list(v) for k, v in data.get("well_oil_rate", {}).items()}
         result.well_water_rate = {k: list(v) for k, v in data.get("well_water_rate", {}).items()}
+        # Seans 45: köhnə layihə fayllarında bu açarlar yoxdur — boş qalır
+        for name in ("well_water_injection_rate", "well_gas_injection_rate"):
+            setattr(result, name, {k: list(v)
+                                   for k, v in data.get(name, {}).items()})
         result.snapshots = [
             Snapshot(time=s["time"],
                      pressure=np.asarray(s["pressure"], float).reshape(shape),

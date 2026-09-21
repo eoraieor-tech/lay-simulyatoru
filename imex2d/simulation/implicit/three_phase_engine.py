@@ -23,6 +23,7 @@ import numpy as np
 
 from ...application.config import SimulationConfig
 from ...domain.reservoir_model import ReservoirModel
+from ...domain.wells import Phase
 from ...interfaces.providers import IInitializationProvider, IPVTProvider
 from ...interfaces.services import (IProgressReporter, ISimulationEngine,
                                     NullProgressReporter)
@@ -103,6 +104,14 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
                                   if not c.is_injector})
         self._injectors = sorted({c.well_name for c in self.newton.well_model.wells
                                   if c.is_injector})
+        #: Vurucular vurduqları fazaya görə — quyu üzrə vurma sırası yalnız
+        #: həmin fazada yazılır (Seans 45, günlük göstəricilər)
+        self._gas_injectors = sorted({c.well_name
+                                      for c in self.newton.well_model.wells
+                                      if c.is_injector
+                                      and c.injected_phase is Phase.GAS})
+        self._water_injectors = [name for name in self._injectors
+                                 if name not in self._gas_injectors]
         #: Çox perforasiyalı RATE quyusu varmı (Seans 27)
         self._rate_allocation = needs_rate_allocation(self.newton.well_model.wells)
         # B4-B: THP quyuları — bağlantı hədəfi addım-addım yenilənir
@@ -298,6 +307,10 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
         result.well_oil_rate = {name: [] for name in self._producers}
         result.well_water_rate = {name: [] for name in self._producers}
         result.well_gas_rate = {name: [] for name in self._producers}
+        result.well_water_injection_rate = {name: []
+                                            for name in self._water_injectors}
+        result.well_gas_injection_rate = {name: []
+                                          for name in self._gas_injectors}
         series = result.series
 
         snapshot_interval = max(config.end_time / max(output.snapshot_count, 1),
@@ -381,6 +394,12 @@ class ThreePhaseSimulationEngine(ISimulationEngine):
                         float(-rates.per_well_water.get(name, 0.0)))
                     result.well_gas_rate[name].append(
                         float(-rates.per_well_gas.get(name, 0.0)))
+                for name in self._water_injectors:
+                    result.well_water_injection_rate[name].append(
+                        float(max(rates.per_well_water.get(name, 0.0), 0.0)))
+                for name in self._gas_injectors:
+                    result.well_gas_injection_rate[name].append(
+                        float(max(rates.per_well_gas.get(name, 0.0), 0.0)))
 
             # B4-B: bu addımda İŞLƏDİLƏN BHP qeyd olunur (yenilənməsi
             # artıq `_thp_outer_loop`-da addımın öz debitləri ilə olub).

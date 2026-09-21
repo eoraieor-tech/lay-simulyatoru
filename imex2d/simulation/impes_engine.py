@@ -132,6 +132,8 @@ class ImpesEngine(ISimulationEngine):
 
         self._producer_names = sorted({c.well_name for c in self._well_conn
                                        if not c.is_injector})
+        self._injector_names = sorted({c.well_name for c in self._well_conn
+                                       if c.is_injector})
         self._prealloc()
         self._apply_initial_conditions()
 
@@ -420,6 +422,7 @@ class ImpesEngine(ISimulationEngine):
         qo_total = qw_total = qwi_total = 0.0
         well_oil = {name: 0.0 for name in self._producer_names}
         well_water = {name: 0.0 for name in self._producer_names}
+        well_injection = {name: 0.0 for name in self._injector_names}
 
         for c in self._well_conn:
             cell = c.cell
@@ -432,6 +435,7 @@ class ImpesEngine(ISimulationEngine):
                 net_water[cell] += q
                 throughput[cell] += q
                 qwi_total += q
+                well_injection[c.well_name] += q
             else:
                 if c.mode is ControlMode.BHP:
                     dpw = c.target - pressure[cell]
@@ -461,7 +465,7 @@ class ImpesEngine(ISimulationEngine):
             dt_cfl = np.nanmin(self._active.to_active(ratio))
 
         return (sw_new, dt_cfl, qo_total, qw_total,
-                qwi_total, well_oil, well_water)
+                qwi_total, well_oil, well_water, well_injection)
 
     # ------------------------------------------------------------ ooip
     def original_oil_in_place(self) -> float:
@@ -479,6 +483,7 @@ class ImpesEngine(ISimulationEngine):
         result.ooip = self.original_oil_in_place()
         result.well_oil_rate = {n: [] for n in self._producer_names}
         result.well_water_rate = {n: [] for n in self._producer_names}
+        result.well_water_injection_rate = {n: [] for n in self._injector_names}
         s = result.series
 
         t = 0.0
@@ -497,7 +502,8 @@ class ImpesEngine(ISimulationEngine):
                 (pressure, lam_w, lam_o, lam_t, bw, bo,
                  inj_mob) = self._solve_pressure(dt)
                 (sw_new, dt_cfl, qo, qw, qwi,
-                 well_oil, well_water) = self._update_saturation(
+                 well_oil, well_water,
+                 well_injection) = self._update_saturation(
                     pressure, lam_w, lam_o, lam_t, bw, bo, inj_mob, dt)
             except (FloatingPointError, RuntimeError) as exc:
                 result.converged = False
@@ -531,6 +537,9 @@ class ImpesEngine(ISimulationEngine):
                 for name in self._producer_names:
                     result.well_oil_rate[name].append(well_oil[name])
                     result.well_water_rate[name].append(well_water[name])
+                for name in self._injector_names:
+                    result.well_water_injection_rate[name].append(
+                        well_injection[name])
 
             if t >= next_snap - 1e-9:
                 self._record_snapshot(result, t)

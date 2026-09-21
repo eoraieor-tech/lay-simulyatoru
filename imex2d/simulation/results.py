@@ -63,6 +63,13 @@ class SimulationResult:
     #: Quyu başı təzyiqi, bar (B4). Quyu axmayan addımda `nan` —
     #: axan traverse dayanmış quyu üçün təyin olunmayıb.
     well_thp: Dict[str, List[float]] = field(default_factory=dict)
+    #: Vurucu quyunun vurduğu su, m³/gün, HƏR ADDIMDA — Seans 45-ə qədər
+    #: vurucular üzrə heç nə saxlanılmırdı (yalnız sahə cəmi). Sahə
+    #: sırası `series.water_injection_rate` ilə EYNİ vahiddədir: FIM
+    #: mühərriklərində səth, IMPES-də lay həcmi.
+    well_water_injection_rate: Dict[str, List[float]] = field(default_factory=dict)
+    #: Vurulan qaz, sm³/gün — YALNIZ üç fazalı mühərrikdə doldurulur.
+    well_gas_injection_rate: Dict[str, List[float]] = field(default_factory=dict)
     steps: int = 0
     converged: bool = True
     message: str = ""
