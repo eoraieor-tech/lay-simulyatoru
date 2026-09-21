@@ -50,6 +50,11 @@ class Project:
     #: yaradan parametrlər (seed daxil, təkrarlana bilmə üçün) saxlanılır.
     geology_facies_configs: Dict[str, FaciesBuildConfig] = field(default_factory=dict)
     geology_sgs_configs: Dict[str, ContinuousSGSConfig] = field(default_factory=dict)
+    #: İnterfeys panellərinin vəziyyəti (Seans 46) — `ui/panel_state.py`-nin
+    #: formatı. Application qatı onun içini BİLMİR, yalnız saxlayır: model
+    #: panellərdən qurulduğu üçün layihəni açanda hesablamanı eynilə
+    #: təkrarlamağa məhz bu lazımdır. Köhnə fayllarda boşdur.
+    ui_state: Dict[str, object] = field(default_factory=dict)
     _counter: int = 0
 
     @property

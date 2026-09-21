@@ -415,6 +415,7 @@ class ProjectSerializer:
                                        for name, cfg in project.geology_facies_configs.items()},
             "geology_sgs_configs": {name: _continuous_sgs_config_to_dict(cfg)
                                     for name, cfg in project.geology_sgs_configs.items()},
+            "ui_state": dict(project.ui_state),
         }
 
     def project_from_dict(self, data: dict) -> Project:
@@ -442,6 +443,7 @@ class ProjectSerializer:
         project.geology_sgs_configs = {
             name: _continuous_sgs_config_from_dict(item)
             for name, item in data.get("geology_sgs_configs", {}).items()}
+        project.ui_state = dict(data.get("ui_state") or {})
         return project
 
     @staticmethod
