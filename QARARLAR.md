@@ -1332,4 +1332,41 @@ fərqlənərdi.
 sırası (`series.water_injection_rate`) ilə eynidir, vurucuların cəmi
 ona bərabərdir (testlə kilidlənib). Bu, yalnız YAZMADIR — heç bir tənliyə
 girmir, nəticələr bit-bit eyni qalır.
+## Q-36 — Layihə faylı hesablamanı TAM təkrarlamalıdır
 
+**Tarix:** 21 sentyabr 2026 · **Kontekst:** sahibkar sabah eyni
+simulyasiyaya əl ilə doldurmadan qayıtmaq istədi
+(bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 46).
+
+### Problem
+
+Model hər qaçışda panellərdən qurulur, layihə faylı isə panellərin
+yalnız bir hissəsini bərpa edirdi. Fayl özü də qaz SCAL-ı, SWOF/SGOF-u və
+nəticənin qaz/BHP/THP sıralarını itirirdi (qazlı modeldə RF 64.75 → 64.92 %).
+
+### Qərar 1 — panellərin vəziyyəti faylda, sahə siyahısı ƏL İLƏ YOX
+
+`ui/panel_state.py` panelin ictimai sadə sahələrini (spin, seçici, qutu,
+mətn) atribut adı ilə oxuyur. Panelə yeni sahə əlavə olunanda o da
+avtomatik saxlanılır. Bərpa sırası: seçicilər → qutular → ədədlər (vahid
+çevrilməsi üçün), iki keçid (asılı diapazonlar üçün). Cədvəllər (quyular,
+geologiya, faultlar, SWOF) modeldən və layihədən bərpa olunur.
+
+Rədd edilən variant: hər panelə əl ilə `get_state/set_state` yazmaq —
+`_load_model_into_panels`-in taleyi göstərdi ki, belə siyahılar köhnəlir.
+
+### Qərar 2 — modelin sadə dataclass-ları BÜTÜN sahələri ilə yazılır
+
+`_all_fields` + `_known_fields`: yeni sahə avtomatik yazılır, köhnə
+faylda olmayan sahə defolt alır, naməlum açar atılır.
+
+### Qərar 3 — bərpa faylı AYRICA, istifadəçinin faylına avtomatik yazılmır
+
+Avtomatik saxlama istifadəçinin qəsdən saxladığı variantı səssizcə
+silə bilərdi. Bərpa faylı yalnız qəfil bağlanmaya qarşıdır və düzgün
+bağlanmada silinir.
+
+### Qərar 4 — son layihə açılışda avtomatik açılmır
+
+Yeni model qurmaq istəyəndə mane olur, böyük fayl açılışı yavaşladır.
+Əvəzində «Son layihələr» menyusu (5 fayl).

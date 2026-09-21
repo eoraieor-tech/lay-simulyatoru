@@ -916,6 +916,19 @@ nəticəsi dəyişmir (Q-35). `SimulationResult`-a iki yeni sahə əlavə olundu
 hamısı (IMPES, FIM, üç fazalı) vurucular üzrə sıranı yazır; layihə faylı
 onları saxlayır (köhnə fayllarda boş qalır).
 
+### 5.22 İş seansı və layihənin tam bərpası (Seans 46)
+
+```
+imex2d/application/session.py   son layihələr, iş izi, bərpa faylının yeri (Qt-siz)
+imex2d/ui/panel_state.py        panelin sadə sahələrinin capture/restore-u
+imex2d/application/project.py   Project.ui_state — application onun içini bilmir
+imex2d/ui/main_window.py        menyu, bağlama sualı, bərpa faylı — orkestrasiya
+```
+
+`Project.ui_state` UI-yə aid lüğətdir, lakin layihədə saxlanılır: model
+panellərdən qurulduğu üçün hesablamanı təkrarlamağa məhz o lazımdır.
+Application qatı onun formatını bilmir (asılılıq istiqaməti pozulmur).
+
 ## 6. Növbəti modulun necə qoşulacağı
 
 Bu bölmə refaktorinqin sübutu kimi PVT modulunun əlavəsini nümunə

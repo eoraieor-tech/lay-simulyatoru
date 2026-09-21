@@ -5275,3 +5275,118 @@ günün sonunu örtən addımdan, THP-nin `nan`-ı «—» kimi göstərilir.
 tam dəst   2747 keçdi, 1 xfailed, 10 xəbərdarlıq (10 dəq 28 san)
 test_daily.py   20 keçdi (yeni)
 ```
+
+## 21–22 sentyabr 2026 — Seans 46: layihəyə sabah qayıtmaq — tam bərpa, son layihələr, bərpa faylı
+
+Sahibkar: «bir yataq simulyasiyasını işlətdim, sabah proqramı açanda həmin
+simulyasiyaya qayıda bilim, əl ilə bir-bir doldurmayım». Əvvəlcə izah
+istənildi; mövcud vəziyyət yoxlanıldı, variantlar təqdim olundu, sahibkar
+«hansı daha yaxşıdır» soruşdu və tövsiyəni qəbul etdi:
+
+- **A** — tam bərpa (panellər + faylın itirdikləri);
+- **B** — «Son layihələr» menyusu, bağlayanda sual, ayrıca bərpa faylı;
+- son layihə açılışda **avtomatik açılmır** (menyudan bir klik).
+
+### 1 · Başlanğıc vəziyyət — ÖLÇÜLDÜ
+
+«Layihəni yadda saxla / aç» var idi, lakin hesablamanı təkrarlamırdı:
+
+1. **Model hər qaçışda PANELLƏRDƏN qurulur** (`rebuild_model`), açılanda
+   isə panellərin bir hissəsi doldurulurdu. Simulyasiya müddəti,
+   Maks. Δt, mühərrik, 3D anların sayı, PVT parametrləri, qaz SCAL
+   paneli, faultlar, SWOF/SGOF defoltda qalırdı.
+2. **Fayl səssizcə itirirdi:** qaz SCAL, `FluidProperties.gas_density`,
+   SWOF/SGOF/CSV cədvəlləri, nəticədə qaz sıraları, Sg anları, BHP/THP,
+   idarə rejimi, OGIP. Ölçmə: qazlı model saxlanılıb açıldı və eyni
+   şəkildə işlədildi — **RF 64.7536 % → 64.9197 %**, heç bir xəbərdarlıq yox.
+3. **«Layihəni yadda saxla…» əslində NƏTİCƏSİZ saxlayırdı.** PyQt5
+   `triggered(bool)` metodun ilk arqumentinə `False` ötürür →
+   `save_project(include_snapshots=False)`. Kiçik sınaqla təsdiqləndi.
+   Açılanda isə nəticə yalnız 3D anlar varsa göstərilirdi → saxlanıb
+   açılan layihədə «Nəticələr» tabı BOŞ qalırdı.
+4. Bağlayanda sual yox idi, son layihələr siyahısı yox idi.
+
+### 2 · Nə edildi
+
+| Hissə | Fayl |
+|---|---|
+| Fayla qaz SCAL, bütün flüid sahələri, SWOF/SGOF; nəticənin BÜTÜN sıraları, Sg anları, BHP/THP, rejim, OGIP | `application/serialization.py` |
+| Panellərin sadə sahələrinin saxlanması/bərpası (sahə siyahısı əl ilə yazılmır) | `ui/panel_state.py` (**yeni**) |
+| `Project.ui_state` — panellərin vəziyyəti layihə faylında | `application/project.py`, `serialization.py` |
+| Son layihələr, iş izi, bərpa faylının yeri (Qt-siz) | `application/session.py` (**yeni**) |
+| «Son layihələr» menyusu, bağlayanda/başqa layihə açanda sual, bərpa faylı, açılışda bərpa təklifi | `ui/main_window.py` |
+| «Layihəni yadda saxla…» artıq nəticə ilə saxlayır; nəticə 3D anlar olmadan da göstərilir | `ui/main_window.py` |
+| Testlər: 7 + 12 + 7 | `tests/test_project_restore.py`, `test_panel_state.py`, `test_session.py` (**yeni**) |
+
+Bərpa faylı: `%LOCALAPPDATA%\IMEX2D\berpa.imx` — hər hesablama bitəndə
+layihənin SURƏTİ; istifadəçinin `.imx` faylına toxunulmur. Düzgün
+bağlanmada silinir. Proqram gözlənilmədən bitibsə, növbəti açılışda
+«Bərpa edilsin?» soruşulur. Bərpadan sonra iş «saxlanmamış» sayılır və
+«Saxla» əvvəlki faylı (varsa), yoxsa yeni ad soruşur.
+
+Ayarlar (son layihələr): `QSettings("IMEX2D", "IMEX-2D")` — Windows-da
+reyestr `HKCU\Software\IMEX2D`.
+
+### 3 · Ölçmələr və yoxlamalar
+
+**Fayl (test):** qazlı model saxla → aç → işlət: RF və GOR sırası
+**bit-bit eyni** (əvvəl 64.7536 → 64.9197 %).
+
+**Panellər (test):** 8 panelin hər sahəsi defoltdan fərqli dəyərə çəkildi
+(GRID 13, geologiya 14, süxur 15, SCAL 18, PVT 12, quyular 5, ədədi 15 …),
+təzə panelə bərpa olundu — **hamısı eyni**; qurulan domain obyektləri
+(konfiqurasiya, SCAL, flüidlər, PVT cədvəli, ilkin şərtlər) də eyni.
+Vahid seçicisi ədəddən ƏVVƏL bərpa olunur (psi-də 3000 → psi-də 3000).
+
+**Real proqram, iki ayrı proses** (15×15, Implicit, PVT + qaz, qaz SCAL
+nog = 3.3, μo = 5, 200 gün, Maks. Δt = 10):
+
+| | 1-ci proses (işlət + saxla) | 2-ci proses (aç + yenidən işlət) |
+|---|---|---|
+| Addım | 30 | 30 |
+| RF | 49.085010682355794 % | 49.085010682355794 % (bütün sıra eyni) |
+| Son GOR | 140.49445043416205 | 140.49445043416205 |
+| Panellərin vəziyyəti | — | **tam eyni** |
+| Açılan kimi göstərilən nəticə | — | 30 addım, günlük cədvəl 200 gün |
+| Lazımsız sual | yox | yox |
+
+**Qəza ssenarisi:** hesablamadan sonra proses qəfil dayandırıldı →
+növbəti açılışda «Bərpa» sualı → 30 addımlıq nəticə, Implicit, nog = 3.3
+bərpa olundu, iş «saxlanmamış». «Xeyr» cavabında bərpa faylı silinir.
+Saxlanmamış işlə bağlamada «Saxlanmamış iş» sualı çıxır.
+
+**Yol boyu tutulan səhv:** bərpadan sonra `project_path` ƏVVƏLKİ seansın
+faylını göstərirdi — QSettings dəyəri gec yazır, qəfil bağlanmada yeni
+dəyər itirdi; «Saxla» səhv fayla yaza bilərdi. `settings.sync()` ilə
+düzəldildi, qəza sınağı təkrarlandı: `project_path = None`.
+
+**Bərpa faylının qiyməti** (standart 41 × 41 model, 1500 gün, 61 an):
+yazma **0.74 s**, fayl **1280 KB** (üç ölçmə: 0.74 / 0.74 / 0.73 s).
+
+Sınaq üçün real proqramın ayarları müvəqqəti qovluğa yönləndirildi
+(`IMEX2D_DATA_DIR`); sınağın reyestrə yazdığı `HKCU\Software\IMEX2D`
+sonda silindi (əvvəl mövcud deyildi).
+
+### 4 · Qərarlar
+
+- **Q-36** — layihə faylı hesablamanı tam təkrarlamalıdır: panellərin
+  vəziyyəti faylda, bərpa faylı ayrıca, son layihə avtomatik açılmır.
+- Seans 45-in ⏳ «layihə faylı qaz/BHP/THP sıralarını saxlamır» sualı
+  bu seansda HƏLL OLUNDU.
+
+### 5 · Açıq qalanlar
+
+- ⏳ `provenance` (geologiya mənşəyi/status xəritələri) fayla yazılmır.
+  Hesablamaya təsiri YOXDUR — yalnız 3D-dəki status filtri üçündür;
+  açılan layihədə bu filtr boş olur.
+- ⏳ Böyük modellərdə bərpa faylının yazılma vaxtı ölçülməyib (41 × 41-də
+  0.74 s). Hesablama bitəndə interfeys bu müddət gözləyir.
+- ⏳ Köhnə `.imx` fayllarında panel vəziyyəti yoxdur — onlar əvvəlki
+  qaydada (qismən) açılır; bir dəfə açıb yenidən saxlamaq kifayətdir.
+
+### 6 · Yoxlama
+
+```
+tam dəst   2773 keçdi, 1 xfailed, 10 xəbərdarlıq (13 dəq 18 san)
+yeni       test_project_restore 7 · test_panel_state 12 · test_session 7
+```

@@ -125,6 +125,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > Yol boyu aşağıdakı cədvəllərdə köhnəlmiş 2.7, 4.6, 6.2, 6.3, 6.6
 > statusları yeniləndi (işlər Seans 18–24-də bitmişdi).
 >
+> **21 sentyabr 2026 (Seans 46):** **layihəyə qayıtmaq** ✅ — layihə
+> faylı hesablamanı bit-bit təkrarlayır (panellər + qaz SCAL, SWOF,
+> qaz/BHP/THP nəticələri); «Son layihələr», bağlayanda sual, bərpa
+> faylı (Q-36). «Layihəni yadda saxla…»-nın nəticəsiz saxlaması düzəldi.
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 
@@ -270,6 +275,7 @@ su cəbhəsi fiziki cəhətdən düzgün irəliləyir.
 | 5.5 | Günbəgün RF (%) və hasilat profili | `simulation/results.py` | ✅ |
 | 5.6 | Nəticələrin fayla yazılması | `reporting/report.py`, `reporting/results_export.py` | ✅ PDF · **CSV/JSON** (B5-a: BHP/THP daxil) |
 | 5.7 | **Günlük göstəricilər** — hər gün, yataq və hər quyu üzrə (cədvəl, qrafik, CSV) | `reporting/daily.py`, `ui/daily_view.py` | ✅ Seans 45 (Q-35) |
+| 5.8 | **Layihəyə qayıtmaq** — tam bərpa, son layihələr, bərpa faylı | `ui/panel_state.py`, `application/session.py` | ✅ Seans 46 (Q-36) |
 
 **Bitmə şərti:** simulyasiyadan sonra tam hasilat hesabatı avtomatik çıxır.
 
