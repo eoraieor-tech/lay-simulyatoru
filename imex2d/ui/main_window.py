@@ -16,7 +16,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavToolbar
 from matplotlib.figure import Figure
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QSettings, Qt, QTimer
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QCheckBox,
                              QComboBox, QDoubleSpinBox,
@@ -36,6 +36,7 @@ from ..application.model_builder import ReservoirModelBuilder
 from ..application.project import Project
 from ..application.serialization import (FILE_EXTENSION, ProjectFileError,
                                          ProjectSerializer)
+from ..application import session
 from ..application.geology_adapter import wells_to_dataset
 from ..application.geology_service import (GeologicalGridSpec,
                                           WellBasedGeologicalModelBuilder,
@@ -65,6 +66,8 @@ from ..io.eclipse_export import EclipseDeckWriter
 from ..rendering import animation_export
 from ..reporting import daily, results_export
 from .daily_view import DailyTableModel, format_row
+from .panel_state import capture as capture_panel
+from .panel_state import restore as restore_panel
 from .playback import (PLAYBACK_DEFAULT_INDEX, PLAYBACK_SPEEDS,
                        advance, interval_ms, step_value)
 from ..reporting.report import ReportContext, ReportGenerator
@@ -165,6 +168,10 @@ class MainWindow(QMainWindow):
         self.mismatch_report = None
         self.serializer = ProjectSerializer()
         self.project_path = None
+        #: Son saxlanmadakı işin izi (`session.state_signature`) — bağlayanda
+        #: müqayisə olunur. `None` → saxlanmayıb (məs. bərpa faylından açılıb).
+        self._saved_signature: Optional[str] = None
+        self.settings = QSettings("IMEX2D", "IMEX-2D")
         self.validation_renderer = R.ValidationRenderer()
 
         self._player = QTimer(self)
@@ -184,6 +191,9 @@ class MainWindow(QMainWindow):
         self._mark_clean()
         self.rebuild_model()
         self._verify_build()
+        # toxunulmamış yeni pəncərə «dəyişməyib» sayılır — bağlayanda sual yox
+        self._saved_signature = self._signature()
+        QTimer.singleShot(0, self._offer_recovery)
 
     # ---------------------------------------------------- pəncərə başlığı
     def _refresh_title(self):
@@ -201,8 +211,16 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------ menyu
     def _build_menu(self):
         file_menu = self.menuBar().addMenu("&Layihə")
-        for text, slot in [("Layihəni aç…", self.open_project),
-                           ("Layihəni yadda saxla…", self.save_project),
+        open_action = QAction("Layihəni aç…", self)
+        open_action.triggered.connect(self._open_project_dialog)
+        file_menu.addAction(open_action)
+        self.recent_menu = file_menu.addMenu("Son layihələr")
+        self.recent_menu.aboutToShow.connect(self._fill_recent_menu)
+        # `lambda` QƏSDƏNDİR: `triggered(bool)` metodun ilk arqumentinə
+        # `False` ötürür — əvvəl «Layihəni yadda saxla…» məhz belə
+        # `include_snapshots=False` alırdı və nəticəsiz saxlayırdı (Seans 46).
+        for text, slot in [("Layihəni yadda saxla…",
+                            lambda: self.save_project(include_snapshots=True)),
                            ("Layihəni saxla (nəticəsiz)…",
                             lambda: self.save_project(include_snapshots=False))]:
             action = QAction(text, self)
@@ -2197,6 +2215,7 @@ class MainWindow(QMainWindow):
         self.update_comparison()
         self.update_history_match()
         self.show_tab("Nəticələr")
+        self._write_recovery()
 
     def _log(self, text):
         LOG.info("%s", text)
@@ -2503,15 +2522,23 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("İşə salınmalar siyahısı təmizləndi.")
 
     # ═══════════════════════════════════════════════ layihə faylı (.imx)
-    def save_project(self, include_snapshots: bool = True):
+    def save_project(self, include_snapshots: bool = True) -> bool:
+        """Fayl seçib saxlayır. Qaytarır: saxlanıldımı (bağlama sualı üçün)."""
         suggested = self.project_path or f"layihe{FILE_EXTENSION}"
+        if session.is_recovery_file(suggested):
+            suggested = f"layihe{FILE_EXTENSION}"
         path, _ = QFileDialog.getSaveFileName(
             self, "Layihəni yadda saxla", suggested,
             f"IMEX-2D layihəsi (*{FILE_EXTENSION})")
         if not path:
-            return
+            return False
         if not path.endswith(FILE_EXTENSION):
             path += FILE_EXTENSION
+        return self._save_to(path, include_snapshots)
+
+    def _collect_project_state(self) -> None:
+        """Panellərdəki, hələ layihəyə yazılmamış hər şeyi layihəyə köçürür."""
+        self.project.ui_state = self._capture_ui_state()
         self.project.geology_wells = self.geology_panel.wells()
         self.project.geology_method = self.geology_panel.method_text()
         self.project.geology_params = dict(
@@ -2520,34 +2547,52 @@ class MainWindow(QMainWindow):
             range_a=self.geology_panel.range_.value(),
             sill_c=self.geology_panel.sill.value(),
             nugget_c0=self.geology_panel.nugget.value())
+
+    def _save_to(self, path: str, include_snapshots: bool = True) -> bool:
+        self._collect_project_state()
         try:
             self.serializer.save(self.project, path, include_snapshots)
         except Exception as exc:
             QMessageBox.critical(self, "Yadda saxlanmadı", str(exc))
-            return
+            return False
         self.project_path = path
         self._mark_clean()
+        self._saved_signature = self._signature()
+        self._remember_recent(path)
         size = os.path.getsize(path) / 1024.0
         self.statusBar().showMessage(
             f"Yazıldı: {os.path.basename(path)}  ({size:.0f} KB, "
             f"{len(self.project.runs)} işə salınma)")
+        return True
 
-    def open_project(self):
+    def _open_project_dialog(self) -> None:
+        if not self._confirm_discard("başqa layihə açmazdan əvvəl"):
+            return
         path, _ = QFileDialog.getOpenFileName(
             self, "Layihəni aç", "", f"IMEX-2D layihəsi (*{FILE_EXTENSION})")
-        if not path:
-            return
+        if path:
+            self.open_project(path)
+
+    def open_project(self, path: str, from_recovery: bool = False) -> bool:
+        """Layihəni açır.
+
+        `from_recovery`: bərpa faylı açılır — o, istifadəçinin faylı DEYİL,
+        ona görə `project_path` əvvəlki mənbəyə qaytarılır və iş «saxlanmamış»
+        sayılır (bağlayanda sual çıxsın).
+        """
         try:
             project = self.serializer.load(path)
         except ProjectFileError as exc:
             QMessageBox.critical(self, "Fayl açılmadı", str(exc))
-            return
+            return False
         except Exception as exc:
             QMessageBox.critical(self, "Fayl açılmadı", f"Gözlənilməz xəta: {exc}")
-            return
+            return False
 
         self.project = project
         self.project_path = path
+        if from_recovery:
+            self.project_path = self.settings.value("recovery/source", "") or None
         self._ready = False
         try:
             self.geology_panel.load(project.geology_wells)
@@ -2583,12 +2628,19 @@ class MainWindow(QMainWindow):
             # sonuncu işə salınmadan bərpa olunur. Köhnə `.imx`
             # fayllarında açar yoxdur → TPFA (bax `_config_from_dict`).
             self.numerical_panel.set_flux_scheme(latest.config.flux_scheme)
+        # Seans 46: panellərin TAM vəziyyəti — yuxarıdakı qismən bərpanın
+        # (köhnə fayllar üçün qalır) ÜSTÜNƏ yazılır
+        self._restore_ui_state(project.ui_state)
         self.result = latest.result if latest else None
         if self.result and self.result.snapshots:
             self.slider.setEnabled(True)
             self._set_playback_enabled(True)
             self.slider.setRange(0, len(self.result.snapshots) - 1)
             self.slider.setValue(len(self.result.snapshots) - 1)
+        # Nəticə 3D anlar OLMADAN da göstərilir: əvvəl `update_results`
+        # yalnız anlar varsa çağırılırdı və «nəticəsiz» saxlanmış layihədə
+        # qrafiklər də, günlük cədvəl də boş qalırdı (Seans 46).
+        if self.result and self.result.series.time:
             self.update_results()
         else:
             self.update_daily()
@@ -2598,9 +2650,190 @@ class MainWindow(QMainWindow):
         self.update_map()
         self.update_volume()
         self.update_comparison()
+        if from_recovery:
+            self._saved_signature = None
+        else:
+            self._saved_signature = self._signature()
+            self._remember_recent(path)
         self.statusBar().showMessage(
             f"Açıldı: {os.path.basename(path)}  ·  "
             f"{len(project.reservoir_models)} model, {len(project.runs)} işə salınma")
+        return True
+
+    # ═══════════════════════════════════════════ seans: vəziyyət və bərpa
+    def _state_panels(self) -> dict:
+        """Vəziyyəti saxlanılan panellər — açar layihə faylında adıdır."""
+        return {"grid": self.grid_panel, "geology": self.geology_panel,
+                "rock": self.rock_panel, "scal": self.scal_panel,
+                "scal_source": self.scal_source_panel, "pvt": self.pvt_panel,
+                "wells": self.well_panel, "numerical": self.numerical_panel}
+
+    def _capture_ui_state(self) -> dict:
+        imported = self.imported_geology
+        return {
+            "panels": {name: capture_panel(panel)
+                       for name, panel in self._state_panels().items()},
+            # qat cədvəli sadə sahə deyil (hər sətir ayrıca spin)
+            "layer_thicknesses": list(self.grid_panel.layer_thicknesses()),
+            "per_layer": self.grid_panel.per_layer.isChecked(),
+            "imported_geology": imported.name if imported is not None else None,
+        }
+
+    def _restore_ui_state(self, state: dict) -> None:
+        """`_capture_ui_state`-in tərsi. Boş vəziyyət (köhnə fayl) → heç nə.
+
+        Cədvəllər (quyular, geologiya) artıq `open_project`-də yüklənib;
+        burada yalnız modeldən gələn SWOF/SGOF və faultlar panelə qaytarılır.
+        """
+        if not state:
+            return
+        model = self.reservoir_model
+        self._ready = False
+        try:
+            panels = state.get("panels", {})
+            for name, panel in self._state_panels().items():
+                restore_panel(panel, panels.get(name, {}))
+            if state.get("per_layer") and state.get("layer_thicknesses"):
+                self.grid_panel.set_layer_thicknesses(state["layer_thicknesses"])
+            if model is not None:
+                source = self.scal_source_panel
+                source.tables = model.scal_tables
+                source.gas_tables = model.gas_scal_tables
+                if model.scal_tables is not None or model.gas_scal_tables is not None:
+                    source.info.setText("Cədvəllər layihə faylından bərpa olundu.")
+                self.fault_panel.faults = list(model.fault_references)
+                self.fault_panel._refresh_table()
+            name = state.get("imported_geology")
+            self.imported_geology = (self.project.geological_models.get(name)
+                                     if name else None)
+        finally:
+            self._ready = True
+        self._sync_geology_geometry()
+        self.geology_panel.mark_fresh()
+
+    def _signature(self) -> str:
+        return session.state_signature(
+            self._capture_ui_state(), list(self.project.runs),
+            [well.to_dict() for well in self.geology_panel.wells()])
+
+    def _has_unsaved_work(self) -> bool:
+        return self._dirty or self._signature() != self._saved_signature
+
+    # ---------------------------------------------------- son layihələr
+    def _recent_paths(self) -> list:
+        value = self.settings.value("recent", [])
+        if isinstance(value, str):            # QSettings tək elementi str qaytarır
+            value = [value]
+        return [str(item) for item in (value or [])]
+
+    def _remember_recent(self, path: str) -> None:
+        if session.is_recovery_file(path):
+            return
+        self.settings.setValue("recent", session.push_recent(self._recent_paths(), path))
+        self.settings.sync()
+
+    def _fill_recent_menu(self) -> None:
+        self.recent_menu.clear()
+        paths = self._recent_paths()
+        if not paths:
+            action = self.recent_menu.addAction("(siyahı boşdur)")
+            action.setEnabled(False)
+            return
+        for number, path in enumerate(paths, start=1):
+            exists = os.path.exists(path)
+            label = f"&{number}  {os.path.basename(path)}"
+            action = self.recent_menu.addAction(
+                label if exists else f"{label}  (tapılmadı)")
+            action.setToolTip(path)
+            action.setEnabled(exists)
+            action.triggered.connect(
+                lambda _checked=False, p=path: self._open_recent(p))
+        self.recent_menu.addSeparator()
+        clear = self.recent_menu.addAction("Siyahını təmizlə")
+        clear.triggered.connect(lambda: self.settings.setValue("recent", []))
+
+    def _open_recent(self, path: str) -> None:
+        if not self._confirm_discard("başqa layihə açmazdan əvvəl"):
+            return
+        if not os.path.exists(path):
+            self.settings.setValue(
+                "recent", session.remove_recent(self._recent_paths(), path))
+            QMessageBox.warning(self, "Fayl tapılmadı", path)
+            return
+        self.open_project(path)
+
+    # -------------------------------------------------------- bərpa faylı
+    def _write_recovery(self) -> None:
+        """Hesablama bitdi — layihənin SURƏTİ bərpa faylına (istifadəçinin
+        faylına YOX). Uğursuzluq işi dayandırmır, yalnız jurnala yazılır."""
+        path = session.recovery_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            self._collect_project_state()
+            self.serializer.save(self.project, path, include_snapshots=True)
+            self.settings.setValue("recovery/source", self.project_path or "")
+            # DƏRHAL diskə: QSettings gec yazır, qəfil bağlanmada (məhz bərpa
+            # faylının səbəbi) köhnə mənbə qalırdı — «Saxla» səhv fayla
+            # yazardı. Real qəza sınağında tutuldu (Seans 46).
+            self.settings.sync()
+            LOG.info("Bərpa faylı yazıldı: %s", path)
+        except Exception:
+            LOG.exception("Bərpa faylı yazılmadı")
+
+    def _remove_recovery(self) -> None:
+        try:
+            os.remove(session.recovery_path())
+        except FileNotFoundError:
+            pass
+        except OSError:
+            LOG.exception("Bərpa faylı silinmədi")
+
+    def _offer_recovery(self) -> None:
+        """Açılışda: əvvəlki seans gözlənilmədən bitibsə, bərpa təklif olunur."""
+        path = session.recovery_path()
+        if not os.path.exists(path):
+            return
+        from datetime import datetime
+        when = datetime.fromtimestamp(os.path.getmtime(path))
+        answer = QMessageBox.question(
+            self, "Bərpa",
+            "Əvvəlki iş seansı düzgün bağlanmayıb.\n\n"
+            f"Son hesablamanın surəti var ({when:%d.%m.%Y %H:%M}).\n"
+            "Bərpa edilsin?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer == QMessageBox.Yes:
+            if self.open_project(path, from_recovery=True):
+                self.statusBar().showMessage(
+                    "Bərpa olundu — işi «Layihəni yadda saxla» ilə saxlamağı unutmayın.")
+                return
+        self._remove_recovery()
+
+    # ------------------------------------------------------------ bağlama
+    def _confirm_discard(self, reason: str = "") -> bool:
+        """Saxlanmamış iş varsa soruşur. `True` → davam etmək olar."""
+        if not self._has_unsaved_work():
+            return True
+        answer = QMessageBox.question(
+            self, "Saxlanmamış iş",
+            "Layihədə saxlanmamış dəyişiklik var"
+            + (f" ({reason})" if reason else "") + ".\n\nSaxlanılsın?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save)
+        if answer == QMessageBox.Cancel:
+            return False
+        if answer == QMessageBox.Save:
+            if self.project_path and not session.is_recovery_file(self.project_path):
+                return self._save_to(self.project_path)
+            return self.save_project()
+        return True
+
+    def closeEvent(self, event):
+        if not self._confirm_discard():
+            event.ignore()
+            return
+        # düzgün bağlanma — bərpa faylı artıq lazım deyil
+        self._remove_recovery()
+        event.accept()
 
     def _load_model_into_panels(self, model):
         """Fayldan gələn modeli interfeys sahələrinə yazır.
