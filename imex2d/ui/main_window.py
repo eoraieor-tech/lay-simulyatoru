@@ -18,14 +18,15 @@ from matplotlib.figure import Figure
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QAction, QCheckBox, QComboBox, QDoubleSpinBox,
+from PyQt5.QtWidgets import (QAbstractItemView, QAction, QCheckBox,
+                             QComboBox, QDoubleSpinBox,
                              QFileDialog,
                              QHBoxLayout, QHeaderView, QLabel, QTableWidget,
                              QTableWidgetItem,
                              QApplication, QMainWindow, QMessageBox, QProgressBar,
                              QProgressDialog, QPushButton,
                              QSlider, QSpinBox, QSplitter, QStackedWidget,
-                             QTabWidget, QTextEdit,
+                             QTableView, QTabWidget, QTextEdit,
                              QToolBox, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
                              QWidget)
 
@@ -62,7 +63,8 @@ from ..history.observation_io import (ObservationFormatError,
                                        read_observations_csv)
 from ..io.eclipse_export import EclipseDeckWriter
 from ..rendering import animation_export
-from ..reporting import results_export
+from ..reporting import daily, results_export
+from .daily_view import DailyTableModel, format_row
 from .playback import (PLAYBACK_DEFAULT_INDEX, PLAYBACK_SPEEDS,
                        advance, interval_ms, step_value)
 from ..reporting.report import ReportContext, ReportGenerator
@@ -146,6 +148,8 @@ class MainWindow(QMainWindow):
         self.volume_renderer = VolumeRenderer()
         self.volume_colorbar = None
         self.curve_renderer = R.ProductionCurveRenderer()
+        self.daily_renderer = R.DailyRenderer()
+        self.daily = daily.DailyTable()
         self.scal_renderer = R.ScalRenderer()
         self.pvt_renderer = R.PvtRenderer()
         self.comparison_renderer = R.RunComparisonRenderer()
@@ -216,7 +220,8 @@ class MainWindow(QMainWindow):
             action.triggered.connect(slot)
             file_menu.addAction(action)
         file_menu.addSeparator()
-        for text, slot in [("Nəticələri CSV kimi yaz…", self.export_results),
+        for text, slot in [("Günlük göstəriciləri CSV kimi yaz…",
+                            self.export_daily),
                            ("Grid anını CSV kimi yaz…", self.export_snapshot)]:
             action = QAction(text, self)
             action.triggered.connect(slot)
@@ -407,6 +412,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.kpi)
         layout.addWidget(self.result_canvas, 1)
         self.tabs.addTab(page, "Nəticələr")
+
+        # Günlük göstəricilər (Seans 45)
+        self.tabs.addTab(self._build_daily_tab(), "Günlük göstəricilər")
 
         # SCAL
         page = QWidget(); layout = QVBoxLayout(page)
@@ -1054,6 +1062,141 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"Diqqət: {', '.join(missing)} tabı yoxdur — köhnə fayl "
                 f"qarışmış ola bilər (bax: Jurnal).")
+
+    # ══════════════════════════════════════════════ günlük göstəricilər
+    def _build_daily_tab(self) -> QWidget:
+        """Hər günün göstəriciləri — yataq və hər quyu üzrə (Seans 45).
+
+        Rəqəmlər `reporting/daily.py`-dən gəlir; burada yalnız seçim,
+        cədvəl və qrafik var.
+        """
+        page = QWidget(); layout = QVBoxLayout(page)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Obyekt:"))
+        self.daily_target = QComboBox()
+        self.daily_target.setMinimumWidth(140)
+        self.daily_target.currentIndexChanged.connect(self._on_daily_target)
+        top.addWidget(self.daily_target)
+        top.addSpacing(16)
+        top.addWidget(QLabel("Gün:"))
+        self.daily_day = QSpinBox()
+        self.daily_day.setRange(0, 0)
+        self.daily_day.setMinimumWidth(90)
+        self.daily_day.valueChanged.connect(self._on_daily_day)
+        top.addWidget(self.daily_day)
+        export = QPushButton("CSV yaz…")
+        export.clicked.connect(self.export_daily)
+        top.addSpacing(16)
+        top.addWidget(export)
+        self.daily_info = QLabel("Model hələ işə salınmayıb.")
+        self.daily_info.setStyleSheet(f"color:{PALETTE.text_dim}")
+        top.addWidget(self.daily_info, 1)
+        layout.addLayout(top)
+
+        self.daily_summary = QLabel("")
+        self.daily_summary.setWordWrap(True)
+        self.daily_summary.setStyleSheet(
+            f"background:{PALETTE.panel_alt};border:1px solid {PALETTE.line};"
+            f"border-radius:4px;padding:7px;font-family:monospace;"
+            f"font-size:11px;color:{PALETTE.text}")
+        layout.addWidget(self.daily_summary)
+
+        splitter = QSplitter(Qt.Vertical)
+        self.daily_fig, self.daily_canvas, self.daily_axes = _figure(1, 2)
+        splitter.addWidget(self.daily_canvas)
+        self.daily_model = DailyTableModel(self)
+        self.daily_view = QTableView()
+        self.daily_view.setModel(self.daily_model)
+        self.daily_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.daily_view.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.daily_view.verticalHeader().setVisible(False)
+        # sıx sətirlər — 1500 günlük cədvəldə ekrana daha çox gün sığsın
+        self.daily_view.verticalHeader().setDefaultSectionSize(22)
+        self.daily_view.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch)
+        self.daily_view.selectionModel().currentRowChanged.connect(
+            self._on_daily_row)
+        splitter.addWidget(self.daily_view)
+        splitter.setSizes([300, 400])
+        layout.addWidget(splitter, 1)
+        return page
+
+    def update_daily(self):
+        """Nəticə dəyişəndə günlük cədvəli yenidən qurur."""
+        if not hasattr(self, "daily_model"):
+            return
+        has_series = bool(self.result and self.result.series.time)
+        self.daily = (daily.daily_table(self.result) if has_series
+                      else daily.DailyTable())
+        previous = self.daily_target.currentText()
+        self.daily_target.blockSignals(True)
+        self.daily_target.clear()
+        self.daily_target.addItems(self.daily.targets())
+        if previous in self.daily.targets():
+            self.daily_target.setCurrentText(previous)
+        self.daily_target.blockSignals(False)
+
+        count = len(self.daily)
+        self.daily_day.blockSignals(True)
+        self.daily_day.setRange(1 if count else 0, count)
+        self.daily_day.setValue(count)
+        self.daily_day.blockSignals(False)
+        if count:
+            wells = len(self.daily.wells)
+            self.daily_info.setText(
+                f"{count} gün · {wells} quyu · orta təzyiq günlər arasında "
+                f"interpolyasiya olunur (təxmini)")
+        else:
+            self.daily_info.setText("Günlük göstərici yoxdur — əvvəlcə "
+                                    "modeli işə salın.")
+        self._on_daily_target()
+
+    def _on_daily_target(self, *_):
+        target = self.daily_target.currentText() or daily.FIELD
+        self.daily_model.set_table(self.daily, target)
+        self._select_daily_row(self.daily_day.value())
+
+    def _on_daily_day(self, value):
+        self._select_daily_row(value)
+
+    def _on_daily_row(self, current, _previous=None):
+        if not current.isValid() or len(self.daily) == 0:
+            return
+        self.daily_day.blockSignals(True)
+        self.daily_day.setValue(current.row() + 1)
+        self.daily_day.blockSignals(False)
+        self._show_daily_row(current.row())
+
+    def _select_daily_row(self, day):
+        """Günü cədvəldə seçir, xülasəni və qrafiki yeniləyir."""
+        if len(self.daily) == 0:
+            self.daily_summary.setText("")
+            self._draw_daily(None)
+            return
+        row = self.daily.index_of_day(day)
+        index = self.daily_model.index(row, 0)
+        self.daily_view.selectionModel().blockSignals(True)
+        self.daily_view.setCurrentIndex(index)
+        self.daily_view.selectRow(row)
+        self.daily_view.selectionModel().blockSignals(False)
+        self.daily_view.scrollTo(index, QAbstractItemView.PositionAtCenter)
+        self._show_daily_row(row)
+
+    def _show_daily_row(self, row):
+        target = self.daily_model.target
+        values = self.daily.row(row, target)
+        day = values[daily.DAY]
+        self.daily_summary.setText(
+            f"{target} · gün {day:g}\n{format_row(values)}")
+        self._draw_daily(day)
+
+    def _draw_daily(self, selected_day):
+        target = self.daily_model.target
+        columns = (self.daily.columns(target) if len(self.daily) else {})
+        self.daily_renderer.draw(self.daily_fig, self.daily_axes,
+                                 self.daily.days, columns, target,
+                                 selected_day)
+        self.daily_canvas.draw_idle()
 
     def _build_history_tab(self) -> QWidget:
         page = QWidget()
@@ -2101,6 +2244,7 @@ class MainWindow(QMainWindow):
             f"Water cut {s.water_cut[-1]:6.1f} %      "
             f"Orta P {s.average_pressure[-1]:6.1f} bar      "
             f"Su gəlişi {('%.0f gün' % bt) if bt else 'baş verməyib'}")
+        self.update_daily()
 
     def update_scal_plot(self):
         if self.reservoir_model is None:
@@ -2446,6 +2590,8 @@ class MainWindow(QMainWindow):
             self.slider.setRange(0, len(self.result.snapshots) - 1)
             self.slider.setValue(len(self.result.snapshots) - 1)
             self.update_results()
+        else:
+            self.update_daily()
         self.refresh_tree()
         self.update_scal_plot()
         self.update_pvt_plot()
@@ -2517,31 +2663,6 @@ class MainWindow(QMainWindow):
             self._ready = True
 
     # ══════════════════════════════════════════════════════════ eksport
-    def export_results(self):
-        if not self.result or not self.result.series.time:
-            QMessageBox.information(self, "Nəticə yoxdur", "Əvvəlcə modeli işə salın.")
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "Nəticələri yaz", "results.csv",
-                                              "CSV (*.csv)")
-        if not path:
-            return
-        s = self.result.series
-        with open(path, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(["time_day", "qo_m3d", "qw_m3d", "qwinj_m3d",
-                             "cum_oil_m3", "cum_wat_m3", "watercut_pct",
-                             "avg_p_bar", "RF_pct"])
-            for i in range(len(s.time)):
-                writer.writerow([f"{s.time[i]:.4f}", f"{s.oil_rate[i]:.4f}",
-                                 f"{s.water_rate[i]:.4f}",
-                                 f"{s.water_injection_rate[i]:.4f}",
-                                 f"{s.cumulative_oil[i]:.2f}",
-                                 f"{s.cumulative_water[i]:.2f}",
-                                 f"{s.water_cut[i]:.3f}",
-                                 f"{s.average_pressure[i]:.3f}",
-                                 f"{s.recovery_factor[i]:.4f}"])
-        self.statusBar().showMessage(f"Yazıldı: {os.path.basename(path)}")
-
     def export_snapshot(self):
         if not self.result or self.reservoir_model is None:
             QMessageBox.information(self, "Nəticə yoxdur", "Əvvəlcə modeli işə salın.")
@@ -2683,6 +2804,7 @@ class MainWindow(QMainWindow):
 
         self.show_tab("3D görüntü")
         self.update_volume()
+        self.update_daily()
 
     def export_pdf_report(self):
         if self.reservoir_model is None:
@@ -2734,6 +2856,24 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "İxrac hazırdır",
             f"{os.path.basename(path)}  ({size:.0f} KB)")
+        self.statusBar().showMessage(f"Yazıldı: {os.path.basename(path)}")
+
+    def export_daily(self):
+        """Günlük göstəricilər — yataq və bütün quyular bir CSV-də (Seans 45)."""
+        if self.result is None or not self.result.series.time:
+            QMessageBox.information(self, "Nəticə yoxdur",
+                                    "Əvvəlcə simulyasiyanı işə salın.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Günlük göstəriciləri yaz", "gunluk.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            results_export.write_daily_csv(self.result, path)
+        except Exception as error:
+            QMessageBox.critical(self, "Yazılmadı", str(error))
+            LOG.exception("Günlük göstəricilərin ixracı alınmadı")
+            return
         self.statusBar().showMessage(f"Yazıldı: {os.path.basename(path)}")
 
     def export_eclipse(self):

@@ -392,6 +392,75 @@ class ProductionCurveRenderer:
         style_axes(ax, "Qaz-neft nisbəti", "Zaman, gün", "GOR, sm³/sm³")
 
 
+class DailyRenderer:
+    """Günlük göstəricilər — seçilmiş obyekt (yataq və ya quyu) üçün. Seans 45.
+
+    Sol: günlük debitlər PİLLƏ şəklində — hər dəyər `(d-1, d]` gününə
+    aiddir, düz xətlə birləşdirmək günün içində dəyişmə təəssüratı
+    verərdi. Sağ: kumulyativ həcmlər. Seçilmiş gün hər iki paneldə
+    şaquli xətlə göstərilir.
+    """
+
+    _RATES = (("q_neft [m³/gün]", "Neft", "oil", "-"),
+              ("q_su [m³/gün]", "Su", "water", "-"),
+              ("q_vurulan_su [m³/gün]", "Vurulan su", "accent", "--"))
+    _GAS = (("q_qaz [m³/gün]", "Qaz", "-"),
+            ("q_vurulan_qaz [m³/gün]", "Vurulan qaz", "--"))
+    _CUMULATIVE = (("kum_neft [m³]", "Kum. neft", "oil", "-"),
+                   ("kum_su [m³]", "Kum. su", "water", "-"),
+                   ("kum_vurulan_su [m³]", "Kum. vurulan su", "accent", "--"))
+
+    def draw(self, figure, axes, days, columns, title: str,
+             selected_day: Optional[float] = None):
+        rate_ax, cumulative_ax = axes
+        for ax in (rate_ax, cumulative_ax):
+            ax.clear()
+        for extra in figure.axes:                  # köhnə ikinci oxlar
+            if extra not in (rate_ax, cumulative_ax):
+                figure.delaxes(extra)
+        days = np.asarray(days, float)
+        if len(days) == 0:
+            for ax in (rate_ax, cumulative_ax):
+                ax.text(0.5, 0.5, "Nəticə yoxdur", ha="center", va="center",
+                        transform=ax.transAxes, color=PALETTE.text_dim)
+            return
+
+        for key, label, colour, style in self._RATES:
+            if key in columns:
+                rate_ax.plot(days, columns[key], drawstyle="steps-pre",
+                             color=getattr(PALETTE, colour), lw=1.5, ls=style,
+                             label=label)
+        gas = [(key, label, style) for key, label, style in self._GAS
+               if key in columns and np.any(np.asarray(columns[key]) > 0.0)]
+        if gas:
+            twin = rate_ax.twinx()
+            for key, label, style in gas:
+                twin.plot(days, columns[key], drawstyle="steps-pre",
+                          color=PALETTE.gas, lw=1.3, ls=style, label=label)
+            twin.set_ylabel("q_qaz, sm³/gün", color=PALETTE.gas, fontsize=9)
+            twin.tick_params(colors=PALETTE.gas, labelsize=8)
+            for spine in twin.spines.values():
+                spine.set_color(PALETTE.line)
+            legend(twin, loc="upper right")
+        style_axes(rate_ax, f"Günlük debitlər — {title}", "Gün", "q, m³/gün")
+        if rate_ax.get_lines():
+            legend(rate_ax)
+
+        for key, label, colour, style in self._CUMULATIVE:
+            if key in columns:
+                cumulative_ax.plot(days, np.asarray(columns[key]) / 1e3,
+                                   color=getattr(PALETTE, colour), lw=1.8,
+                                   ls=style, label=label)
+        style_axes(cumulative_ax, f"Kumulyativ — {title}", "Gün", "min m³")
+        if cumulative_ax.get_lines():
+            legend(cumulative_ax)
+
+        if selected_day is not None:
+            for ax in (rate_ax, cumulative_ax):
+                ax.axvline(selected_day, color=PALETTE.text_dim, lw=1.0,
+                           ls="--")
+
+
 class ScalRenderer:
     """Nisbi keçiricilik və fraksional axın əyriləri."""
 

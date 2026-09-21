@@ -32,10 +32,12 @@ FEATURES = [
     ("OPM Flow idxalı", "OPM Flow nəticələrini öz 3D görüntümüzlə göstər — .EGRID+.UNRST"),
     ("VTK 3D motoru", "ResInsight tipli — quyular, faultlar, ölçü oxları, istiqamət oxu"),
     ("Diaqnostika", "xəta/xəbərdarlıq səviyyələri, quyu rejimi yoxlamaları"),
+    ("Günlük göstəricilər", "hər gün üçün yataq və hər quyu üzrə cədvəl, qrafik, CSV"),
 ]
 
 EXPECTED_TABS = [
-    "Layihə", "Model", "Nəticələr", "Nisbi keçiricilik", "3D görüntü",
+    "Layihə", "Model", "Nəticələr", "Günlük göstəricilər",
+    "Nisbi keçiricilik", "3D görüntü",
     "PVT", "Validasiya (B-L)", "Müqayisə", "Tarixçə", "Uyğunlaşdırma",
     "Həssaslıq", "Jurnal",
 ]
