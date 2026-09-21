@@ -5,7 +5,7 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 
 **İşarələr:** ✅ bitib · 🟡 gedir · ⬜ gözləyir · ❌ ləğv olunub
 
-**Son yenilənmə:** 10 sentyabr 2026
+**Son yenilənmə:** 21 sentyabr 2026
 
 ---
 
@@ -119,6 +119,12 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > (mənbədən oxundu). 6150 psia-da Rs_sat 1.618 ↔ 2.013. Müqayisə alətinə
 > qaz cəbhəsi (BGSAT, 9 blok) əlavə olundu. Düzəliş qərarı sahibkardadır ⏳.
 >
+> **21 sentyabr 2026 (Seans 45):** **günlük göstəricilər** ✅ — yeni tab:
+> simulyasiyanın hər günü üçün yataq və HƏR QUYU üzrə cədvəl, qrafik və
+> CSV. Mühərrik toxunulmadı; vurucular üzrə debit ilk dəfə yazılır (Q-35).
+> Yol boyu aşağıdakı cədvəllərdə köhnəlmiş 2.7, 4.6, 6.2, 6.3, 6.6
+> statusları yeniləndi (işlər Seans 18–24-də bitmişdi).
+>
 > 📋 **Bu işlərin addım-addım icra planı:** [ICRA_PLANI.md](ICRA_PLANI.md)
 > (B1–B7 blokları, qəbul meyarları M1–M8).
 
@@ -199,7 +205,7 @@ lay modeli görünür, quyu trayektoriyaları üstündə.
 | 2.4 | Sıxılma əmsalları və törəmələr (∂b/∂p) | `domain/pvt.py` | ✅ |
 | 2.5 | 2-fazalı nisbi keçiricilik əyriləri | `domain/scal*.py` | ✅ |
 | 2.6 | Stone II modeli ilə 3-fazalı Kro | `simulation/stone_relperm.py` | ✅ analitik törəmələri ilə |
-| 2.7 | Kapilyar təzyiq | `simulation/capillary.py` | 🟡 **Pcow ✅ · Pcog ❌** |
+| 2.7 | Kapilyar təzyiq | `simulation/capillary.py` | ✅ **Pcow · Pcog** (B5-b, Seans 24) |
 | 2.8 | Testlər: monotonluq, son nöqtə, fiziki sərhədlər | `tests/` | ✅ |
 
 **Bitmə şərti:** istənilən (P, Sw, Sg) üçün bütün flüid və axın xassələri
@@ -241,7 +247,7 @@ saxlanılır, anizotrop testdə TPFA-dan üstünlüyü ədədlə göstərilir.
 | 4.3 | Xətti həlledici | `simulation/linear_solver.py`, `implicit/cpr.py` | ✅ **CG+ILU və CPR** (SuperLU/AMG yox — bax Q-08) |
 | 4.4 | Upwind sxemi ilə faza axınları | `implicit/residual.py` | ✅ |
 | 4.5 | Doymaların yenilənməsi (Sw, So, Sg) | `implicit/three_phase_state.py` | ✅ |
-| 4.6 | Qazın ayrılması, faza keçidi (variable switching) | `implicit/three_phase_*.py` | ✅ kod var, **servisə qoşulmayıb** |
+| 4.6 | Qazın ayrılması, faza keçidi (variable switching) | `implicit/three_phase_*.py` | ✅ servisə qoşulub (B2) |
 | 4.7 | CFL şərtinə görə dinamik `dt` | `implicit/time_stepping.py` | ✅ |
 | 4.8 | Quyuların həlledici ilə birləşdirilməsi | `implicit/coupled_newton.py` | ✅ |
 | 4.9 | Kütlə balansı yoxlaması hər addımda | `implicit/newton.py` | ✅ |
@@ -263,6 +269,7 @@ su cəbhəsi fiziki cəhətdən düzgün irəliləyir.
 | 5.4 | Layın orta təzyiqi | `simulation/results.py` | ✅ |
 | 5.5 | Günbəgün RF (%) və hasilat profili | `simulation/results.py` | ✅ |
 | 5.6 | Nəticələrin fayla yazılması | `reporting/report.py`, `reporting/results_export.py` | ✅ PDF · **CSV/JSON** (B5-a: BHP/THP daxil) |
+| 5.7 | **Günlük göstəricilər** — hər gün, yataq və hər quyu üzrə (cədvəl, qrafik, CSV) | `reporting/daily.py`, `ui/daily_view.py` | ✅ Seans 45 (Q-35) |
 
 **Bitmə şərti:** simulyasiyadan sonra tam hasilat hesabatı avtomatik çıxır.
 
@@ -273,11 +280,11 @@ su cəbhəsi fiziki cəhətdən düzgün irəliləyir.
 | # | Tapşırıq | Modul | Status |
 |---|---|---|---|
 | 6.1 | 3D render: doyma və təzyiq sahələri | `rendering/vtk_volume.py` | ✅ **VTK ilə** |
-| 6.2 | Su/qaz cəbhəsinin irəliləmə animasiyası | `rendering/` | ❌ |
-| 6.3 | İnteraktiv kəsik (slice plane) aləti | `rendering/` | ❌ (statik kəsik ✅) |
+| 6.2 | Su/qaz cəbhəsinin irəliləmə animasiyası | `ui/playback.py` | ✅ oynatma (B6-b, Seans 18) |
+| 6.3 | İnteraktiv kəsik (slice plane) aləti | `rendering/` | ✅ (B6-a, Seans 21) |
 | 6.4 | Volumetric rendering | `rendering/volume.py` | 🟡 psevdo-3D var, əsl volume yox |
 | 6.5 | Dashboard: debet, BHP, RF | `rendering/renderers.py` | ✅ matplotlib · THP/BHP paneli (B4-A, 3×2 düzüm) |
-| 6.6 | Nəticə animasiyasının video/GIF ixracı | `rendering/` | ❌ |
+| 6.6 | Nəticə animasiyasının video/GIF ixracı | `rendering/animation_export.py` | ✅ PNG/GIF (B6-c, Seans 22) |
 
 **Bitmə şərti:** istifadəçi simulyasiyanı işə salır, 3D-də cəbhənin
 hərəkətini izləyir və dashboard-da bütün göstəriciləri görür.

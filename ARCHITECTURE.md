@@ -899,6 +899,23 @@ tools/spe1_compare.py         tam qaçış + cədvəl
 `OilBranch` (PVTO qolu) `domain/pvt.py`-yə köçdü: `ReservoirModel.pvt_oil_branches`
 və layihə faylı onu daşıyır (Q-31).
 
+### 5.21 Günlük göstəricilər (Seans 45)
+
+```
+imex2d/reporting/daily.py       addım sıralarından GÜNLÜK cədvəl (saf, Qt yox)
+imex2d/reporting/results_export.py  write_daily_csv — yataq + hər quyu bir faylda
+imex2d/rendering/renderers.py   DailyRenderer — seçilmiş obyektin qrafiki
+imex2d/ui/daily_view.py         DailyTableModel (QAbstractTableModel) + formatlama
+imex2d/ui/main_window.py        «Günlük göstəricilər» tabı — yalnız orkestrasiya
+```
+
+Mühərrik günlərə uyğunlaşdırılmır — o, adaptiv addımla getməyə davam edir.
+`daily.py` `SimulationResult`-u oxuyur və heç nə yazmır, yəni hesablama
+nəticəsi dəyişmir (Q-35). `SimulationResult`-a iki yeni sahə əlavə olundu:
+`well_water_injection_rate` və `well_gas_injection_rate` — üç mühərrikin
+hamısı (IMPES, FIM, üç fazalı) vurucular üzrə sıranı yazır; layihə faylı
+onları saxlayır (köhnə fayllarda boş qalır).
+
 ## 6. Növbəti modulun necə qoşulacağı
 
 Bu bölmə refaktorinqin sübutu kimi PVT modulunun əlavəsini nümunə

@@ -5188,3 +5188,90 @@ statusu dəyişmədi.
 ```
 tam dəst   2715 keçdi, 1 buraxıldı, 1 xfailed (8 dəq 9 san, arxa planda digər işlərlə paralel)
 ```
+
+## 21 sentyabr 2026 — Seans 45: günlük göstəricilər (yataq və hər quyu üzrə)
+
+Sahibkar proqrama əlavə etmək istədiyini dedi, amma əvvəlcə necə olacağının
+izahını istədi. Seçilən əlavə: **hər günün göstəriciləri**. İzahdan sonra
+sahibkarın qərarları:
+
+- həm **yataq**, həm də **hər quyu** üzrə;
+- aralıq — **hər gün**, simulyasiya neçə gündürsə o qədər sətir;
+- **cədvəl və qrafiklər kifayətdir** — hər günün 3D xəritəsi LAZIM DEYİL.
+
+### 1 · Başlanğıc vəziyyət (koddan yoxlandı)
+
+- «Nəticələr» tabında yalnız SON günün rəqəmləri və 6 qrafik var idi.
+- Mühərrik adaptiv addımla gedir: nümunə qaçışı 1500 gün / 88 addım,
+  standart açılış modeli 1500 gün / 4314 addım. «N-ci gün» sətri yox idi.
+- **Vurucu quyular üzrə heç bir sıra saxlanılmırdı** — yalnız sahə cəmi.
+  `well_oil_rate`/`well_water_rate` yalnız istismarçılar üçündür.
+
+### 2 · Nə edildi
+
+| Hissə | Fayl |
+|---|---|
+| Günlük cədvəl (saf, Qt yox) | `imex2d/reporting/daily.py` (**yeni**) |
+| Vurucular üzrə sıra — IMPES, FIM, üç fazalı | `simulation/results.py`, `impes_engine.py`, `implicit/engine.py`, `implicit/three_phase_engine.py` |
+| Layihə faylı yeni sahələri saxlayır (köhnə fayl → boş) | `application/serialization.py` |
+| Günlük CSV (yataq + bütün quyular bir faylda); ümumi ixraca vurucu sütunları | `reporting/results_export.py` |
+| Seçilmiş obyektin qrafiki (pilləli debit + kumulyativ, seçilmiş gün xətlə) | `rendering/renderers.py` → `DailyRenderer` |
+| Cədvəl modeli (`QAbstractTableModel` — 3650 sətirdə də yüngül) | `imex2d/ui/daily_view.py` (**yeni**) |
+| Yeni tab «Günlük göstəricilər»: Obyekt (Yataq / quyular), Gün, CSV yaz | `ui/main_window.py`, `version.py` |
+| Testlər (20) | `tests/test_daily.py` (**yeni**) |
+
+Menyu: «Layihə → Günlük göstəriciləri CSV kimi yaz…» — əvvəl həmin yerdə
+«Nəticələri CSV kimi yaz…» idi və üstdəki «Nəticələri ixrac et (CSV/JSON)…»
+ilə EYNİ metodu çağırırdı.
+
+### 3 · Günlük dəyər necə alınır (Q-35)
+
+Mühərrik TOXUNULMUR. Günün debiti = günün həcmi / günün uzunluğu
+(debit addım boyu sabitdir); kumulyativ və RF dəqiq; orta təzyiq addım
+sonları arasında xətti — **təxmini**, sütun adında `(interp.)`; BHP/THP
+günün sonunu örtən addımdan, THP-nin `nan`-ı «—» kimi göstərilir.
+
+### 4 · Ölçmələr
+
+- **Nəticələr dəyişmədi:** əvvəlki commit (`c4f0857`) ilə yeni kod eyni
+  modellərdə işlədildi, bütün sıralar **tam bərabər** (float `==`):
+  iki fazalı FIM (31 addım), üç fazalı (31 addım), IMPES (1077 addım).
+- Günlük həcmlərin cəmi mühərrikin kumulyativinə bərabərdir (nisbi < 1e-12);
+  vurucuların cəmi sahə vurmasına bərabərdir (tam).
+- Proqram real işlədildi (standart açılış modeli, «MODELİ İŞƏ SAL»):
+  1500 gün, 4314 addım, **≈ 24 s** (iki qaçış: 23.8 və 24.4 s, düyməyə
+  basmadan bitənədək, interfeys daxil; yoxlama intervalı 0.5 s olduğu üçün
+  dəqiqlik ±0.5 s). Tab 3 obyekt göstərdi: Yataq, INJ-1, PROD-1.
+  Nümunə: PROD-1, 250-ci gün — q_neft 109.76 m³/gün, kum_neft 27 202.0 m³.
+  Bu, Seans 44-ün ⏳ «standart açılışda vaxt ölçülməyib» sualına cavabdır.
+
+### 5 · Yol boyu tapılanlar
+
+- `main_window.py`-də `export_results` **iki dəfə** təyin olunmuşdu;
+  birincisi (köhnə, 9 sütunlu CSV) ölü kod idi — silindi.
+- `ROADMAP.md`-də 2.7, 4.6, 6.2, 6.3, 6.6 statusları köhnəlmişdi (işlər
+  Seans 18, 21, 22, 24 və B2-də bitmişdi) — yeniləndi.
+- Üç fayl redaktədən sonra CRLF-ə keçmişdi (repoda LF) — commit-dən əvvəl
+  geri çevrildi, diff yalnız real dəyişiklikləri göstərir.
+
+### 6 · Qərarlar
+
+- **Q-35** — günlük göstəricilər mühərrikə toxunmadan, addımlardan qurulur.
+- `ROADMAP.md`: yeni sətir **5.7 ✅**.
+
+### 7 · Açıq qalanlar
+
+- ⏳ Layihə faylı (`.imx`) `well_gas_rate`, `well_bhp`, `well_thp`,
+  `well_control_mode` və qaz sıralarını (`gas_rate`, `cumulative_gas`,
+  `gas_oil_ratio` …) **saxlamır** — faylı açanda günlük tabda bu sütunlar
+  olmayacaq. Seans 45-dən əvvəl də belə idi; düzəliş sahibkarın qərarıdır.
+- ⏳ Günlük orta təzyiq təxminidir. Dəqiq lazım olsa: «Maks. Δt» = 1 gün
+  (yavaşlama ölçülməyib).
+- Hər günün 3D xəritəsi — sahibkarın qərarı ilə edilmədi.
+
+### 8 · Yoxlama
+
+```
+tam dəst   2747 keçdi, 1 xfailed, 10 xəbərdarlıq (10 dəq 28 san)
+test_daily.py   20 keçdi (yeni)
+```

@@ -1287,3 +1287,49 @@ Qiymətlər deck-in xətti interpolyasiyası ilə **0.000 %** üst-üstə düş�
 (əvvəl μo-da 1.97 %). ∂/∂p dəqiqdir; ∂/∂Rs qollar arasında sonlu fərqlə
 0.00 %, qolun düyünündə isə birtərəflidir (parçalı xətti modelin təbii
 xassəsi). SPE1CASE2-yə təsiri cüzidir (FGOR > 2: 1142 → 1132 gün).
+
+
+## Q-35 — Günlük göstəricilər mühərrikə toxunmadan, addımlardan qurulur
+
+**Tarix:** 21 sentyabr 2026 · **Kontekst:** sahibkar hər günün
+göstəricilərini — yataq və hər quyu üzrə, simulyasiyanın bütün günləri
+üçün — görmək istədi (bax [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 45).
+
+### Problem
+
+Mühərrik adaptiv addımla gedir: nümunə qaçışında 1500 gün 88 addımda
+(orta Δt 17 gün), standart açılış modelində isə 4314 addımda keçilir.
+Addımlar tam günlərə düşmür, yəni «N-ci gün» sətri nəticədə yoxdur.
+Vurucu quyular üzrə isə ümumiyyətlə heç bir sıra saxlanılmırdı.
+
+### Qərar 1 — mühərrik DƏYİŞMİR, günlük cədvəl nəticədən qurulur
+
+Alternativ — mühərriki hər gün sonunda addımı kəsməyə məcbur etmək
+(hesabat anları) — nəticəni dəyişərdi: addım sayı, deməli rəqəmlər də
+dəyişərdi. Gündəlik dəqiq təzyiq lazım olsa, bu imkan onsuz da var:
+«Maks. Δt» = 1 gün.
+
+### Qərar 2 — günün debiti = günün HƏCMİ / günün uzunluğu
+
+Implicit Eyler addım boyu debiti sabit götürür. Ona görə:
+
+- debitlər: gün bir addımın içindədirsə, o addımın debiti; addım sərhədi
+  günün içinə düşürsə, zamanla çəkili orta. Günlük həcmlərin cəmi
+  mühərrikin kumulyativinə bərabərdir (ölçüldü: nisbi fərq < 1e-12);
+- kumulyativ və RF: addım boyu xətti, interpolyasiya dəqiqdir;
+- su kəsri, GOR: günün həcmlərindən;
+- orta təzyiq: yalnız addım sonlarında məlumdur, xətti interpolyasiya —
+  **təxminidir**, sütun adında `(interp.)` yazılır;
+- BHP/THP: günün sonunu örtən addımın dəyəri; THP-nin `nan`-ı saxlanılır.
+
+Rədd edilən variant: «günün sonunu örtən addımın debiti». Sadədir, lakin
+addım sərhədi günün içinə düşəndə günlük həcmlərin cəmi kumulyativdən
+fərqlənərdi.
+
+### Qərar 3 — vurucular üzrə sıra hər üç mühərrikdə yazılır
+
+`well_water_injection_rate` və `well_gas_injection_rate`. Vahid sahə
+sırası (`series.water_injection_rate`) ilə eynidir, vurucuların cəmi
+ona bərabərdir (testlə kilidlənib). Bu, yalnız YAZMADIR — heç bir tənliyə
+girmir, nəticələr bit-bit eyni qalır.
+
