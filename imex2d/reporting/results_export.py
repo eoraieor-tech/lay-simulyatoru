@@ -56,6 +56,8 @@ WELL_COLUMNS: Sequence[tuple] = (
     ("well_oil_rate", "{name}: q_neft [m³/gün]"),
     ("well_water_rate", "{name}: q_su [m³/gün]"),
     ("well_gas_rate", "{name}: q_qaz [m³/gün]"),
+    ("well_water_injection_rate", "{name}: q_vurulan_su [m³/gün]"),
+    ("well_gas_injection_rate", "{name}: q_vurulan_qaz [m³/gün]"),
     ("well_bhp", "{name}: BHP [bar]"),
     ("well_thp", "{name}: THP [bar]"),
 )
@@ -208,6 +210,35 @@ def write_json(result: SimulationResult, path: str) -> str:
     with open(path, "w", encoding="utf-8", newline="") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2,
                   allow_nan=False)
+    return path
+
+
+# ═══════════════════════════ günlük CSV ═══════════════════════════════
+
+def write_daily_csv(result: SimulationResult, path: str) -> str:
+    """Günlük göstəricilər (Seans 45) — hər gün bir sətir.
+
+    Əvvəl yataq sütunları, sonra hər quyu `"<quyu>: <sütun>"` şəklində —
+    `write_csv` ilə eyni üslub, `read_csv` ilə geri oxunur. Günlük
+    dəyərlərin necə alındığı: `reporting/daily.py`.
+    """
+    from .daily import DAY, daily_table
+    table = daily_table(result)
+    columns: List[tuple] = [(DAY, list(table.days))]
+    columns += [(name, list(values))
+                for name, values in table.field_columns.items()]
+    for well, well_columns in table.wells.items():
+        columns += [(f"{well}: {name}", list(values))
+                    for name, values in well_columns.items()]
+
+    with open(path, "w", encoding=ENCODING, newline="") as handle:
+        writer = csv.writer(handle)
+        if len(table) == 0:
+            writer.writerow(["(nəticə boşdur)"])
+            return path
+        writer.writerow([header for header, _ in columns])
+        for index in range(len(table)):
+            writer.writerow([_cell(values[index]) for _, values in columns])
     return path
 
 
