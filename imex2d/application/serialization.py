@@ -29,7 +29,9 @@ from ..domain.properties import (FluidProperties, PermeabilityTensor, PropertyMa
                                  RockProperties)
 from ..domain.pvt import OilBranch, PVTTable
 from ..domain.reservoir_model import ReservoirModel
-from ..domain.scal import CapillaryParameters, CoreyParameters
+from ..domain.scal import CapillaryParameters, CoreyParameters, GasCoreyParameters
+from ..domain.scal_tables import (GasSaturationTable, GasSaturationTableSet,
+                                  SaturationTable, SaturationTableSet)
 from ..domain.structure import FaultReference, HorizonReference, RegionSet
 from ..domain.units import FIELD, METRIC
 from ..domain.tubing import TubingGeometry
@@ -288,6 +290,61 @@ def _tubing_or_none(data):
         segments=int(data.get("segments", 20)))
 
 
+def _all_fields(obj) -> dict:
+    """Sadə dataclass-ın BÜTÜN sahələri (Seans 46).
+
+    NİYƏ: əl ilə yazılmış sahə siyahıları köhnəlirdi — `FluidProperties`-ə
+    `gas_density` əlavə olunmuşdu, siyahıya yox, və o, səssizcə itirdi.
+    Oxuyanda `_known_fields` ilə cütdür.
+    """
+    import dataclasses
+    return {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj)}
+
+
+def _gas_scal_to_dict(params) -> Optional[dict]:
+    return None if params is None else _all_fields(params)
+
+
+def _gas_scal_from_dict(data: Optional[dict]):
+    return (None if data is None
+            else GasCoreyParameters(**_known_fields(GasCoreyParameters, data)))
+
+
+def _optional_array(values) -> Optional[list]:
+    return None if values is None else _array(values)
+
+
+def _scal_tables_to_dict(table_set) -> Optional[dict]:
+    """SWOF/SGOF/CSV cədvəlləri — Seans 46-ya qədər fayla YAZILMIRDI."""
+    if table_set is None:
+        return None
+    gas = isinstance(table_set, GasSaturationTableSet)
+    tables = {}
+    for region, table in table_set.tables.items():
+        if gas:
+            tables[str(region)] = {"sg": _array(table.sg), "krg": _array(table.krg),
+                                   "krog": _array(table.krog),
+                                   "pcog": _optional_array(table.pcog),
+                                   "name": table.name}
+        else:
+            tables[str(region)] = {"sw": _array(table.sw), "krw": _array(table.krw),
+                                   "kro": _array(table.kro),
+                                   "pc": _optional_array(table.pc),
+                                   "name": table.name}
+    return {"default_region": table_set.default_region, "tables": tables}
+
+
+def _scal_tables_from_dict(data: Optional[dict], gas: bool):
+    if data is None:
+        return None
+    table_cls, set_cls = ((GasSaturationTable, GasSaturationTableSet) if gas
+                          else (SaturationTable, SaturationTableSet))
+    tables = {int(region): table_cls(**item)
+              for region, item in data.get("tables", {}).items()}
+    return set_cls(tables=tables,
+                   default_region=int(data.get("default_region", 1)))
+
+
 def _known_fields(cls, data: dict) -> dict:
     """Yalnız dataclass-ın TANIDIĞI açarları buraxır.
 
@@ -507,10 +564,7 @@ class ProjectSerializer:
                     rock.compressibility_reference_pressure,
                 "permeability_tensor": _permeability_tensor_to_dict(rock.permeability_tensor),
             },
-            "fluids": _dataclass_to_dict(model.fluids, [
-                "water_viscosity", "oil_viscosity", "water_fvf", "oil_fvf",
-                "water_compressibility", "oil_compressibility",
-                "water_density", "oil_density"]),
+            "fluids": _all_fields(model.fluids),
             "property_maps": [_property_map(p) for p in model.property_maps.values()],
             "regions": {"region_id": _property_map(model.regions.region_id),
                         "names": {str(k): v for k, v in model.regions.names.items()}},
@@ -531,6 +585,9 @@ class ProjectSerializer:
                 "entry_pressure", "lambda_exponent", "max_pressure"]),
             "gas_capillary": _dataclass_to_dict(model.gas_capillary_parameters, [
                 "entry_pressure", "lambda_exponent", "max_pressure"]),
+            "gas_scal": _gas_scal_to_dict(model.gas_scal_parameters),
+            "scal_tables": _scal_tables_to_dict(model.scal_tables),
+            "gas_scal_tables": _scal_tables_to_dict(model.gas_scal_tables),
             "pvt": self._pvt_to_dict(model.pvt_table),
             "pvt_oil_branches": self._oil_branches_to_list(model.pvt_oil_branches),
             "units": model.units.name,
@@ -561,7 +618,8 @@ class ProjectSerializer:
             {int(k): v for k, v in data["regions"].get("names", {}).items()})
         return ReservoirModel(
             name=data["name"], grid=grid, geometry=geometry, rock=rock,
-            fluids=FluidProperties(**data["fluids"]),
+            fluids=FluidProperties(**_known_fields(FluidProperties,
+                                                   data["fluids"])),
             property_maps=maps, regions=regions,
             fault_references=[FaultReference(**f) for f in data.get("faults", [])],
             horizon_references=[HorizonReference(**h) for h in data.get("horizons", [])],
@@ -573,6 +631,11 @@ class ProjectSerializer:
             capillary_parameters=CapillaryParameters(**data.get("capillary", {})),
             gas_capillary_parameters=CapillaryParameters(
                 **data.get("gas_capillary", {})),
+            # Seans 46: köhnə fayllarda bu açarlar yoxdur → None (əvvəlki kimi)
+            gas_scal_parameters=_gas_scal_from_dict(data.get("gas_scal")),
+            scal_tables=_scal_tables_from_dict(data.get("scal_tables"), gas=False),
+            gas_scal_tables=_scal_tables_from_dict(data.get("gas_scal_tables"),
+                                                   gas=True),
             pvt_table=self._pvt_from_dict(data.get("pvt")),
             pvt_oil_branches=self._oil_branches_from_list(
                 data.get("pvt_oil_branches")),
@@ -728,48 +791,63 @@ class ProjectSerializer:
             "model_name": result.model_name,
             "grid_shape": list(result.grid_shape),
             "ooip": result.ooip,
+            "ogip": result.ogip,
             "steps": result.steps,
             "converged": result.converged,
             "message": result.message,
-            "series": {name: list(getattr(series, name)) for name in (
-                "time", "oil_rate", "water_rate", "water_injection_rate",
-                "cumulative_oil", "cumulative_water", "water_cut",
-                "average_pressure", "recovery_factor")},
+            # BÜTÜN sıralar — Seans 46-ya qədər qaz sıraları (gas_rate, GOR …)
+            # siyahıda yox idi və fayl açılanda itirdi
+            "series": {name: list(values)
+                       for name, values in _all_fields(series).items()},
             "well_oil_rate": {k: list(v) for k, v in result.well_oil_rate.items()},
             "well_water_rate": {k: list(v) for k, v in result.well_water_rate.items()},
             "well_water_injection_rate": {
                 k: list(v) for k, v in result.well_water_injection_rate.items()},
             "well_gas_injection_rate": {
                 k: list(v) for k, v in result.well_gas_injection_rate.items()},
+            "well_gas_rate": {k: list(v) for k, v in result.well_gas_rate.items()},
+            "well_bhp": {k: list(v) for k, v in result.well_bhp.items()},
+            "well_thp": {k: list(v) for k, v in result.well_thp.items()},
+            "well_control_mode": {k: list(v)
+                                  for k, v in result.well_control_mode.items()},
             "snapshots": ([{"time": s.time,
                             "pressure": _array(s.pressure),
-                            "water_saturation": _array(s.water_saturation)}
+                            "water_saturation": _array(s.water_saturation),
+                            "gas_saturation": _optional_array(s.gas_saturation)}
                            for s in result.snapshots] if include_snapshots else []),
         }
 
     @staticmethod
     def _result_from_dict(data: dict) -> SimulationResult:
         series = TimeSeries()
+        known = set(_all_fields(series))
         for name, values in data["series"].items():
-            setattr(series, name, list(values))
+            if name in known:
+                setattr(series, name, list(values))
         shape = tuple(data["grid_shape"])
         result = SimulationResult(
             model_name=data.get("model_name", ""),
             grid_shape=shape,
             series=series,
             ooip=data.get("ooip", 0.0),
+            ogip=data.get("ogip", 0.0),
             steps=data.get("steps", 0),
             converged=data.get("converged", True),
             message=data.get("message", ""))
         result.well_oil_rate = {k: list(v) for k, v in data.get("well_oil_rate", {}).items()}
         result.well_water_rate = {k: list(v) for k, v in data.get("well_water_rate", {}).items()}
         # Seans 45: köhnə layihə fayllarında bu açarlar yoxdur — boş qalır
-        for name in ("well_water_injection_rate", "well_gas_injection_rate"):
+        for name in ("well_water_injection_rate", "well_gas_injection_rate",
+                     "well_gas_rate", "well_bhp", "well_thp",
+                     "well_control_mode"):
             setattr(result, name, {k: list(v)
                                    for k, v in data.get(name, {}).items()})
         result.snapshots = [
             Snapshot(time=s["time"],
                      pressure=np.asarray(s["pressure"], float).reshape(shape),
-                     water_saturation=np.asarray(s["water_saturation"], float).reshape(shape))
+                     water_saturation=np.asarray(s["water_saturation"], float).reshape(shape),
+                     gas_saturation=(None if s.get("gas_saturation") is None
+                                     else np.asarray(s["gas_saturation"],
+                                                     float).reshape(shape)))
             for s in data.get("snapshots", [])]
         return result
