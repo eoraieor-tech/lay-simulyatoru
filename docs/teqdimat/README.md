@@ -10,7 +10,7 @@ yolu. Yeddi variant təklif olundu, hamısı hazırlandı.
 
 | # | Material | Link (claude.ai artifakt) | Mənbə bu qovluqda |
 |---|---|---|---|
-| — | İnteraktiv xəritə: iş axını + modul qrafiki | https://claude.ai/artifact/8DmUT7Qwhu1Zfi3dk6AifE | `xerite.html` |
+| — | İnteraktiv xəritə: iş axını + modul qrafiki (Seans 47: hər blokda ARDICILLIQ) | https://claude.ai/artifact/8DmUT7Qwhu1Zfi3dk6AifE | `xerite.html` |
 | 1, 3, 4 | Slayd dəsti, 18 slayd (nümunə hekayəsi, doğrulama, müqayisə) | https://claude.ai/artifact/8GC5g2DRyDasc4eWUdXR8T | `slaydlar/` |
 | 2 | «Zaman addımının içi» — Nyuton döngüsünün animasiyası | https://claude.ai/artifact/EPBLhf7YB6Tx1Dkvr97oFL | `zaman-addimi.html` |
 | 5 | Demo planı: 7 dəqiqəlik canlı ssenari, ehtiyat planı, suallar | https://claude.ai/artifact/KEaSKHUKS2D21dRqV64Rd5 | `demo-plani.html` |

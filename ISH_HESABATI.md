@@ -5503,3 +5503,25 @@ Bağlantılar: `docs/README.md`, `docs/nezeri_esaslar.md` (qarşılıqlı),
 `docs/teqdimat/README.md`.
 
 Kod DƏYİŞMƏYİB — yalnız `.md` faylları.
+
+### 8 · Əlavə (eyni seans): ardıcıllıq interaktiv xəritəyə köçürüldü
+
+Sahibkar: «aha əlavə et» — yəni §7-də yazılan icra ardıcıllıqları Seans
+44-ün interaktiv xəritəsinin blok izahlarına da düşsün.
+
+- `docs/teqdimat/xerite.html` — hər `FLOW` bloquna yeni `seq` sahəsi
+  əlavə olundu (**32 blokun hamısı**: giriş 7, geologiya 6, model 2,
+  fizika 6, diskretizasiya 2, mühərrik 3, nəticə 6).
+- Detal panelində (`showFlow`) düsturdan SONRA, fayl siyahısından ƏVVƏL
+  «Ardıcıllıq — nə nədən sonra» nömrəli siyahısı göstərilir; altında
+  `docs/is_axini_ardicilligi.md`-yə istinad var. `<ol class="seq">` üçün
+  stil əlavə edildi.
+- Artifakt EYNİ linkdə yeniləndi (Version 2):
+  https://claude.ai/artifact/8DmUT7Qwhu1Zfi3dk6AifE
+- Yoxlanıldı: repo nüsxəsi ilə yayımlanmış səhifə arasında yeganə fərq
+  artifakt xidmətinin öz sarğısıdır (doctype/head) — məzmun eynidir,
+  yəni repo nüsxəsi MƏNBƏDİR.
+
+⏳ Səhifə brauzerdə açılıb göz ilə yoxlanmayıb (bu mühitdə `node` yoxdur,
+JS sintaksisi avtomatik yoxlanıla bilmədi) — sahibkar linki açanda
+blokların izah panelinə baxsın.
