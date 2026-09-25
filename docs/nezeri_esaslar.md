@@ -1,6 +1,10 @@
 # Nəzəri əsaslar — hansı model hansı nəzəriyyə ilə işləyir
 
-**Yazılıb:** 25 sentyabr 2026 (Seans 47) · **Mənbə:** kodun özü (aşağıdakı
+**Yazılıb:** 25 sentyabr 2026 (Seans 47) · **Cütü:**
+[is_axini_ardicilligi.md](is_axini_ardicilligi.md) — eyni modellərin
+İCRA ARDICILLIĞI (nə vaxt, nədən sonra hesablanır).
+
+**Mənbə:** kodun özü (aşağıdakı
 fayl istinadları) və `docs/teqdimat/slaydlar/slides/models.html` cədvəli.
 
 Bu sənəd təqdimat slaydındakı «Hesablamanı hansı modellər aparır»

@@ -5461,3 +5461,45 @@ sənədləşdirilib. `QARARLAR.md`-a əlavə edilməli bir şey çıxmadı.
 
 Kod DƏYİŞMƏYİB — yalnız `.md` faylları. Test qaçırılmadı (son tam dəst:
 Seans 46, 2773 keçdi).
+
+### 7 · Əlavə (eyni seans): iş axını üzrə İCRA ARDICILLIĞI
+
+Sahibkar Seans 44-dəki interaktiv xəritəyə istinad etdi
+(`docs/teqdimat/xerite.html`, artifakt 8DmUT7Qwhu1Zfi3dk6AifE) və soruşdu:
+«bu hissələrdə hansı nəzəriyyələrdən hansı düsturlar hansı ardıcıllıqla
+necə işləyir».
+
+Yeni sənəd: **`docs/is_axini_ardicilligi.md`**. `nezeri_esaslar.md`
+mövzu üzrə düzülüb («bu düstur haradan gəlir»), bu isə İCRA yolu üzrə
+(«nə vaxt, nədən sonra, nəyin içində hesablanır»).
+
+Ardıcıllıqlar kodun icra yolundan çıxarıldı, təxmin edilmədi:
+`geology_service.build` (geologiya boru xətti və onun KRİTİK sırası —
+struktur səthlər qalan xassələrdən əvvəl), `implicit/engine.run`
+(addımın 10 addımlıq xarici sırası: rate payları → Nyuton → THP dövrəsi
+→ səth debiti → BHP limiti → qəbul → sıralar → adaptiv Δt),
+`implicit/newton.solve` + `implicit/residual.residual` (bir Nyuton
+iterasiyasının 14 addımı: PVT → kr → Pc → Φ → upstream → axın →
+akkumulyasiya → quyu → R → CNV/MB → J → daraltma → xətti həll → chop →
+line search), `impes_engine._solve_pressure` + `_update_saturation`
+(IMPES-in 12 addımı, cazibə/kapilyarın SAĞ TƏRƏFƏ keçməsi daxil),
+`three_phase_newton.solve`, `simulation_service.run` (THP post-prosesi),
+`history/optimizer` (ən xarici dövrə).
+
+Sənədə daxil edilən, ölçülmüş/oxunmuş vacib detallar:
+
+- Dəyişən keçid (Sg ↔ Rs) YALNIZ Nyuton yığılandan SONRA çağırılır —
+  hər iterasiyada çağırılsa hüceyrə dövr edir və yığılma olmur.
+- THP / səth debiti / BHP limiti dövrələri qalığı və Jakobianı DƏYİŞMİR,
+  yalnız bağlantının `mode`/`target`-ini dəyişib addımı yenidən həll edir.
+- Geologiyada struktur səthlər (TOP/BOTTOM) qalan xassələrdən ƏVVƏL
+  hesablanmalıdır, çünki 3D kriging hüceyrə mərkəzinin Z-ini işlədir.
+- `previous_fluid` Nyuton dövrəsindən ƏVVƏL bir dəfə hesablanır.
+- `coupled_newton.py` / `standard_well.py` defolt axında İŞLƏMİR
+  (koda baxıldı: yalnız şərh və testlərdə istinad var) — sənəddə ⏳ kimi
+  göstərildi.
+
+Bağlantılar: `docs/README.md`, `docs/nezeri_esaslar.md` (qarşılıqlı),
+`docs/teqdimat/README.md`.
+
+Kod DƏYİŞMƏYİB — yalnız `.md` faylları.

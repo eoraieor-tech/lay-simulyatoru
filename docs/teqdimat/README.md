@@ -19,6 +19,8 @@ yolu. Yeddi variant təklif olundu, hamısı hazırlandı.
 > Slayd 11-dəki «Hesablamanı hansı modellər aparır» cədvəlinin nəzəri
 > izahı: [../nezeri_esaslar.md](../nezeri_esaslar.md) (Seans 47) — hər
 > model üçün nəzəriyyə, kodda faktiki düstur, fərziyyə və hüdudlar.
+> «İş axını» tabının blokları üzrə icra ardıcıllığı:
+> [../is_axini_ardicilligi.md](../is_axini_ardicilligi.md).
 
 ⚠️ Artifaktlar **şəxsidir** — başqaları linki yalnız səhifənin «Share» menyusundan
 paylaşıldıqdan sonra aça bilər.

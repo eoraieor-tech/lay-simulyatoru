@@ -12,6 +12,7 @@ Bu qovluqda layihənin ayrı-ayrı mövzuları üzrə təfərrüatlı sənədlə
 | [mpfa_o_phase5b1.md](mpfa_o_phase5b1.md) | MPFA-O qlobal residual və stensil inteqrasiyası (Phase 5B-1) |
 | [teqdimat/](teqdimat/README.md) | Təqdimat materialları: slaydlar, xəritə, animasiya, icmal, demo planı (Seans 44) |
 | [nezeri_esaslar.md](nezeri_esaslar.md) | Nəzəri əsaslar: hər model hansı nəzəriyyə/korrelyasiya ilə işləyir (Seans 47) |
+| [is_axini_ardicilligi.md](is_axini_ardicilligi.md) | İş axını: hansı düstur hansı ardıcıllıqla hesablanır (Seans 47) |
 
 ## Gözlənilən mövzular
 
