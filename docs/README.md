@@ -13,6 +13,8 @@ Bu qovluqda layihənin ayrı-ayrı mövzuları üzrə təfərrüatlı sənədlə
 | [teqdimat/](teqdimat/README.md) | Təqdimat materialları: slaydlar, xəritə, animasiya, icmal, demo planı (Seans 44) |
 | [nezeri_esaslar.md](nezeri_esaslar.md) | Nəzəri əsaslar: hər model hansı nəzəriyyə/korrelyasiya ilə işləyir (Seans 47) |
 | [is_axini_ardicilligi.md](is_axini_ardicilligi.md) | İş axını: hansı düstur hansı ardıcıllıqla hesablanır (Seans 47) |
+| [diagrams/](diagrams/README.md) | Mermaid diaqramları: qatlar, məlumat axını, ardıcıllıq, Nyuton dövrəsi, domain (Seans 48) |
+| [../PROJECT_ANALYSIS.md](../PROJECT_ANALYSIS.md) | Layihənin tam texniki analizi, problemlər P-01…P-20, öyrənmə planı (Seans 48) |
 
 ## Gözlənilən mövzular
 

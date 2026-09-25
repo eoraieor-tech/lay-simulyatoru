@@ -5525,3 +5525,49 @@ Sahibkar: «aha əlavə et» — yəni §7-də yazılan icra ardıcıllıqları 
 ⏳ Səhifə brauzerdə açılıb göz ilə yoxlanmayıb (bu mühitdə `node` yoxdur,
 JS sintaksisi avtomatik yoxlanıla bilmədi) — sahibkar linki açanda
 blokların izah panelinə baxsın.
+
+
+## 26 sentyabr 2026 — Seans 48: layihənin tam texniki analizi
+
+Sahibkarın tələbi: layihənin arxitekturasını, iş mexanizmini, modellərini,
+kitabxanalarını, nəzəri əsaslarını, idarəetməsini, təhlükəsizliyini, testlərini
+ətraflı araşdırıb sənədləşdirmək; kodu dəyişməmək, fayl silməmək.
+
+### 1 · Nə edildi
+
+| Fayl | Məzmun |
+|---|---|
+| `PROJECT_ANALYSIS.md` (**yeni**) | 19 bölmə: metod və əmrlər, məqsəd, struktur, arxitektura, məlumat axını, 5 ssenari, texnologiyalar, modellər, nəzəriyyə, əsas funksiyalar, konfiqurasiya, təhlükəsizlik, testlər, problemlər P-01…P-20, təkliflər, öyrənmə planı, lüğət, açıq suallar |
+| `PROJECT_ANALYSIS_SUMMARY.md` (**yeni**) | Bir səhifəlik xülasə |
+| `docs/diagrams/` (**yeni**) | 5 Mermaid diaqramı + README |
+| `docs/README.md` | Cədvələ iki sətir |
+
+Kod DƏYİŞMƏYİB.
+
+### 2 · Ölçmələr
+
+- Tam test dəsti: **2761 keçdi, 1 atlandı, 1 xfailed, 0 uğursuz** (8 dəq 47 san).
+  Seans 46-dakı 2773-dən fərq (12) — `test_opm_import.py`-nin modul səviyyəsində
+  atlanmasıdır: bu venv-də `resdata` yoxdur. Reqressiya yoxdur.
+- Paketlər arası importlar AST ilə sayıldı: `domain` heç nədən asılı deyil;
+  iki pozuntu — `simulation → application.config` (4), `ui → simulation` (6).
+
+### 3 · Tapılan əsas problemlər (təfərrüat: `PROJECT_ANALYSIS.md` §14)
+
+- P-02 — `.imx` atomik yazılmır (`serialization.py:375`).
+- P-05 — `LinearSolverConfig` tam implicit mühərriklərdə işlədilmir (`implicit/engine.py:60,84-86`).
+- P-06 — mühərrik hər qaçışda iki dəfə qurulur (`main_window.py:2139`).
+- P-09 — FIM-də gizli `growth_factor + 0.35` (`implicit/engine.py:145`).
+- P-12 — köhnəlmiş sənədlər: `README.md` statusu, `io/grdecl.py` docstring-i, `version.py`, `tests/README.md` (1841 test).
+
+### 4 · Qərarlar
+
+Yeni texniki qərar YOXDUR — yalnız analiz. Problemlərin düzəldilməsi
+sahibkarın qərarına qalır.
+
+### 5 · Açıq qalanlar
+
+- ⏳ Coverage faizi ölçülməyib (`pytest-cov` yoxdur).
+- ⏳ Asılılıq zəiflikləri yoxlanmayıb (`pip-audit` yoxdur).
+- ⏳ P-11: «Müqayisə» tabı IMPES (lay həcmi) və FIM (səth) vurma sıralarını qarışdırırmı.
+- ⏳ Hansı P-xx düzəlişləri və hansı sıra ilə edilsin — sahibkarın qərarı.
