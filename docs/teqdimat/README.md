@@ -16,6 +16,10 @@ yolu. Yeddi variant təklif olundu, hamısı hazırlandı.
 | 5 | Demo planı: 7 dəqiqəlik canlı ssenari, ehtiyat planı, suallar | https://claude.ai/artifact/KEaSKHUKS2D21dRqV64Rd5 | `demo-plani.html` |
 | 6, 7 | İki səhifəlik icmal + terminlər lüğəti | https://claude.ai/artifact/3xGmWTWXQ3ttYsUvAJXdme | `icmal.html`, `IMEX-2D_icmal.pdf` |
 
+> Slayd 11-dəki «Hesablamanı hansı modellər aparır» cədvəlinin nəzəri
+> izahı: [../nezeri_esaslar.md](../nezeri_esaslar.md) (Seans 47) — hər
+> model üçün nəzəriyyə, kodda faktiki düstur, fərziyyə və hüdudlar.
+
 ⚠️ Artifaktlar **şəxsidir** — başqaları linki yalnız səhifənin «Share» menyusundan
 paylaşıldıqdan sonra aça bilər.
 

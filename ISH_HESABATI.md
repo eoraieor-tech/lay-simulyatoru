@@ -5390,3 +5390,74 @@ sonda silindi (əvvəl mövcud deyildi).
 tam dəst   2773 keçdi, 1 xfailed, 10 xəbərdarlıq (13 dəq 18 san)
 yeni       test_project_restore 7 · test_panel_state 12 · test_session 7
 ```
+
+
+## 25 sentyabr 2026 — Seans 47: modellərin nəzəri əsasları sənədləşdirildi
+
+Sahibkarın sualı: «modelləri hazırlayıb atmışdın, indi onların tam hansı
+nəzəriyyələrə əsasən işlədiyini de». İstinad — Seans 44-də hazırlanan
+təqdimat slaydı `docs/teqdimat/slaydlar/slides/models.html` («Hesablamanı
+hansı modellər aparır» cədvəli).
+
+### 1 · Nə edildi
+
+Yeni sənəd: **`docs/nezeri_esaslar.md`** — slayd cədvəlinin genişləndirilmiş
+forması. Hər sətir üçün dörd şey: (1) nəzəriyyə və ilkin mənbə (müəllif, il),
+(2) kodda FAKTİKİ yazılmış düstur, (3) fərziyyələr və hüdudlar, (4) fayl.
+
+Bölmələr: əsas üç nəzəriyyə (Darcy, kütlə saxlanması, black-oil) ·
+geostatistika (variogram, anizotropluq, Kriging-BLUE, IDW, log-çevirmə,
+SGS, SIS) · PVT (Standing, Vazquez-Beggs, Beggs-Robinson, McCain/Meehan,
+Sutton, Beggs-Brill, Lee-Gonzalez-Eakin, Pb-də şaxələnmə, deck yolu) ·
+SCAL (Corey, SWOF/SGOF, Stone II, Brooks-Corey Pc) · diskretizasiya
+(sonlu həcm, TPFA harmonik orta, upstream, MPFA-O) · mühərriklər (IMPES +
+CFL, backward Euler + Nyuton, CNV/MB, dəyişən keçid, adaptiv Δt, CPR,
+ILU/CG) · quyular (Peaceman 1978/1983, quyu qaydaları Q-19/21/24/33,
+Darcy-Weisbach + Chen 1979, nodal analiz IPR∩VLP) · ilkin şərtlər
+(hidrostatik tarazlıq, keçid zonası, qaz papağı, canlı neft) ·
+doğrulama (Buckley-Leverett + Welge, SPE1) · uyğunlaşdırma (NRMSE,
+Nelder-Mead/Powell/DE, Tornado və elastiklik) · **modelin nəzəri
+hüdudları** (11 sətirlik cədvəl: izotermik, Rv=0, kompozisiya yox,
+diffuziya yox, tək məsaməlilik, geomexanika yox, EOR yox, sürüşmə yox,
+TPFA ardıcıllığı, ədədi dispersiya) · slayd sətri → nəzəriyyə → fayl
+cədvəli.
+
+Bağlantılar: `docs/README.md` cədvəlinə sətir əlavə olundu;
+`docs/teqdimat/README.md`-dən slayd 11-in izahına istinad verildi.
+
+### 2 · Mənbə — nə oxundu
+
+Düsturlar yaddaşdan YAZILMADI, hər biri kodun özündən götürüldü:
+`pvt/correlations.py`, `pvt/black_oil.py`, `geology/{variogram,
+interpolation, sgs, facies, anisotropy, gaussian_transform}.py`,
+`domain/{scal, scal_tables}.py`, `simulation/{stone_relperm, capillary,
+discretization, impes_engine, well_model, linear_solver, analytical}.py`,
+`simulation/implicit/{residual, three_phase_residual, three_phase_state,
+newton, cpr, time_stepping}.py`, `simulation/wellbore/{friction, holdup,
+traverse, thp_control}.py`, `simulation/initialization/equilibrium.py`,
+`discretization/mpfa_o.py`, `history/{optimizer, mismatch, sensitivity}.py`.
+
+Kodda olmayan heç nə əlavə edilmədi. Kodun özündə açıq yazılmış
+sadələşdirmələr (no-slip holdup, sürətlənmə həddinin olmaması, Rv=0,
+TPFA-nın K-ortoqonallıq şərti, ədədi dispersiya) sənəddə də AÇIQ
+saxlanıldı.
+
+### 3 · Qərarlar
+
+Yeni texniki qərar YOXDUR — mövcud fizika dəyişməyib, yalnız
+sənədləşdirilib. `QARARLAR.md`-a əlavə edilməli bir şey çıxmadı.
+
+### 4 · Açıq qalanlar
+
+- ⏳ Orijinal məqalələrin səhifə/tənlik nömrələri yazılmayıb — kodda
+  əksərən yalnız müəllif və il var (istisna: Chen 1979). Diplom üçün
+  biblioqrafiya ayrıca hazırlanmalıdır.
+- ⏳ `docs/README.md`-də gözlənilən `riyaziyyat.md` (Jakobianın analitik
+  törəmələrinin tam çıxarılışı, dəyişən keçid halı daxil) hələ yoxdur.
+- ⏳ MPFA-O lokal sisteminin tam riyazi çıxarılışı bu sənəddə
+  təkrarlanmır — `docs/mpfa_o_phase5a.md`-dədir.
+
+### 5 · Yoxlama
+
+Kod DƏYİŞMƏYİB — yalnız `.md` faylları. Test qaçırılmadı (son tam dəst:
+Seans 46, 2773 keçdi).
