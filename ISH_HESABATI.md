@@ -5571,3 +5571,47 @@ sahibkarın qərarına qalır.
 - ⏳ Asılılıq zəiflikləri yoxlanmayıb (`pip-audit` yoxdur).
 - ⏳ P-11: «Müqayisə» tabı IMPES (lay həcmi) və FIM (səth) vurma sıralarını qarışdırırmı.
 - ⏳ Hansı P-xx düzəlişləri və hansı sıra ilə edilsin — sahibkarın qərarı.
+
+
+## 27 sentyabr 2026 — Seans 49: nəzəriyyələr üzrə Word bələdçisi
+
+Sahibkarın tələbi: layihədə işlədilən bütün elmi, fiziki, riyazi, statistik,
+mühəndislik və proqramlaşdırma nəzəriyyələrini real koddan yoxlayıb öyrədici
+formada **yalnız bir Word sənədində** vermək; əlavə .md/.txt fayl yaratmamaq.
+
+### 1 · Nə edildi
+
+- **`PROJECT_THEORY_GUIDE.docx`** (yeni, 93 səhifə): üz qabığı, avtomatik
+  mündəricat, 10 bölmə. 40 nəzəriyyənin hər biri 9 hissəli şablonla
+  (nədir, niyə, düstur + dəyişənlər cədvəli, harada, real kod + sətir-sətir
+  izah, iş axınında yeri, rəqəmsal nümunə, səhv tətbiqin nəticəsi, əlaqəli
+  nəzəriyyələr). Nəzəriyyə ↔ kod cədvəli, 3 diaqram, öyrənmə planı, lüğət,
+  status xülasəsi, yekun yoxlama cədvəli.
+- 60 kod parçası real fayllardan anchor sətri ilə avtomatik kəsildi
+  (tapılmasaydı qurulma dayanardı). Rəqəmsal nümunələr layihənin öz
+  funksiyaları ilə hesablandı (Nyutonun x² − 2 nümunəsi istisna — illüstrativ,
+  mətndə deyilib).
+- Alət: `python-docx` (ayrıca skretçpəd venv-ində; layihə venv-inə
+  toxunulmadı), diaqramlar matplotlib, mündəricat və PDF yoxlaması Word 16
+  (COM) ilə. Generator skriptləri repoya düşmədi.
+
+### 2 · Tapılan uyğunsuzluqlar (kod DƏYİŞDİRİLMƏDİ)
+
+- ⏳ `pvt/correlations.py::gas_fvf()` — Bg öz docstring düsturundan
+  **+1.29 %** böyükdür (p = 200 bar, γg = 0.75, T = 70 °C-də ölçüldü; əlavə
+  ≈1.01325 vuruğu). Yalnız korrelyasiya yolunun qaz fazası.
+- ⏳ `stone_relperm.py` modul şərhi «Stone II mənfi kro-nu riyazi aradan
+  qaldırır» deyir, kod isə `np.clip` ilə kəsir — şərh dəqiq deyil.
+- ⏳ `history/mismatch.py::_model_curve()` BHP müşahidəsini «nəticədə
+  saxlanılmır» deyə atlayır, halbuki `SimulationResult.well_bhp` var.
+- Stone I, async, paralel hesablama, enerji tənliyi kodda YOXDUR
+  (axtarışla təsdiqləndi) — sənəddə «Layihədə təsdiqlənmədi» bölməsində.
+
+### 3 · Qərarlar
+
+Yeni texniki qərar yoxdur. Uyğunsuzluqların düzəldilməsi sahibkarın qərarıdır.
+
+### 4 · Yoxlama
+
+`.docx` ZIP bütövlüyü ✔ · Word ilə açıldı, 93 səhifə ✔ · TOC yeniləndi ✔ ·
+3 diaqram ✔ · 429 başlığın hamısında məzmun ✔ (avtomatik yoxlandı).
