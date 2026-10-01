@@ -5874,3 +5874,248 @@ Yeni texniki qərar yoxdur (`QARARLAR.md` dəyişmədi). Mərhələ statusu dəy
 Kod dəyişmədiyi üçün test dəsti İŞLƏDİLMƏDİ (yalnız toplanma: 2762 test, xətasız).
 Dörd commit: artefakt teqləri · README-lər · tarixi sənədlər · cari vəziyyət
 sənədləri; beşinci — bu bölmə.
+
+---
+
+## 1 oktyabr 2026 — Seans 52: proqramın özü yoxlandı — nə işləyir, nə işləmir
+
+Sahibkarın tələbi: «indi hansı işlər yarımçıqdır, hansı problemlər var — həm
+md fayllarını oxu, həm də özün yoxla: proqramda nə işləmir, nə xətalıdır».
+Sənədlərdən çıxan «qalan iş» siyahısı Seans 50-dədir və dəyişməyib; bu seansın
+yeni hissəsi **ölçmədir** — proqram işlədildi, hər iddia ya təkrar yaradıldı,
+ya da ölçüldü.
+
+**Kod dəyişdirilmədi.** Bütün yoxlama skriptləri repodan kənarda, müvəqqəti
+qovluqda işlədi; pəncərə sınaqlarında `IMEX2D_DATA_DIR`, `QSettings` və log
+faylı müvəqqəti qovluğa yönləndirildi ki, sahibkarın bərpa faylı, «son
+layihələr» siyahısı və `logs/imex2d.log` dəyişməsin.
+
+### 1 · Nə yoxlandı
+
+| Yoxlama | Nəticə |
+|---|---|
+| Tam test dəsti (`pytest`) | **2761 keçdi, 1 atlandı** (`resdata` yoxdur), **1 xfailed, 0 uğursuz** — 1022 s (paralel yük altında) |
+| `pyflakes imex2d` | 1 təyin olunmamış ad (`domain/pvt.py:64-65` — `Optional` import edilməyib; `from __future__ import annotations` sayəsində işə düşmür), 11 istifadəsiz import |
+| Pəncərəsiz 35 ssenari (servis səviyyəsi) | hamısı işlədi — siyahı §2-də |
+| Real pəncərə (`MainWindow`) ilə gəzinti | 13 tab, 8 bölmə; işə salma, bütün tablar, hər iki 3D motor, kəsik, oynatma, günlük tab, bütün menyu ixracları, saxla→aç→yenidən işlət, validasiya, tornado, GRDECL idxalı — işləyir. **Bir çökmə tapıldı** (§3, X-1) |
+| Sahibkarın layihəsi `layihe.YOXLANIS 1.imx` | açılır, yenidən hesablananda saxlanmış nəticə ilə **bit-bit eyni** (§4) |
+| SPE1CASE2 ↔ OPM Flow | yenidən ölçüldü (§6) |
+
+### 2 · İşləyənlər (ölçülüb)
+
+Servis səviyyəsində: IMPES defolt 41×41, 1500 gün (**RF 16.84 %, 4314 addım** —
+etalonla eyni) · tam implicit TPFA (81 addım, RF 16.59 %) · MPFA-O · PVT
+korrelyasiyası (IMPES və implicit) · üç fazalı Pb = 240 və 300 · üç fazalı
+41×41 1500 gün (89 addım, 1 təkrar) · 3D + qaz papağı + tarazlıq · Pcow + Pcog ·
+3D heterogen · THP iki və üç fazalı · RATE + BHP limiti · səth debiti hədəfi ·
+qaz vurulması · `numune_grid.GRDECL` idxalı · `numune_quyular.csv` → Kriging →
+41×41×3 (**RF 57.80 %** — təqdimat rəqəmi ilə eyni) · faylar · cədvəl SCAL ·
+`.imx` saxla→aç→yenidən işlət (bit-bit eyni) · CSV / JSON / günlük CSV / PDF /
+Eclipse deck ixracı · history matching (uyğunsuzluq 16.564 → 0.464) + tornado.
+
+Dəstəklənməyən birləşmələr səssiz yox, **aydın mesajla** rədd olunur: THP + IMPES,
+qazsız modeldə qaz vurucusu, üç fazalı + MPFA-O, IMPES + MPFA-O.
+
+Pəncərədə: defolt hesablama 36.8 s; ixraclar (CSV, JSON, günlük, PDF, Eclipse,
+grid şəkli, 3D şəkil, GIF) fayl yaradır; üç fazalı layihə saxlanıb açılanda
+panellər və RF eynidir; tornado 8 parametr, uğursuz 0.
+
+### 3 · Tapılan xətalar
+
+#### X-1 · Nəticə ekranda ikən grid ölçüsü dəyişsə proqram ÇÖKÜR (yeni, ən ciddi)
+
+Təkrar yaratma (hər biri ayrı prosesdə, 5-dən 4-ü çökdü):
+
+| Ssenari (əvvəlcə hesablama işlədilib, nəticə ekrandadır) | Nəticə |
+|---|---|
+| NX 41 → 40 | proses dayandı, çıxış kodu `0xC0000409` |
+| NZ 1 → 2 | eyni |
+| başqa ölçülü layihənin açılması (41×41 → 50×50) | eyni |
+| GRDECL idxalı | eyni |
+| məsaməliliyin dəyişdirilməsi (grid eyni) | proqram sağ qaldı |
+
+Səbəb (stderr-dəki iz):
+
+```
+main_window.py:1772  rebuild_model → self.update_map()
+main_window.py:2237  update_map    → self.map_renderer.draw(..., snapshot, ...)
+renderers.py:234     slice_of      → np.asarray(flat_or_grid).reshape(shape3d)[k]
+ValueError: cannot reshape array of size 1681 into shape (1,41,40)
+```
+
+`rebuild_model()` grid dəyişəndə `self.result`-ı təmizləmir; `update_map()`
+köhnə nəticənin anını (1681 hüceyrə) yeni gridin formasına salmağa çalışır.
+İstisna Qt slotunun içində qalxır; `app.py`-də qlobal `sys.excepthook`
+olmadığı üçün PyQt5 prosesi `qFatal` ilə dayandırır. **İstifadəçi heç bir
+mesaj görmür, `logs/imex2d.log`-a heç nə yazılmır** — iz yalnız stderr-dədir
+(pəncərə `pythonw` ilə açılıbsa, heç yerdə).
+
+Windows hadisə jurnalında bu kompüterdə eyni imzalı (`python.exe`,
+`Qt5Core.dll`, `0xc0000409`) çökmələr əvvəl də var: 31 avqust (4 dəfə),
+3, 15 və 17 sentyabr 2026. Onların eyni səbəbdən olduğu **sübut olunmayıb** —
+imza slotdakı istənilən tutulmamış istisna üçün eynidir.
+
+Yan təsir: çökmədən əvvəl saxlanmamış iş itir (bərpa faylı yalnız son uğurlu
+yazılışı saxlayır).
+
+#### X-2 · Üç fazalı Nyuton: geri-izləmə əsas dövrə ilə uyğun deyil (yeni səbəb)
+
+`three_phase_newton.py::_solve_inner` upstream istiqamətlərini addımın
+əvvəlində dondurur (`reference_upstream`) və əsas dövrədə `compute_residual`-a
+ötürür. `_damped_update` (sətir 327–362) isə sınaq vəziyyətinin qalığını
+**`reference_upstream`-siz** hesablayır — yəni sınaq başqa (dondurulmamış)
+tənliyi ölçür.
+
+Ölçmə (sahibkarın modeli, Maks. Δt = 20 gün):
+
+* yığılmayan hər cəhddə son CNV nisbətləri **düz 0.969** (= 1 − 1/32): geri-izləmə
+  6 yarıya bölmədən sonra addımın 1/32-ni götürür və 25 iterasiya belə bitir.
+  700 gündə 105 cəhddən 25-i belədir;
+* həmin nöqtədə Jakobian **düzgündür** (dondurulmuş upstream ilə sonlu fərqə
+  qarşı nisbi xəta: təzyiq 1.7e-10, Sw 4.1e-10, Rs 7.3e-05) və geri-izləməsiz
+  adi Nyuton **4 iterasiyada** CNV 1.7e+01 → 6.0e-14 enir. Deməli ilişmə
+  Jakobiandan yox, geri-izləmədəndir;
+* boşa gedən iterasiya (yığılmayan cəhdlərdəki): 400 gündə 408-dən **250**,
+  1500 gündə 1893-dən **1305 (69 %)**; qaz papağı nümunəsində (15×15×3, 400 gün)
+  2004-dən 1375.
+
+Təcrübə (yalnız proses daxilində əvəzləmə, kod dəyişmədi) — sınaq qalığına
+eyni dondurulmuş upstream verildi:
+
+| Model | İndi | Uyğun geri-izləmə ilə |
+|---|---|---|
+| Sahibkarın modeli, 400 gün | 32.6 s · 42 addım · 10 təkrar · RF 11.6094 | 17.0 s · 34 addım · 8 təkrar · RF 11.6019 |
+| Sahibkarın modeli, 1500 gün | 149.6 s · 155 addım · 56 təkrar · RF 33.8603 | 124.1 s · 146 addım · **73** təkrar · RF 33.8567 |
+| 15×15×3 + qaz papağı, 400 gün | 58.7 s · 151 addım · 58 təkrar · RF 40.7458 | 15.9 s · 70 addım · 18 təkrar · RF 41.3515 |
+| 41×41, Pb = 240, 1500 gün | 12.0 s · 89 addım · 1 təkrar | 11.9 s · eyni nəticə |
+
+**Bu, bir sətirlik düzəliş DEYİL:** 1500 günlük qaçışda təkrarlar azalmır,
+artır (56 → 73). Orada ikinci uğursuzluq növü üzə çıxır — Δt = 20 gündə CNV
+hər iterasiyada təxminən 2 dəfə BÖYÜYÜR (maks. Sw ≈ 0.748, yəni 1 − Sor = 0.75
+sərhədində). Bunun səbəbi ⏳ ölçülməyib. Üstəlik qaz papağı nümunəsində RF
+40.75 → 41.35 dəyişir (zaman addımı fərqli olduğu üçün) — düzəliş etalon
+rəqəmlərini tərpədəcək.
+
+**Təkzib olunan fərziyyə:** «təkrarların səbəbi RATE quyusu PO4-dür (TB-1)».
+400 gün, Maks. Δt = 20: PO4 BHP-yə çevriləndə təkrarlar azalmadı (45 addım /
+12 təkrar; RATE ilə 42 / 10), PO4 tam söndürüləndə 41 / 9.
+
+Əlavə ölçmələr (eyni 400 gün): qaz fazası söndürülmüş eyni model 2.6 s
+(28 addım, 0 təkrar), üç fazalı 41.9 s. 150 günlük profildə üç fazalı vaxtın
+55 %-i (15.8 s-dən 8.7 s) SuperLU birbaşa həllindədir (`implicit/linear.py`).
+
+#### X-3 · İki fazalı Nyuton nümunə SCAL cədvəli ilə donur (yeni)
+
+21×21 five-spot, 600 gün, tam implicit:
+
+| | Addım | Nyuton cəhdi | Yığılmayan |
+|---|---|---|---|
+| Corey (cədvəlsiz) | 36 | 36 | **0** |
+| `numune_scal.csv` cədvəli | 66 | 99 | **33** |
+
+Yığılmayan cəhdlərdə CNV 20 iterasiya boyunca **dəyişmir** (nisbət düz 1.000,
+məs. 1.8e-02 → 1.8e-02) — hər qəbul olunan addım əvvəlcə bir dəfə uğursuz olur.
+Nəticə alınır (RF 19.67 %), amma iterasiyaların üçdə biri boşa gedir. Səbəb ⏳
+ölçülməyib (namizəd: cədvəlin hissə-hissə xətti olması — törəmə düyündə sıçrayır;
+yoxlanılmayıb).
+
+#### Əvvəlki tapıntıların təsdiqi (hamısı bu seansda ölçüldü)
+
+| # | Nə | Ölçmə |
+|---|---|---|
+| P-02 | `.imx` atomik yazılmır | `save()` müvəqqəti fayl + `os.replace` işlətmir |
+| P-05 | `LinearSolverConfig` tam implicit mühərrikdə təsirsizdir | tolerans 1e-8 → 0.5, iterasiya 200 → 1: RF 39.9591205755 = 39.9591205755 |
+| P-06 | mühərrik iki dəfə qurulur | `run_simulation()` əvvəl yoxlama üçün `create_engine` çağırır, sonra işçi yenidən qurur |
+| P-09 | gizli artım əmsalı | `SimulationConfig.growth_factor = 1.15`, implicit mühərrik 1.5 işlədir |
+| P-15 | log sətirlərində tarix yoxdur | `logs/imex2d.log` |
+| P-18 | korlanmış `.imx` | `project` açarı yoxdursa `KeyError`, kəsilmiş faylda `EOFError` — heç biri `ProjectFileError`-a bükülmür |
+| Seans 49 | `gas_fvf()` | p = 200 bar: kod 4.966667e-03, standart düstur 4.901719e-03 — nisbət **1.01325** (+1.32 %) |
+| Seans 49 | history matching BHP müşahidəsini saymır | `history/mismatch.py` `well_bhp` sırasını oxumur |
+| Seans 51 | koddakı köhnə mətnlər | `stone_relperm.py` şərhi, `io/grdecl.py` docstring-i, `version.py` (v69) |
+
+Kiçik, yeni:
+
+* IMPES xətti həlledicisi `fallback_to_direct=False` olanda yığılmamış KQ
+  nəticəsini səssiz qəbul edir: tolerans 0.5 + 1 iterasiya ilə RF 41.83 → **165.50 %**,
+  `converged=True`. Pəncərədən çatmaq olmur (`main_window.py:2213` həmişə defolt
+  `LinearSolverConfig()` verir) — yalnız skriptdən.
+* GRDECL `n*value` ölçü yoxlamasından ƏVVƏL açılır: 2×2×1 grid üçün
+  `30000000*0.2` 1.5 s-də 30 milyon element yaradır, sonra `GrdeclError` verir.
+* `app.py`-nin docstring-i köhnədir («PVT modulu yazılanda…»).
+
+**Düzəlmiş çıxan:** köhnə logdakı `update_wells` `IndexError`-u — `vtk_volume.py`
+indi perforasiyaları grid sərhədinə görə süzür.
+
+### 4 · Sahibkarın layihəsi (`layihe.YOXLANIS 1.imx`)
+
+50×50×1, 5 quyu (PO1/PO2/PO3 — BHP 245/244/246; PO4 — RATE 247; INJ1 — BHP 305),
+üç fazalı, Pb = 180, ilkin Rs = 100 əl ilə, Maks. Δt = 0.1, 50 gün.
+
+* Öz ayarları ilə yenidən hesablama: 47.6 s, 501 addım, 1 təkrar, **RF 2.133090** —
+  faylda saxlanmış nəticə ilə bit-bit eyni.
+* Mişar dişi (rəqs) yoxdur: yataq neft debitində və orta təzyiqdə istiqamət
+  dəyişməsi 0; mənfi debitli quyu yoxdur.
+* Maks. Δt = 20 ilə eyni 50 gün: 12.9 s, 16 addım, 4 təkrar, RF 2.097887
+  (zaman addımından asılılıq: −0.035 mütləq %).
+* Diaqnostikanın xəbərdarlığı: SW xəritəsi modeldə var, ilkin şərtlərdə
+  işlədilmir (OOIP skalyar Sw = 0.300 ilə hesablanır).
+
+Yəni sahibkarın öz ayarlarında X-2 demək olar görünmür (1 təkrar); Δt
+böyüdüləndə və ya müddət uzananda üzə çıxır.
+
+### 5 · Yarımçıq işlər
+
+Seans 50-nin siyahısı dəyişməyib: B7 (SPE1-in dörd namizədi N-1…N-4 ölçülməyib,
+etalon faylı yoxdur, CASE1 təxirə salınıb, uçdan-uca reqressiya yazılmayıb,
+`pytest-xdist`), TB-1…TB-3, MPFA-O boşluqları (üç fazalı, fay, ACTNUM, Dirichlet),
+THP boşluqları (VFPPROD, slip, RATE quyusunda THP), tarazlıqda Pcog, iki fazalı
+Eclipse ixracı, UI boşluqları (`FaciesPanel` qoşulmayıb, varioqram parametrləri),
+`docs/README.md`-dəki altı sənəd, sahibkarın qərarını gözləyənlər (Q-08,
+`b2a795e`, P-xx sırası, `berpa/` və `standard_well`).
+
+### 6 · SPE1CASE2 yenidən ölçüldü
+
+Etalon fayllar yenidən endirildi (`SPE1CASE2.DATA` sha256 `f3de3d06…c249`),
+`tools/spe1_compare.py` işlədildi: **376 addım, 145 təkrar, 103.5 s**.
+
+| Kəmiyyət | Bizdə | OPM Flow | Fərq |
+|---|---|---|---|
+| Qaz cəbhəsi, blok 300 | 1161-ci gün | 1307-ci gün | **−146 gün** |
+| FOPR < 19 900 STB/gün | 1382-ci gün | 1550-ci gün | −168 gün |
+| FGOR, 1034-cü gün | 1.785 | 1.280 | +39.5 % |
+| FOPR, 3650-ci gün | 5125 | 5733 | −10.6 % |
+| WBHP INJ, 1-ci gün | 8146 | 8082 | +0.8 % |
+| WBHP PROD, 1034-cü gün | 3994 | 4013 | −0.5 % |
+
+~145 günlük fərq yerindədir. Rəqəmlər Seans 43-dəkindən bir qədər fərqlidir
+(orada 375 addım, FOPR 5176, WBHP 3965 / 8173). O vaxtdan `imex2d/simulation`-da
+yeganə dəyişiklik `334fda8`-dir (vurucular üzrə debitin yazılması); fərqin
+səbəbi ⏳ ölçülmədi.
+
+145 təkrar X-2 ilə əlaqəli ola bilər — ⏳ ölçülməyib.
+
+### 7 · Qərarlar
+
+Yeni texniki qərar yoxdur (`QARARLAR.md` dəyişmədi). Heç bir xəta düzəldilmədi —
+sahibkar yoxlama istədi, düzəliş yox. `ROADMAP.md`-ə X-1…X-3 «açıq xətalar»
+cədvəli əlavə olundu; `TEHVIL_TESLIM.md`, `README.md` bu seansa istinad edir.
+
+### 8 · Açıq qalanlar / sahibkara suallar
+
+- ⏳ **X-1 düzəldilsinmi?** Təklif: `rebuild_model()` grid forması dəyişəndə
+  köhnə nəticəni təmizləsin (və ya `update_map()` uyğunsuz anı çəkməsin) +
+  `app.py`-də qlobal `sys.excepthook` — istisna loga yazılsın, istifadəçiyə
+  mesaj göstərilsin, proqram bağlanmasın.
+- ⏳ X-2: ikinci uğursuzluq növünün (Sw ≈ 1 − Sor yaxınlığında CNV-nin böyüməsi)
+  səbəbi; düzəliş etalon rəqəmlərini dəyişəcək — yeni qərar (Q-37) tələb edir.
+- ⏳ X-3-ün səbəbi.
+- ⏳ SPE1 rəqəmlərinin Seans 43-dən kiçik fərqi.
+- ⏳ Seans 51-dən qalan: koddakı üç köhnə mətn.
+- İş ağacındakı `PROJECT_THEORY_GUIDE.docx` (dəyişib) və `gunluk.csv`
+  (izlənmir) — toxunulmadı.
+
+### 9 · Yoxlama
+
+Tam test dəsti işlədildi (§1). Kod dəyişmədiyi üçün `graphify update` lazım
+olmadı. Bu seansın bütün rəqəmləri bu kompüterdə (Windows 11, Python 3.14.7)
+ölçülüb.
