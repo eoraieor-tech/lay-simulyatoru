@@ -5615,3 +5615,153 @@ Yeni texniki qərar yoxdur. Uyğunsuzluqların düzəldilməsi sahibkarın qəra
 
 `.docx` ZIP bütövlüyü ✔ · Word ilə açıldı, 93 səhifə ✔ · TOC yeniləndi ✔ ·
 3 diaqram ✔ · 429 başlığın hamısında məzmun ✔ (avtomatik yoxlandı).
+
+
+## 1 oktyabr 2026 — Seans 50: bütün sənədlər oxundu — qalan işlərin vahid siyahısı
+
+Sahibkarın tələbi: layihənin bütün `.md` fayllarını oxuyub hansı işlərin
+qaldığını demək. Kod və mövcud sənədlər DƏYİŞMƏDİ — yalnız bu bölmə əlavə olundu.
+
+### 1 · Nə oxundu
+
+İzlənən 47 `.md` faylının hamısı, tam (kök qovluq, `docs/`, `docs/diagrams/`,
+`docs/teqdimat/`, `tests/README.md`, `berpa/A7_qaz_fazasi/MENBE.md`).
+Oxunmayan: `graphify-out/**/GRAPH_REPORT.md` (generasiya olunur, `.gitignore`-da).
+Köhnə modul sənədlərindəki «qalan iş» bəndlərinin bir neçəsi koda qısa
+axtarışla yoxlandı (aşağıda «yoxlandı» ilə işarələnib); qalanları sənədin
+yazdığı kimi götürülüb.
+
+### 2 · Ümumi vəziyyət
+
+İcra planının B1–B6 blokları bitib, M1–M8 meyarlarından yeganə natamamı M5-dir
+(RATE quyusunda THP hesablanmır). Aktiv blok **B7 — yekun doğrulama**dır.
+Seans 44–49 yalnız sənəd/təqdimat/UI rahatlığı işləri idi; fizikada açıq qalan
+əsas iş Seans 43-dən bəri dəyişməyib.
+
+### 3 · Qalan işlər
+
+**A · B7 (aktiv blok)**
+
+- SPE1CASE2-nin qalan fərqi: qaz ~145 gün tez gəlir (FGOR > 2: 1132 ↔ 1276 gün).
+  Dörd namizədin heç biri ölçülməyib — N-1 şaquli axın/cazibə sıxlığı, N-2
+  upstream çəkiləməsi, N-3 istismarçıda qazın bölünməsi, N-4 Rs artımının
+  sürəti (`SPE1.md` §8.2).
+- SPE1 etalon (golden) faylı yazılmayıb (Q-31 Qərar 7; yoxlandı: `tests/golden/`-da
+  yalnız `bl_1d`, `five_spot`, `five_spot_small`).
+- SPE1CASE1 (`DRSDT 0`, G8) — təxirə salınıb.
+- B7 bənd 1 — uc-uca ssenari (corner-point + MPFA-O + üç faza + THP) reqressiya
+  testi kimi yazılmayıb; planda yazıldığı formada indi mümkün də deyil, çünki
+  MPFA-O üç fazalı mühərriklə işləmir (yoxlandı: `simulation_service.py:303`).
+- B7 bənd 4 — test dəstinin paralelləşdirilməsi (`pytest-xdist`) edilməyib
+  (yoxlandı: `requirements*.txt`-də yoxdur).
+
+**B · Texniki borc (ROADMAP)**
+
+- TB-1 — üç fazalı RATE istismarçısının quyu Jakobianı, xəta 0.4893.
+- TB-2 — üç fazalı axın Jakobianının təzyiq sütunu, 0.03–0.19; mənbə ⏳.
+- TB-3 — `_saturation_pressure_slope`, yalnız korrelyasiya yolunda qalır.
+- `implicit/standard_well.py` (yatmış kod) Q-33 vurucu qaydasına uyğunlaşdırılmayıb.
+- OPM-in defolt üç fazalı kro modeli əlavə edilməyib (su hərəkət edən modellərdə
+  fərq 50 %-ə çatır).
+
+**C · Fizika və mühərrikdə açıq boşluqlar**
+
+- MPFA-O: üç fazalı mühərrik, fay və ACTNUM ilə işləmir; Dirichlet sərhəd
+  qalıq qatına ötürülmür.
+- Lülə/THP: VFPPROD idxalı, Beggs-Brill sürüşməsi, sürətlənmə həddi, RATE
+  quyusunda THP, vurucuda THP, əyri quyu (MD→TVD), Vogel tipli IPR; hidravlika
+  hələ ölü neft sıxlığı ilə hesablayır.
+- Kapilyar: ilkin tarazlıqda Pcog yoxdur (GOC kəskindir); cədvəldən (SGOF)
+  Pcog provider-ə bağlanmayıb; SWOF/SGOF-un Pc sütunu vahid çevirməsiz oxunur;
+  qaz əyrilərində yalnız defolt region.
+- Quyu: lülədə hidrostatik hədd yoxdur (bütün perforasiyalara eyni BHP); THP
+  quyusu + BHP limitli quyu eyni modeldə bir addım gecikir (ölçülməyib);
+  vurucu limiti və səth bazalı su vurucusu uc-uca sınanmayıb.
+- İki fazalı Jakobianda cazibə sıxlığının törəməsi atılır (ölçülməyib); üç
+  fazalı `_time_config`-də `soft_failure_*` toleransları yoxdur; IMPES süxur
+  istinad təzyiqini (G6) oxumur və xəbərdarlıq vermir.
+- Eclipse ixracı iki fazalıdır (`GAS`, `PVTO/PVDG`, `SGOF` yazılmır).
+- Əsl volumetric rendering (ROADMAP 6.4 — 🟡).
+- Başlanğıc debit titrəməsi («mişar dişi») təkrarlanmayıb — sahibkarın
+  `layihe.imx` faylı və ya həmin qaçışın CSV-si lazımdır.
+
+**D · Seans 48 analizinin tapdıqları — heç biri düzəldilməyib**
+
+P-02 `.imx` atomik yazılmır (yoxlandı: `serialization.py`-də `os.replace` yoxdur) ·
+P-05 `LinearSolverConfig` tam implicit mühərriklərdə işləmir · P-06 mühərrik hər
+qaçışda iki dəfə qurulur · P-09 gizli `growth_factor + 0.35` · P-10 `pyproject.toml`,
+CI, coverage, `pip-audit` yoxdur · P-01 `MainWindow` 3155 sətir, testdə qurulmur ·
+P-08 iki FIM mühərrikində kod təkrarı · P-11 IMPES/FIM vurma sırasının vahidi
+fərqlidir (⏳ yoxlanmayıb) · P-12…P-20 kiçik düzəlişlər.
+
+**E · Seans 49-un tapdığı uyğunsuzluqlar — düzəldilməyib**
+
+- `pvt/correlations.py::gas_fvf()` öz docstring düsturundan +1.29 % böyükdür.
+- `stone_relperm.py` modul şərhi: «Stone II … Eclipse-in defoltu» və «mənfi kro-nu
+  riyazi aradan qaldırır» — hər ikisi yanlışdır (yoxlandı: sətir 17–18 hələ
+  belədir; birincisi Seans 29-dan ⏳).
+- `history/mismatch.py::_model_curve()` BHP müşahidəsini atlayır, halbuki
+  `well_bhp` var.
+
+**F · UI və ixrac**
+
+- `well_control_mode` CSV/JSON ixracına və dashboard-a çıxarılmayıb.
+- `FaciesPanel` `main_window.py`-yə bağlanmayıb (yoxlandı: yalnız `panels.py`-də
+  var); quyu cədvəllərində fasiya sütunu və SGS parametrləri üçün UI yoxdur.
+- Variogram/anizotropluq parametrləri (`auto_fit`, azimut, minor radius) UI-də
+  yoxdur (yoxlandı).
+- `WellPanel`/`GeologyPanel` cədvəllərində vahid seçicisi yoxdur.
+- `provenance` layihə faylına yazılmır (açılan layihədə status filtri boş olur);
+  böyük modeldə bərpa faylının yazılma vaxtı ölçülməyib.
+- Geologiya xəritəsində nöqtəyə klik ilə sətir seçimi yoxdur.
+- İnteraktiv xəritə (`xerite.html`, Seans 47 yenilənməsi) brauzerdə göz ilə
+  yoxlanmayıb.
+
+**G · Geologiya / geostatistika backlog-u**
+
+Universal və sadə kriging, co-kriging, Matérn; şaquli variogramın avtomatik
+bağlanması; tenzor K-nın geologiya boru xəttindən doldurulması; yığılmış
+(censored) hədli xassələr; fasiya realizasiyaları × SGS ansamblı; 100 000+
+hüceyrədə SGS/SIS performansı ölçülməyib; GRDECL-də `INCLUDE` və təzyiq/PVT
+açar sözləri; OPM idxalında corner-point və quyular.
+
+**H · Sənədlər**
+
+- `docs/README.md`-də gözlənilən altı sənəd yoxdur: `fizika.md`, `riyaziyyat.md`,
+  `grid.md`, `quyular.md`, `fayl_formatlari.md`, `testler.md`.
+- Biblioqrafiya (məqalələrin səhifə/tənlik nömrələri) hazırlanmayıb.
+- Köhnəlmiş mətnlər — bax §4.
+
+### 4 · Tapıntı: cari vəziyyətlə ziddiyyət təşkil edən sənədlər
+
+| Sənəd | Nə yazır | Cari vəziyyət |
+|---|---|---|
+| `README.md` | «Status: başlanğıc mərhələsi», §3–4 ⏳ | proqram işləyir, 2773 test |
+| `A7_PLAN.md` başlığı, `OPM_IMPORT.md`, `berpa/…/MENBE.md` | qaz fazası koddan çıxarılıb / hələ qaytarılmayıb | B2-də qaytarılıb (Seans 6) |
+| `ROADMAP.md` «Mövcud kodda NƏ VAR» | qaz: «servis/UI qoşulması qalır»; THP/VFP: «yoxdur» | B2, B4-A, B4-B bitib |
+| `ICRA_PLANI.md` §3 | B6 bitmiş kimi işarələnməyib | B6-a/b/c bitib |
+| `SPE1.md` başlığı | «model HƏLƏ qurulmayıb» | Seans 38-də qurulub |
+| `TEHVIL_TESLIM.md` | son: Seans 44 / Q-34 / 2715 test | Seans 49 / Q-36 / 2773 test |
+| `ARCHITECTURE.md` §3, §5.16–5.17 | MPFA-O «HƏLƏ YOXDUR», Jakobian/Nyuton «YOXDUR» | Phase 5B-2 bitib, UI-dən seçilir |
+| `VISUALIZATION.md` «Qalan iş» | kəsim müstəvisi, animasiya | B6-da edilib |
+| `tests/README.md` | «Cəmi 1841 test» | 2773 |
+| `version.py` (yoxlandı) | `VERSION = "69"`, 2026-08-28 | Seans 45–46 funksiyaları əlavə olunub |
+| `docs/nezeri_esaslar.md` §3.3 | Stone II «Eclipse defoltu», «mənfi kro-nu riyazi aradan qaldırır» | Seans 29 və 49-da yanlış olduğu qeyd olunub |
+
+### 5 · Sahibkarın qərarını gözləyənlər
+
+- **Q-08** hələ «Təklif — təsdiq gözlənilir» statusundadır (faktiki olaraq tətbiq olunub).
+- **`b2a795e`** — digər maşındakı commit; bu nüsxədə yoxdur (yoxlandı: `git log --all`).
+- Seans 48 (P-01…P-20) və Seans 49 uyğunsuzluqlarından hansıları, hansı sıra ilə.
+- `berpa/` qovluğunun və `standard_well.py` / `coupled_newton.py`-nin taleyi.
+- SPE1 deck fayllarının lisenziyası (repoya əlavə oluna bilərmi).
+- Seans 2 və 11-dən açıq: OneDrive-dakı köhnə qovluq, GitHub-da repo adı.
+- İş ağacında commit olunmamış: `PROJECT_THEORY_GUIDE.docx` (dəyişib),
+  `gunluk.csv` (izlənmir) — toxunulmadı.
+
+### 6 · Qərarlar və yoxlama
+
+Yeni texniki qərar yoxdur (`QARARLAR.md` dəyişmədi); mərhələ statusu dəyişmədi
+(`ROADMAP.md` dəyişmədi). Test dəsti İŞLƏDİLMƏDİ — kod dəyişməyib; son ölçmələr:
+Seans 46 — 2773 keçdi, Seans 48 — 2761 keçdi (bu mühitdə `resdata` yoxdur).
+`origin/main` ilə yerli `main` eynidir (`3b21d52`).
