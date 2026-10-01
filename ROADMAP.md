@@ -9,8 +9,11 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 
 ---
 
-> ## 📌 Cari vəziyyət (1 oktyabr 2026, Seans 51)
+> ## 📌 Cari vəziyyət (1 oktyabr 2026, Seans 52)
 >
+> * ⚠️ **Açıq xəta X-1:** nəticə ekranda ikən grid ölçüsü dəyişsə (və ya
+>   başqa ölçülü layihə açılsa / GRDECL idxal olunsa) proqram çökür —
+>   bax aşağıda «Açıq xətalar». Düzəldilməyib.
 > * İcra planının **B1–B6 blokları bitib**; M1–M8 meyarlarından yeganə
 >   natamamı M5-dir (RATE quyusunda THP hesablanmır).
 > * **Aktiv blok: B7** — SPE1CASE2 OPM Flow ilə müqayisədə qaz ~145 gün tez
@@ -19,7 +22,8 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > * Texniki borc: TB-1…TB-3 (aşağıda). Seans 48 analizinin tapdığı
 >   problemlər (P-01…P-20, [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md) §14)
 >   düzəldilməyib — sıra sahibkarın qərarıdır.
-> * Qalan işlərin tam siyahısı: [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 50.
+> * Qalan işlərin tam siyahısı: [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 50;
+>   proqramın işlədilərək yoxlanması və tapılan xətalar → Seans 52.
 >
 > Aşağıdakı tarixli qeydlər xronoloji jurnaldır — hər biri öz gününün
 > vəziyyətini göstərir.
@@ -322,6 +326,18 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 | TB-1 | Üç fazalı RATE istismarçısının quyu Jakobianı: sərbəst qazın təzyiq/Sg törəmələri sıfır qoyulub | sonlu fərqə qarşı nisbi xəta **0.4893** (tək perforasiya), 0.3239 (iki) | Seans 27, `three_phase_residual.py` RATE budağı |
 | TB-2 | Üç fazalı AXIN Jakobianının TƏZYİQ sütunu güclü qarışıq vəziyyətdə | nisbi xəta **0.1936**; ən pis element 8-ci hüceyrənin qaz tənliyi, orada quyu YOXDUR. G2b-dən əvvəl 0.5672 idi | Seans 36; Seans 38-də ÖLÇÜLDÜ: cazibə DEYİL (cazibəsiz modeldə də var, G9a onu dəyişmədi) — mənbə ⏳ |
 | TB-3 | `_saturation_pressure_slope` ən üst Rs düyünündə | analitik 3.619, sonlu fərq 1.810 — **tam 2 dəfə** (interpolyasiya düyündən yuxarı sabit qalır, mərkəzi fərq yarısını görür) | Seans 36, `black_oil.py`. **DECK yolunda Seans 41-də (G7/Q-32) həll olundu**; korrelyasiya yolunda qalır |
+
+### Açıq xətalar (Seans 52 — proqram işlədilərək tapılıb)
+
+Texniki borcdan fərqli olaraq bunlar istifadəçiyə görünür. Heç biri
+düzəldilməyib — sıra sahibkarın qərarıdır. Təfərrüat və ölçmələr:
+[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 52 §3.
+
+| # | Nə | Ölçülüb | Harada |
+|---|---|---|---|
+| X-1 | **Proqram çökür:** nəticə ekranda ikən NX/NY/NZ dəyişəndə, başqa ölçülü layihə açılanda, GRDECL idxal olunanda. Mesaj yoxdur, loga yazılmır | 5 ssenaridən 4-ü: çıxış kodu `0xC0000409`; `ValueError: cannot reshape array of size 1681 into shape (1,41,40)` | `main_window.py::rebuild_model` köhnə `self.result`-ı təmizləmir → `update_map` → `renderers.py:234`; `app.py`-də `sys.excepthook` yoxdur |
+| X-2 | Üç fazalı Nyutonun geri-izləməsi sınaq qalığını dondurulmamış upstream ilə ölçür — cəhdlər 25 iterasiyada ilişir | yığılmayan cəhdlərdə CNV nisbəti düz 0.969; sahibkarın modelində 1500 gündə 1893 iterasiyadan 1305-i boşa gedir. Jakobian düzgündür (≤ 7.3e-05) | `three_phase_newton.py::_damped_update`. Bir sətirlik düzəliş deyil — ikinci uğursuzluq növü ⏳ |
+| X-3 | İki fazalı Nyuton cədvəl SCAL ilə donur | `numune_scal.csv`: 99 cəhddən 33-ü yığılmır (CNV nisbəti 1.000); Corey ilə 0 | səbəb ⏳ |
 
 ---
 
