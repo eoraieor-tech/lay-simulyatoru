@@ -5,9 +5,24 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 
 **İşarələr:** ✅ bitib · 🟡 gedir · ⬜ gözləyir · ❌ ləğv olunub
 
-**Son yenilənmə:** 21 sentyabr 2026
+**Son yenilənmə:** 1 oktyabr 2026
 
 ---
+
+> ## 📌 Cari vəziyyət (1 oktyabr 2026, Seans 51)
+>
+> * İcra planının **B1–B6 blokları bitib**; M1–M8 meyarlarından yeganə
+>   natamamı M5-dir (RATE quyusunda THP hesablanmır).
+> * **Aktiv blok: B7** — SPE1CASE2 OPM Flow ilə müqayisədə qaz ~145 gün tez
+>   gəlir; dörd namizəd səbəb hələ ölçülməyib ([SPE1.md](SPE1.md) §8.2).
+>   Etalon (golden) fayl yazılmayıb.
+> * Texniki borc: TB-1…TB-3 (aşağıda). Seans 48 analizinin tapdığı
+>   problemlər (P-01…P-20, [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md) §14)
+>   düzəldilməyib — sıra sahibkarın qərarıdır.
+> * Qalan işlərin tam siyahısı: [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 50.
+>
+> Aşağıdakı tarixli qeydlər xronoloji jurnaldır — hər biri öz gününün
+> vəziyyətini göstərir.
 
 > ## ℹ️ Bu xəritə 10 sentyabr 2026-da kodla tutuşduruldu
 >
@@ -20,10 +35,10 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 > Tam təhlil: [ISH_HESABATI.md](ISH_HESABATI.md) → Seans 3 ·
 > [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md)
 >
-> **Həqiqətən qalan iş:** THP/VFP · ~~qaz mühərrikinin servisə
-> qaytarılması~~ ✅ B2 · ~~qaz Nyuton rəqsi~~ ✅ B3-A + B3-B ·
-> ~~MPFA-nın UI-dən seçilməsi~~ ✅ B1 · animasiya/slice · Pcog ·
-> ~~CSV ixracı~~ ✅ B5-a.
+> **Həqiqətən qalan iş:** ~~THP~~ ✅ B4-A + B4-B (VFPPROD cədvəli ⏳) ·
+> ~~qaz mühərrikinin servisə qaytarılması~~ ✅ B2 · ~~qaz Nyuton rəqsi~~
+> ✅ B3-A + B3-B · ~~MPFA-nın UI-dən seçilməsi~~ ✅ B1 ·
+> ~~animasiya/slice~~ ✅ B6 · ~~Pcog~~ ✅ B5-b · ~~CSV ixracı~~ ✅ B5-a.
 >
 > **11 sentyabr 2026:** B3-B bağlandı — üç fazalı mühərrik artıq
 > Pb = 300 bar-a qədər yığılır (doymamış Bo qolu düzəldildi, bax
@@ -167,11 +182,11 @@ Aşağıdakı mərhələ cədvəllərini oxumazdan əvvəl bunu nəzərə alın:
 | IMPES + FIM (Nyuton, analitik Jakobian, CPR) | ✅ hazır |
 | CFL ilə adaptiv `dt` | ✅ hazır |
 | Neft-su PVT və nisbi keçiricilik | ✅ hazır |
-| **Qaz fazası + Stone II** (4 323 sətir) | ⚠️ **kod bazasına qaytarılıb** (143 test keçir) — servis/UI qoşulması qalır |
+| **Qaz fazası + Stone II** | ✅ kod bazasına, servisə və UI-yə qaytarılıb (B2); yüksək doyma təzyiqində yığılır (B3-B); qaz vurulması, Pcow/Pcog, deck PVT/SGOF əlavə olunub |
 | GRDECL / Eclipse `.DATA` giriş-çıxışı | ✅ hazır |
 | History matching + həssaslıq analizi | ✅ hazır |
 | 5-spot reqressiya testi | ✅ hazır |
-| **THP / VFP** | ❌ yoxdur |
+| **THP / VFP** | 🟡 THP hesabatı (B4-A) və THP ilə idarə (B4-B, nodal analiz) ✅ · `VFPPROD` cədvəli, sürüşmə modeli, RATE quyusunda THP ❌ |
 | PyVista / Plotly | ❌ yoxdur — birbaşa **VTK 9.7.0 işləyir** (49 test keçir) |
 
 ---
@@ -314,11 +329,15 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 
 Hələ mərhələyə salınmayan, amma unudulmaması lazım olan fikirlər:
 
-- Qırılma (fault) modeli və NNC (non-neighbor connection) dəstəyi
-- ECLIPSE `.DATA` deck oxuyucusu — sənaye modelləri ilə uyğunluq
-- SPE benchmark testləri (SPE1, SPE9) ilə doğrulama
+- Qırılma (fault) modeli — ✅ var (transmissivlik çarpanı, TPFA yolunda;
+  [FAULTS.md](FAULTS.md)); NNC (non-neighbor connection) dəstəyi yoxdur
+- ECLIPSE deck oxuyucusu — 🟡 GRDECL (grid, xassələr, ACTNUM),
+  `FAULTS`/`MULTFLT`, PVTO/PVDG/PVTW, SWOF/SGOF oxunur; quyu/`SCHEDULE`
+  bölmələri oxunmur
+- SPE benchmark testləri — 🟡 SPE1CASE2 gedir (B7); SPE9 yoxdur
 - Paralel hesablama (çox nüvəli / GPU)
-- History matching (tarixi uyğunlaşdırma) modulu
+- History matching (tarixi uyğunlaşdırma) modulu — ✅ var
+  ([HISTORY_MATCHING.md](HISTORY_MATCHING.md), [SENSITIVITY.md](SENSITIVITY.md))
 - Qeyri-struktur (PEBI) grid dəstəyi
 - **SPE1CASE2-nin qalan ~145 günlük cəbhə fərqi** — dörd namizəd və hər
   birinin ölçmə üsulu: [SPE1.md](SPE1.md) §8.2 (şaquli axın/cazibə,

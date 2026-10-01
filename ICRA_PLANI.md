@@ -1,8 +1,12 @@
 # İcra planı — sahibkarın hədəf proqramına çatmaq
 
-**Tarix:** 10 sentyabr 2026
+**Tarix:** 10 sentyabr 2026 · **Son yenilənmə:** 1 oktyabr 2026 (Seans 51)
 **Əsas:** Seans 3 təhlili ([ISH_HESABATI.md](ISH_HESABATI.md)) və
 [QARARLAR.md](QARARLAR.md) → Q-08.
+
+> **Cari vəziyyət (1 oktyabr 2026):** B1, B2, B3, B4 (A, B, b), B5 (a, b) və
+> B6 (a, b, c) **bitib**. Açıq qalan yeganə blok **B7**-dir (§B7 və
+> [SPE1.md](SPE1.md)). Hər blokun altındakı «ilkin plan mətni» tarixi qeyddir.
 
 Bu sənəd "nə çatmır"dan "necə edirik"ə keçidi göstərir. Hər blok
 müstəqil commit-lənə bilən, testlə bitən iş vahididir.
@@ -109,6 +113,8 @@ keçir), amma `ModelAwareSimulationService.create_engine()`
 > ⚠️ **Qalan iki məhdudiyyət:** (1) GOC verilməyəndə neft "ölü" başlayır
 > (Rs=0) — domain-də ilkin Rs sahəsi YOXDUR, ayrıca iş lazımdır;
 > (2) Pb > BHP rejimində üç fazalı mühərrik də yığılmır — **B3**.
+> *(1 oktyabr 2026 qeydi: hər ikisi sonradan bağlandı — (1) B4b, (2) B3-B.
+> Bu sətir B2-nin öz tarixçəsi kimi saxlanılır.)*
 >
 > Təfərrüat: `ISH_HESABATI.md` → Seans 6.
 
@@ -169,7 +175,7 @@ etmək**, sonra testlə təsdiqləmək.
 
 ---
 
-## B3 — Nyuton möhkəmliyi
+## B3 — Nyuton möhkəmliyi ✅ BİTDİ (B3-A 10 sentyabr, B3-B 11 sentyabr 2026)
 
 **Həcm:** orta-böyük · **Risk:** yüksək
 
@@ -289,7 +295,7 @@ düzəlişi, faza-miqyaslı line search, upstream dondurma.
 
 ---
 
-## B4 — THP / VFP modulu (SIFIRDAN)
+## B4 — THP / VFP modulu (SIFIRDAN) — A və B ✅ BİTDİ; `VFPPROD` cədvəli ⏳
 
 ### B4-A — THP hesabat kəmiyyəti kimi ✅ BİTDİ (11 sentyabr 2026)
 
@@ -410,7 +416,7 @@ qaz ayrılır və GOR əyrisi qalxır (M4-ün əsl tələbi).
 
 ---
 
-## B5 — Kiçik boşluqlar: Pcog və CSV/JSON ixracı
+## B5 — Kiçik boşluqlar: Pcog və CSV/JSON ixracı ✅ BİTDİ (14 sentyabr 2026)
 
 ### B5-a — CSV / JSON ixracı ✅ BİTDİ (12 sentyabr 2026)
 
@@ -454,7 +460,7 @@ Pcog üçün monotonluq və son nöqtə testləri.
 
 ---
 
-## B6 — 3D canlı vizualizasiya
+## B6 — 3D canlı vizualizasiya ✅ BİTDİ (13 sentyabr 2026)
 
 > ⚠️ **Aşağıdakı ilkin plan mövcud vəziyyəti OLDUĞUNDAN ZƏİF
 > göstərirdi.** İşə başlamazdan əvvəl yoxlanıldı (12 sentyabr 2026):
@@ -520,7 +526,18 @@ kadrlarının yaradılması test edilir; GIF faylı yaranır və açılır.
 
 ---
 
-## B7 — Yekun doğrulama və sənədləşdirmə
+## B7 — Yekun doğrulama və sənədləşdirmə 🟡 GEDİR
+
+> **Vəziyyət (1 oktyabr 2026) — aşağıdakı dörd bənd üzrə:**
+>
+> | # | Bənd | Vəziyyət |
+> |---|---|---|
+> | 1 | Uc-uca ssenari (corner-point + MPFA-O + üç faza + THP) reqressiya testi | ⏳ yazılmayıb; yazıldığı formada mümkün deyil — MPFA-O üç fazalı mühərriklə işləmir |
+> | 2 | SPE1 benchmark | 🟡 SPE1CASE2 modeli qurulub, G1–G7 və G9 bağlanıb; qalan fərq ~145 gün, dörd namizəd ölçülməyib ([SPE1.md](SPE1.md) §8.2); golden fayl yazılmayıb; CASE1 (`DRSDT 0`) təxirdə |
+> | 3 | Sənədlər | 🟡 `ROADMAP` / `QARARLAR` / `ISH_HESABATI` cari; `ARCHITECTURE.md`-də wellbore qatı var (§2.1) |
+> | 4 | Test dəstinin sürətləndirilməsi (`pytest-xdist`) | ⏳ edilməyib (dəst 9–13 dəq) |
+>
+> Aşağıdakı qeydlər xronoloji jurnaldır.
 
 > **Vəziyyət (15 sentyabr 2026):** SPE1-in tələbləri mühərriklə
 > tutuşduruldu, üç boşluq tapıldı:
@@ -619,8 +636,8 @@ Bunlar plandan **qəsdən çıxarılıb**, səbəbi [QARARLAR.md](QARARLAR.md)
 | ~~B4-B `ControlMode.THP`~~ ✅ **BİTDİ** | orta | orta | M5 (RATE-dən başqa) |
 | ~~B5-a CSV/JSON ixracı~~ ✅ **BİTDİ** | kiçik | sıfır | **M8 bağlandı** |
 | ~~B5-b Pcog~~ ✅ **BİTDİ** | kiçik | orta | — |
-| B6 3D animasiya + slice | orta | aşağı | **M7** |
-| B7 yekun doğrulama | kiçik-orta | aşağı | hamısı |
+| ~~B6 3D animasiya + slice~~ ✅ **BİTDİ** | orta | aşağı | **M7 bağlandı** |
+| B7 yekun doğrulama 🟡 **GEDİR** | kiçik-orta | aşağı | hamısı |
 
 **Yeganə yüksək riskli iş B3-dür** — riyazi problemdir, cəhd tələb edir.
 Qalan hər şey mühəndislik işidir: yolu məlum, ölçüsü bilinir.

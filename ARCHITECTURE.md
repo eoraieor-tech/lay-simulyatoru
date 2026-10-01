@@ -72,6 +72,23 @@ ui ──> rendering ──┐
 `domain` heç kimdən asılı deyil. `simulation` konkret provider siniflərini
 deyil, `interfaces`-dəki abstraksiyaları tanıyır.
 
+> **Yenilənmə (1 oktyabr 2026, Seans 51).** Yuxarıdakı siyahı refaktorinq
+> anının altı paketidir. Sonradan əlavə olunan paketlər:
+>
+> ```
+> geology/          Geostatistika: variogram, kriging, SGS, SIS, QC, çarpaz-doğrulama
+> discretization/   MPFA-O (çoxnöqtəli axın) — §5.16–5.17
+> io/               GRDECL, PVT/SCAL deck, fay, Eclipse ixracı və summary, OPM idxalı
+> history/          Tarixçə uyğunluğu, optimallaşdırma, həssaslıq
+> reporting/        PDF, CSV/JSON, günlük cədvəl
+> benchmarks/       Etalon modellər (SPE1CASE2) — §5.20
+> ```
+>
+> FAKTİKİ import asılılıqları 26 sentyabr 2026-da AST ilə sayılıb:
+> `domain` qaydası tam qorunur, iki yerdə isə istiqamət pozulur
+> (`simulation → application.config`, `ui → simulation`) — bax
+> `docs/diagrams/01_qat_arxitekturasi.md` və `PROJECT_ANALYSIS.md` §4.3.
+
 ### 2.1 Quyu lüləsi hidravlikası (B4, 11 sentyabr 2026)
 
 Lay tənlikləri ilə quyu lüləsinin içi QƏSDƏN ayrıdır — mühərrik yalnız
@@ -151,6 +168,11 @@ provider-i tanımır, yalnız massivləri görür. `None` → hədd yoxdur.
 
 ## 3. UML — sinif diaqramı (mətn formatı)
 
+> Bu diaqram və §4-dəki ardıcıllıq diaqramı **refaktorinq anının** şəklidir
+> (yalnız `ImpesEngine`, PVT/kapilyar provider-ləri «placeholder»). Cari
+> siniflər (üç mühərrik, PVT/SCAL cədvəlləri, quyu idarə rejimləri) üçün
+> Mermaid diaqramları: `docs/diagrams/` (Seans 48).
+
 ```
 ┌─ domain ─────────────────────────────────────────────────────────┐
 │                                                                   │
@@ -223,7 +245,7 @@ provider-i tanımır, yalnız massivləri görür. `None` → hədd yoxdur.
 │           ▲                               │                       │
 │           │ implements                    ▼                       │
 │  TwoPointFluxDiscretization (TPFA,   WellConnection[]             │
-│  DEFOLT) ──── future MPFAODiscretization (HƏLƏ YOXDUR)            │
+│  DEFOLT) ──── MPFAODiscretization (bax §5.16–5.17)                │
 │           │                                                        │
 │           ▼                                                        │
 │      DiscretizedGrid                                               │
@@ -520,6 +542,15 @@ həlledicisində) FAKTİKİ istifadəsi, geologiya boru xəttindən (SGS/SIS/
 interpolyasiya) tenzor K komponentlərinin AVTOMATİK doldurulması (co-
 kriging və s.) — hamısı gələcək faza.
 
+> **Sonrakı fazaların yenilədiyi bəndlər** (qeyd: 1 oktyabr 2026): bu
+> bölmədəki «gələcək MPFA-O (HƏLƏ YOXDUR)» ifadələri bu fazanın anına aiddir.
+> MPFA-O §5.16–5.17-də, native corner-point həndəsə §5.18-də YAZILIB və
+> tenzor K MPFA-O-da faktiki işlədilir. «Jacobian inteqrasiya nöqtəsi» də
+> həll olunub: `JacobianAssembler` çoxnöqtəli sxem üçün `_flux_multipoint()` /
+> `_build_pattern_diag_only()` yolunu alıb (Phase 5B-2), TPFA yolu dəyişməyib.
+> HƏLƏ yoxdur: MPFA-L və geologiya boru xəttindən tenzor K komponentlərinin
+> avtomatik doldurulması.
+
 ### 5.14 Ümumi (qeyri-ortoqonal) çoxüzlü həndəsə nüvəsi (Phase 3)
 Yeni modul: `imex2d/domain/polyhedral_geometry.py::HexahedralCell`/`Face`
 — HÜCEYRƏ-BAŞINA (per-cell), potensial qeyri-ortoqonal 8-təpəli hüceyrə
@@ -701,6 +732,12 @@ axtarışı yox) → `O(N)`; lokal həll bölgə başına SABİT ölçülüdür 
 | Corner-point/struktursuz bölgə qurucusu | **YOXDUR** (Phase 5D) |
 | Fay (fault) çarpanları MPFA-da | **YOXDUR** (Phase 5D, AÇIQ xəbərdarlıq verilir) |
 
+> **Yenilənmə (1 oktyabr 2026):** cədvəl Phase 5A anına aiddir. Sonradan
+> görülənlər: qalıq inteqrasiyası və mobilitə/upstream — Phase 5B-1 (§5.17);
+> analitik çoxnöqtəli Jakobian və Nyuton — Phase 5B-2 (§5.17-nin sonundakı
+> qeyd); corner-point bölgə qurucusu — Phase 5D (§5.18). Fay çarpanları
+> MPFA-da hələ yoxdur.
+
 **TPFA reqressiyası**: `TwoPointFluxDiscretization` HEÇ DƏYİŞMƏYİB —
 düsturu, nəticələri, `default_flux_discretization()` DEFOLTU eynidir.
 `IFluxDiscretization`-a YALNIZ NON-ABSTRAKT, defoltu `False` olan
@@ -773,6 +810,21 @@ BİRƏBİR eynidir; fərq `O(Δρ·ΔD)`-dir və testlə ÖLÇÜLÜR.
 
 **Simulyator HƏLƏ MPFA ilə qeyri-xətti hasilat proqnozu VERƏ BİLMİR** —
 Phase 5B-1 YALNIZ qalıq qiymətləndirməsidir.
+
+> **Yenilənmə (1 oktyabr 2026) — Phase 5B-2 görülüb.** Yuxarıdakı cümlə və
+> cədvəlin «5B-2» sətirləri artıq cari DEYİL:
+>
+> * `JacobianAssembler` MPFA rejimində imtina etmir — analitik çoxnöqtəli
+>   Jakobian qurur (`implicit/jacobian.py::_flux_multipoint`,
+>   `_build_pattern_diag_only`); sonlu fərqlə yoxlanılıb;
+> * `FullyImplicitEngine` MPFA-O ilə Nyuton həlli aparır və hasilat proqnozu
+>   verir (`tests/test_phase_d_mpfa_integration.py`, 21 test);
+> * sxem istifadəçi tərəfindən seçilir: `SimulationConfig.flux_scheme`
+>   (`"TPFA"` / `"MPFA-O"`), UI-də «Axın diskretizasiyası» (B1, Seans 4).
+>   Servis MPFA-O-nu `NEUMANN_ZERO` bağlanışı ilə qurur.
+>
+> **Hələ imtina edilir (açıq xəta ilə):** Dirichlet sərhəd, faylı model,
+> ACTNUM-lu model, `ImpesEngine` + MPFA-O, üç fazalı mühərrik + MPFA-O.
 
 **TPFA reqressiyası**: `TwoPointFluxDiscretization` və TPFA-nın
 qalıq/Jacobian/Newton yolu HEÇ DƏYİŞMƏYİB;
@@ -945,13 +997,13 @@ məqsədi olan qat ayrılığı bu əlavə ilə TƏSDİQLƏNDİ.
 ## 7. İşə salmaq
 
 ```bash
-pip install PyQt5 matplotlib numpy scipy
+pip install -r requirements-dev.txt   # dəqiq sabitlənmiş versiyalar (VTK və pytest daxil)
 # OPM Flow nəticələrinin idxalı üçün (istəyə bağlı, bax OPM_IMPORT.md):
-pip install resdata pytest
-# ResInsight tipli sürətli 3D görüntü üçün (istəyə bağlı, bax VISUALIZATION.md):
-pip install vtk
-python app.py
+pip install resdata
+python app.py                         # və ya Windows-da: run.bat
 ```
+
+Quraşdırmanın təfərrüatı (virtual mühit, Smart App Control): `README.md` §3.
 
 Skript rejimi (interfeys olmadan):
 

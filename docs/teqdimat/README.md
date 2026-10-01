@@ -75,9 +75,13 @@ rəqəmlər eyni çıxdı.
 
 ## 4 · Açıq qalanlar
 
-- ⏳ Demo planının 4-cü addımı: standart açılış modelində (41 × 41 × 1)
-  «MODELİ İŞƏ SAL»-ın vaxtı ölçülməyib — demo planında boş sahə var,
-  sahibkar öz maşınında doldurur.
+- Demo planının 4-cü addımı: standart açılış modelində (41 × 41 × 1)
+  «MODELİ İŞƏ SAL»-ın vaxtı Seans 45-də ölçüldü — **≈ 24 s** (1500 gün,
+  4314 addım; iki qaçış: 23.8 və 24.4 s). Rəqəm maşından asılıdır;
+  `demo-plani.html`-dəki boş sahəni sahibkar öz maşınının rəqəmi ilə
+  doldurur.
+- ⏳ `xerite.html`-in Seans 47-də əlavə olunan «Ardıcıllıq» siyahıları
+  brauzerdə göz ilə yoxlanmayıb.
 - ⏳ Standart açılışda geologiya cədvəlində quyu xassələri yoxdur (yalnız
   mövqelər). Kriging-i canlı göstərmək üçün xassələri əvvəlcədən doldurub
   layihə faylı kimi saxlamaq lazımdır.

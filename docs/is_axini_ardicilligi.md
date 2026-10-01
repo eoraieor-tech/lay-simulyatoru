@@ -338,7 +338,8 @@ axın             ← T + λ_upstream + ΔΦ                  (HƏR iterasiyada)
 ΔΦ               ← p + ρ(B)·g·D + Pc(S)                 (HƏR iterasiyada)
 Jakobian         ← qalığın BÜTÜN yuxarıdakı üzvlərinin analitik törəmələri
 Δt               ← Nyuton iterasiyalarının sayı (implicit) / CFL (IMPES)
-BHP (THP rejimi) ← ƏVVƏLKİ addımın debitləri                (açıq birləşmə)
+BHP (THP rejimi) ← nodal analiz (IPR ∩ VLP), J son iş nöqtəsindən;
+                   sonra addımın ÖZ debitləri ilə yarı-implicit təkrar  (açıq birləşmə, Q-17)
 dəyişən keçid    ← YIĞILMIŞ vəziyyət                        (iterasiya daxilində YOX)
 ```
 

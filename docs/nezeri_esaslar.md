@@ -268,8 +268,17 @@ qazın sıxışdırmasına məruz qalır. Stone-un ideyası: iki İKİFAZALI
 kro = kro_end · [ (krow/kro_end + krw)·(krog/kro_end + krg) − (krw + krg) ]
 ```
 
-Stone I (1970) mənfi `kro` verə bilirdi; Stone II bunu riyazi olaraq
-aradan qaldırır və sənaye standartıdır (Eclipse defoltu).
+Düstur özü mənfi qiymət verə bilər (iki hasilin fərqidir), ona görə kod
+nəticəni `[0, kro_end]` aralığına `np.clip` ilə kəsir
+(`simulation/stone_relperm.py`). Stone II sənayedə geniş işlədilir, lakin
+Eclipse/OPM-in **defoltu deyil**: deck-də `STONE1`/`STONE2` açar sözü
+olmayanda onlar öz defolt modelini işlədir (düsturu və SPE1-də ölçülmüş
+fərq — orta 0.174 % — `SPE1.md` §8.1-dədir).
+
+> **Düzəliş (1 oktyabr 2026, Seans 51):** əvvəl burada «Stone II mənfi
+> `kro`-nu riyazi olaraq aradan qaldırır və Eclipse defoltudur» yazılmışdı.
+> Hər iki iddia yanlış idi (`ISH_HESABATI.md` → Seans 29 və 49).
+> `stone_relperm.py`-nin modul şərhində eyni cümlə hələ qalır ⏳.
 
 **Ən güclü düzgünlük sınağı** — iki fazalı hala DƏQİQ reduksiya:
 `Sg = 0` → `kro = krow(Sw)`; `Sw = Swc` → `kro = krog(Sg)`. Testlə
@@ -534,10 +543,13 @@ VLP (lülə):    THP(BHP, q(BHP))                çoxseqmentli traverse
 daxilində yarı-implicit təkrar aparır və axa bilməyən quyunu bağlayır
 (`well_index = 0`).
 
-**Birləşmə AÇIQDIR (explicit):** BHP bir addım əvvəlki debitlərə görə
-hesablanır. Bilinən riski — gecikmə/rəqs; qarşısı relaksasiya (ω = 0.5)
-və addım başına maksimal dəyişmə (25 bar) ilə alınır. Tam implicit THP
-birləşməsi ⏳ sonraya.
+**Birləşmə AÇIQDIR (explicit)** — THP tənliyi Nyuton sisteminə daxil
+deyil. IPR-in `J` əmsalı son iş nöqtəsindən götürülür; addım həll
+olunandan sonra BHP həmin addımın ÖZ debitləri ilə yenilənir və fərq
+1 bar-dan böyükdürsə addım eyni Δt ilə təkrar həll olunur (ən çox 2
+təkrar). Rəqsə qarşı relaksasiya (ω = 0.5) və addım başına maksimal
+dəyişmə (25 bar) saxlanılıb. Tam implicit THP birləşməsi ölçmə ilə
+lazımsız çıxdı (`QARARLAR.md` → Q-17).
 
 ---
 

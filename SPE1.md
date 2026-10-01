@@ -1,7 +1,16 @@
 # SPE1 etalonu (B7 addım 3) — mənbə, doğrulanmış parametrlər, boşluqlar
 
-**Tarix:** 15 sentyabr 2026 · **Status:** parametrlər mənbədən yoxlanıldı,
-model HƏLƏ qurulmayıb · bax `ISH_HESABATI.md` → Seans 29, `QARARLAR.md` → Q-23
+**Tarix:** 15 sentyabr 2026 · **Son məzmun yenilənməsi:** 17 sentyabr 2026
+(Seans 43) · bax `ISH_HESABATI.md` → Seans 29–43, `QARARLAR.md` → Q-23…Q-34
+
+**Status (1 oktyabr 2026):** SPE1CASE2 modeli **qurulub**
+(`imex2d/benchmarks/spe1.py`, `tools/spe1_compare.py`); G1–G7 və G9 boşluqları
+bağlanıb. OPM Flow ilə müqayisədə qaz hələ **~145 gün tez** gəlir — cari
+rəqəmlər §8.3-də, ölçülməmiş dörd namizəd §8.2-də. Etalon (golden) fayl
+yazılmayıb; CASE1 (`DRSDT 0`, G8) təxirə salınıb.
+
+Bu sənəd xronolojidir: §1–§5 hazırlıq (Seans 29–38), §6 ilk müqayisə,
+§7 səbəbin tapılması, §8 cari vəziyyət.
 
 ---
 
@@ -77,7 +86,7 @@ köçürüləcək.
 |---|---|---|---|
 | G1 | PVT cədvəlləri PVTO/PVDG/PVTW (FIELD) | ✅ `io/pvt_io.py` — itkisiz oxuma + açıq birləşdirmə (Seans 34, Q-27) | bağlandı; çox qollu Bo/μo — G2/G3-də bağlandı |
 | G2 | Doymamış neft özlülüyü μo(p, Rs) — PVTO-da 0.51 → 0.74 cP | ✅ provider (Seans 35) + mühərrik (Seans 36, Q-29) | bağlandı; 3-cü sütun 3.6×10⁻¹¹, lövbər qüsuru da düzəldildi |
-| G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | ✅ `BlackOilPVTProvider(..., oil_branches=...)` — c_o(Rs), n(Rs) qollardan (Seans 37, Q-30) | bağlandı; qollar arasında 11 % fərq ölçüldü; modelə qoşulma ⏳ SPE1CASE2 ilə |
+| G3 | Doymamış Bo hər Rs üçün öz sıxılması ilə | ✅ `BlackOilPVTProvider(..., oil_branches=...)` — c_o(Rs), n(Rs) qollardan (Seans 37, Q-30) | bağlandı; qollar arasında 11 % fərq ölçüldü; modelə qoşulma ✅ Seans 38 (`pvt_oil_branches`); qolun forması deck yolunda xətti oldu — Seans 43, Q-34 |
 | G4 | SGOF cədvəli (krg, krog) | ✅ `GasSaturationTable` + `read_sgof` — Seans 33, Q-26 | bağlandı (SWOF-un səssiz atılması da düzəldildi) |
 | G5 | Neftin SƏTH debiti (`ORAT`), qazın SƏTH vurma debiti (`RATE`) | ✅ `RateBasis.SURFACE` — Seans 30, Q-24 | bağlandı |
 | G6 | Süxur sıxılmasının istinad təzyiqi 14.7 psia | ✅ `rock.compressibility_reference_pressure` — Seans 32, Q-25 | bağlandı (ölçüldü: 4800 psia-da 1.44 % fərq) |
@@ -102,7 +111,9 @@ köçürüləcək.
 5. **SPE1CASE2 modeli** ✅ qurulub (Seans 38, `imex2d/benchmarks/spe1.py`,
    `tools/spe1_compare.py`). İlk müqayisə etalondan fərqlənir — bax §6.
    `tests/golden/` reqressiyası fərqlər izah olunandan SONRA (Q-31 Qərar 7).
-6. ⏳ G7 və CASE1 (`DRSDT 0`) — müqayisə nəticəsinə görə.
+6. **G7** ✅ Seans 41 (Q-32). ⏳ CASE1 (`DRSDT 0`, G8) — təxirə salınıb.
+7. ⏳ Qalan ~145 günlük fərqin səbəbi — §8.2-dəki dörd namizəd ölçülməlidir;
+   sonra `tests/golden/`-da SPE1CASE2 reqressiyası.
 
 
 ## 6 · İlk müqayisə — Seans 38 (G1–G6, G9 bağlı; G7 açıq)
