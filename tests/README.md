@@ -27,8 +27,8 @@ IMEX_SKIP_SLOW=1 python run_tests.py -q
 | `test_physics.py` | 6 | **Material balansı, Bukley-Leverett, fiziki hədlər** |
 | `test_regression.py` | 2 | **Etalon nəticə: RF 16.840 %, 4314 addım** |
 | `test_rendering.py` | 8 | Rendering-in Qt-dən asılı olmaması, ox ölçüsünün sabitliyi |
-| `test_pvt.py` | 17 | **A1: PVT cədvəli, korrelyasiyalar, provider** |
-| `test_standard_well.py` | 34 | **OPM quyu modeli, mərhələ 2: BHP-dən debitlər, idarəetmə tənlikləri, HAMARLIQ** |
+| `test_pvt.py` | 22 | **A1: PVT cədvəli, korrelyasiyalar, provider** |
+| `test_standard_well.py` | 36 | **OPM quyu modeli, mərhələ 2: BHP-dən debitlər, idarəetmə tənlikləri, HAMARLIQ** |
 | `test_well_state.py` | 16 | **OPM tipli quyu modeli, mərhələ 1: BHP naməlum dəyişən kimi** |
 | `test_vtk_volume.py` | 48 | **VTK 3D motoru — pytest, `vtk` tələb edir** (həndəsə, filtrlər, rəng xəritəsi, tam offscreen render) |
 | `test_opm_import.py` | 12 | **OPM Flow idxalı — pytest, `resdata` tələb edir** (sintetik round-trip Eclipse halı, öz VolumeRenderer-imizlə çəkilmə) |
@@ -36,10 +36,10 @@ IMEX_SKIP_SLOW=1 python run_tests.py -q
 | `test_capillary_gravity.py` | 16 | **A4: Brooks-Corey Pc, keçid zonası, cazibə potensialı** |
 | `test_three_dimensional.py` | 16 | **A5: 3D grid, şaquli axın, Kv/Kh, kəsik vizuallaşdırma** |
 | `test_perforation.py` | 6 | Perforasiya intervalı, qismən açılmış quyular |
-| `test_serialization.py` | 18 | **B1: layihə faylı (.imx), eyni nəticənin bərpası** |
+| `test_serialization.py` | 21 | **B1: layihə faylı (.imx), eyni nəticənin bərpası** |
 | `test_geology_import.py` | 23 | **B2: quyu CSV, IDW/Kriging, geoloji model qurulması** |
-| `test_diagnostics.py` | 20 | Xəta/xəbərdarlıq ayrımı, quyu rejimi, loglama, matris keşi |
-| `test_ui_static.py` | 9 | UI qatının AST yoxlanışı (import, atribut, qurucu, tab indeksi, tab siyahısı) |
+| `test_diagnostics.py` | 21 | Xəta/xəbərdarlıq ayrımı, quyu rejimi, loglama, matris keşi |
+| `test_ui_static.py` | 9 | UI qatının AST yoxlanışı (import, atribut, qurucu, tab indeksi, tab siyahısı) — `MainWindow` testdə QURULMUR (VTK səhnəsi `pytest`-i çökdürür) |
 | `test_ui_wiring.py` | 7 | UI panel–model bağlantısı |
 | `test_implicit_residual.py` | 16 | **A6/1: qalıq vektoru, kütlə balansı, IMPES ilə ardıcıllıq** |
 | `test_implicit_jacobian.py` | 20 | **A6/2: analitik Jakobian vs sonlu fərq (8 konfiqurasiya)** |
@@ -48,7 +48,19 @@ IMEX_SKIP_SLOW=1 python run_tests.py -q
 | `test_cpr.py` | 16 | **A6/5: CPR dekuplinqi, blok-Jakobi, yaddaş üstünlüyü** |
 | `test_volume_rendering.py` | 45 | **3D görüntü: üz çıxarışı, filtr, kəsim, işıqlandırma, baxış** |
 
-Cəmi **1841 test**.
+Cəmi **2762 test, 137 fayl** (1 oktyabr 2026, `pytest --collect-only` ilə
+sayılıb; `resdata` quraşdırılıbsa `test_opm_import.py`-nin 12 testi də toplanır
+— 2774). Tam dəst 9–13 dəqiqə çəkir.
+
+Yuxarıdakı cədvəl yalnız **ilk 26 faylı** göstərir (saylar eyni tarixdə
+yeniləndi). Sonradan əlavə olunan fayllar — geostatistika (`test_variogram*`,
+`test_kriging*`, `test_sgs*`, `test_facies*`), MPFA-O (`test_mpfa_o*`,
+`test_phase_d_mpfa_integration`), corner-point həndəsə, üç fazalı mühərrik
+(`test_three_phase*`, `test_gas_*`), quyu idarəsi (`test_thp_control`,
+`test_bhp_limit`, `test_surface_rate`, `test_rate_allocation`), deck PVT/SCAL,
+SPE1 (`test_spe1_model`), günlük cədvəl və layihə bərpası — burada sadalanmır;
+hər birinin nəyi qoruduğu faylın öz başlığında və `ISH_HESABATI.md`-nin
+müvafiq seansında yazılıb.
 
 Performans ölçmələri: `PERFORMANCE.md` və `tools/benchmark.py`.
 Fully implicit sxemin planı və nəticələri: `A6_PLAN.md`.
