@@ -54,5 +54,3 @@ Critical problem tapılmadı. Təhlükəsizlik səthi kiçikdir (oflayn, `pickle
 3. `ARCHITECTURE.md` §7-dəki skripti işlət (UI-siz simulyasiya), RF-i çap et.
 4. `simulation/impes_engine.py`, sonra `implicit/{residual,newton,time_stepping,engine}.py` ([diaqram 4](docs/diagrams/04_zaman_addimi_nyuton.md)).
 5. `application/simulation_service.py` — provider və mühərrik seçimi; sonra `tests/test_analytical_bl.py` ilə doğrulamanı gör.
-</content>
-</invoke>

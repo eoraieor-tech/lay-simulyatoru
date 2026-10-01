@@ -46,5 +46,3 @@ flowchart TD
     snap --> nextdt["Növbəti Δt:<br/>≤ 6 iter → × 1.5<br/>≤ 9 iter → × 1.0<br/>> 9 iter → × 0.5"]
     nextdt --> start
 ```
-</content>
-</invoke>

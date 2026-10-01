@@ -90,5 +90,3 @@ flowchart TB
   deyil, UI-dədir.
 - `domain/` heç bir yuxarı qatı idxal etmir — sənədləşdirilmiş qayda burada
   tam qorunur.
-</content>
-</invoke>

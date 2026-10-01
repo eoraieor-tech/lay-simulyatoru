@@ -59,5 +59,3 @@ sequenceDiagram
         MW-->>U: «Nəticələr» tabı
     end
 ```
-</content>
-</invoke>

@@ -13,5 +13,3 @@ GitHub və VS Code (Mermaid genişlənməsi ilə) onları birbaşa çəkir.
 
 Diaqramlar kodun özündən çıxarılıb; hər faylın başında mənbə sətirləri
 göstərilib. Kod dəyişəndə diaqram avtomatik yenilənmir.
-</content>
-</invoke>

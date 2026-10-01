@@ -86,5 +86,3 @@ classDiagram
     ReservoirModel --> CellGeometry
     CellGeometry <|-- CornerPointGeometry
 ```
-</content>
-</invoke>

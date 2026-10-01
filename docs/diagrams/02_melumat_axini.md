@@ -70,5 +70,3 @@ flowchart LR
     result --> hm
     hm -->|parametr dəyişir| resmodel
 ```
-</content>
-</invoke>

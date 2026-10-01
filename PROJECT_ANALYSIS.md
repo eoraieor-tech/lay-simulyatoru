@@ -1067,5 +1067,3 @@ qalan fərqdir — bunlar layihənin özü tərəfindən artıq ölçülüb və 
 İlk addım kimi ən az xərclə ən çox fayda verən düzəlişlər: **P-02** (atomik
 saxlama), **P-05/P-09** (konfiqurasiyanın dürüstlüyü), **P-06** (ikiqat qurulma)
 və **P-10** (CI + coverage).
-</content>
-</invoke>
