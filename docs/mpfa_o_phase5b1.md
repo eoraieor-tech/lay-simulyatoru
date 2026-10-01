@@ -9,6 +9,16 @@ onun ətrafına inteqrasiya qatı qurulur.
 > (§2.5). MPFA rejimində `JacobianAssembler`/`FullyImplicitEngine`/
 > `ImpesEngine` AÇIQ xəta verir — saxta uyğunluq YARADILMIR (§24).
 
+> **Sonrakı vəziyyət** (qeyd əlavə olundu: 1 oktyabr 2026, Seans 51).
+> Yuxarıdakı xəbərdarlıq və §11 Phase 5B-1 anına aiddir. **Phase 5B-2 sonradan
+> görülüb:** `JacobianAssembler` MPFA rejimində artıq imtina etmir — analitik
+> çoxnöqtəli Jakobian (`_flux_multipoint`) qurur, `FullyImplicitEngine` MPFA-O
+> ilə Nyuton həlli aparır (`tests/test_phase_d_mpfa_integration.py`, o cümlədən
+> sonlu fərqlə Jakobian yoxlaması), sxem UI-dən seçilir (B1).
+>
+> **Hələ imtina edilir:** `ImpesEngine` + MPFA-O, üç fazalı mühərrik + MPFA-O,
+> faylı və ya ACTNUM-lu model (§8), Dirichlet sərhəd (§7).
+
 ---
 
 ## 1. Mövcud arxitektura: TPFA qalığa NECƏ çatır

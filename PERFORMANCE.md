@@ -161,7 +161,7 @@ CPR isə işləyir. Ətraflı: `A6_PLAN.md`, mərhələ 5.
 
 | Namizəd | Gözlənilən qazanc | Qeyd |
 |---|---|---|
-| CPR ön-şərtçisi | böyük (implicit üçün) | Təzyiq və doyumluluq bloklarını ayırır |
+| ~~CPR ön-şərtçisi~~ | — | **Edilib** (A6/5, bax yuxarıda §5): qazanc sürətdə deyil, yaddaşdadır |
 | `_update_saturation`-da Numba | 5–7 % | `np.add.at` çağırışları |
 | Nisbi keçiricilik keşi | 2–3 % | Corey düsturları hər addımda hesablanır |
 

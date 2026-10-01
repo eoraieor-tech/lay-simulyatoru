@@ -308,8 +308,8 @@ Bütün Phase A/Phase 4-5 ictimai adları proqramla yoxlanılıb və yerindədir
   `anisotropy.metric_tensor()` genişlənmə nöqtəsi hazırdır.
 * Ko-kriginq / universal kriginq (trendli) — Part C/D.
 * Sensor/təzyiq datası ilə çoxdəyişənli şərtləndirmə.
-* Yeni xassə mühərrikinin `geology_service.py`/UI-a bağlanması: hazırda
-  `PropertyEstimate`/`CategoricalEstimate` backend-də tam hazırdır, amma
-  `WellBasedGeologicalModelBuilder` hələ Phase A-nın `interpolate_property()`
-  yolundan istifadə edir (geriyə uyğunluq üçün qəsdən toxunulmayıb).
+* ~~Yeni xassə mühərrikinin `geology_service.py`-yə bağlanması~~ —
+  **sonradan edilib** (yeniləndi: 1 oktyabr 2026; yoxlandı:
+  `geology_service.py` `interpolate_property_field()`-i çağırır, bax
+  `LAYER_AWARE_MODELING.md` §12).
 * Yığılmış (censored) hədli xassələr üçün truncated/qarışıq model.

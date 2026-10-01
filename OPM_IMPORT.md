@@ -1,16 +1,26 @@
 # OPM Flow nəticələrinin idxalı — strateji dönüş
 
+> **Status qeydi (yeniləndi: 1 oktyabr 2026, Seans 51).** Aşağıda təsvir
+> olunan «fizikanı OPM Flow-a həvalə etmək» qərarı (v69) **10 sentyabr 2026-da
+> ləğv olundu**: sahibkar «öz fizikamız» seçdi, üç fazalı (qaz) həlledici
+> bərpa olunub servisə və UI-yə qaytarıldı (`ISH_HESABATI.md` → Seans 2, 6;
+> `ROADMAP.md` 0.10). Yəni hazırkı mühərrik iki VƏ üç fazalıdır.
+>
+> OPM idxalının özü (`imex2d/io/opm_import.py`) müstəqil imkan kimi qalır və
+> istəyə bağlı `resdata` paketini tələb edir (`requirements.txt`-də yoxdur;
+> paket olmayanda `tests/test_opm_import.py` atlanır). OPM Flow indi başqa
+> rolda işlədilir — SPE1CASE2 üçün **etalon** kimi; onun summary faylları
+> `resdata`-sız öz oxuyucumuzla oxunur (`io/eclipse_summary.py`, bax `SPE1.md`).
+
 ## Fikir
 
 A7-nin öz üç fazalı Nyuton həlledicisi açıq bir davamlılıq problemi
 daşıyırdı (bax `A7_PLAN.md`) — quyu öz BHP sərhədinə çox yaxınlaşanda
-bəzən yığılmırdı. **Yenilənmə:** həmin üç fazalı (qaz) həlledici v69-da
-kod bazasından TAMAMILƏ ÇIXARILDI (bax `imex2d/simulation/implicit/
-standard_well.py:3`, `coupled_newton.py:3`) — hazırkı mühərrik yalnız
-iki fazalıdır (neft-su). Aşağıdakı OPM idxalı bu tarixi qərarın
-NƏTİCƏSİ olaraq qalıb və müstəqil şəkildə faydalıdır, lakin "qaz
-fazasının OPM-dən idxalı" ideyası (aşağıda, "Növbəti addımlar") heç vaxt
-tətbiq olunmayıb və hazırda planlaşdırılmır.
+bəzən yığılmırdı. Həmin həlledici v69-da kod bazasından çıxarıldı
+(sonradan qaytarıldı — yuxarıdakı status qeydinə bax). Aşağıdakı OPM
+idxalı o tarixi qərarın nəticəsi olaraq qalıb və müstəqil şəkildə
+faydalıdır; "qaz fazasının OPM-dən idxalı" ideyası (aşağıda, "Növbəti
+addımlar") heç vaxt tətbiq olunmayıb və hazırda planlaşdırılmır.
 
 Bunun əvəzinə strateji qərar verildi: **fizikanı** real, sınanmış bir
 simulyatora (OPM Flow — açıq mənbəli, Eclipse formatına uyğun) həvalə

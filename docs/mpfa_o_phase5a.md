@@ -10,6 +10,21 @@ təsvir" deyil, **spesifikasiyadır**.
 > inteqrasiyası BU FAZADA YOXDUR (bax §17 "Qalan iş"). TPFA
 > (`TwoPointFluxDiscretization`) TOXUNULMAZ qalır.
 
+> **Sonrakı vəziyyət** (qeyd əlavə olundu: 1 oktyabr 2026, Seans 51).
+> Bu sənəd Phase 5A anının spesifikasiyasıdır; riyaziyyat dəyişməyib, lakin
+> §17-dəki «Qalan iş»in bir hissəsi sonradan görülüb:
+>
+> * **5B-1** — qalıq inteqrasiyası ([mpfa_o_phase5b1.md](mpfa_o_phase5b1.md));
+> * **5B-2** — analitik çoxnöqtəli Jakobian
+>   (`implicit/jacobian.py::_flux_multipoint`) və `FullyImplicitEngine` ilə
+>   Nyuton; uc-uca testlər `tests/test_phase_d_mpfa_integration.py`;
+> * **5D-nin corner-point hissəsi** — `ARCHITECTURE.md` §5.18;
+> * MPFA-O istifadəçi tərəfindən seçilir (`SimulationConfig.flux_scheme`, B1).
+>
+> **Hələ yoxdur:** MPFA yolunda fay çarpanları və ACTNUM (belə model açıq rədd
+> edilir), Dirichlet sərhədin qalıq qatına ötürülməsi, üç fazalı mühərrik və
+> IMPES ilə MPFA-O.
+
 ---
 
 ## 1. Bu implementasiyada MPFA-O nə deməkdir

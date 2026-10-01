@@ -34,10 +34,15 @@ köçürülür. Diskretizasiya birbaşa bunu oxuyur.
 
 ## Niyə müstəvi, əyri səth yox
 
-`Fault.polyline` ümumi 3D əyri ola bilərdi, amma hazırkı `CellGeometry`
-yalnız bərabər ölçülü bloklar saxlayır (bax `ARCHITECTURE.md`, 5.1).
-Əyri fay-hüceyrə kəsişməsini hesablamaq corner-point həndəsə tələb
-edir ki, bu hələ yoxdur.
+`Fault.polyline` ümumi 3D əyri ola bilərdi, amma bu modul yazılanda
+`CellGeometry` yalnız bərabər ölçülü bloklar saxlayırdı (bax
+`ARCHITECTURE.md`, 5.1) və əyri fay-hüceyrə kəsişməsini hesablamaq üçün
+lazım olan corner-point həndəsə yox idi.
+
+> **Yenilənmə (1 oktyabr 2026):** corner-point həndəsə sonradan yazıldı
+> (`CornerPointGeometry`, `ARCHITECTURE.md` §5.18). Fay modeli isə
+> dəyişməyib — fay hələ də grid oxlarına düz bucaqlı müstəvidir və çarpan
+> yalnız **TPFA** yolunda tətbiq olunur; MPFA-O faylı modeli açıq rədd edir.
 
 Ona görə fay **grid oxlarına düz bucaqlı müstəvi** kimi təyin olunur —
 bu, həm cari həndəsə ilə tam uyğundur, həm də demək olar bütün
@@ -110,6 +115,10 @@ edilir.
 fault-lar görünür.
 
 ## 3D görüntüdə
+
+(Aşağıdakı kontur təsviri **matplotlib** motoruna aiddir. VTK motorunda
+fault yarı-şəffaf dolğulu müstəvi kimi çəkilir — bax `VISUALIZATION.md`,
+«Faultlar — VTK-da ƏSL DOLĞU».)
 
 Hər fault öz tam diapazonunun HƏDD qutusunu (bounding box) əhatə
 edən **qırmızı konturla** çəkilir — dolğu yox, çünki matplotlib-in

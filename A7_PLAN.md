@@ -1,17 +1,35 @@
 # A7 — Qaz fazası (üç fazalı black-oil)
 
-> **ARXİVLƏŞDİRİLİB (v69) — bu iş kod bazasından ÇIXARILIB.**
-> Bu fayl aşağıda TAM üç fazalı (neft-su-qaz) həlledicinin (`ThreePhase
-> SimulationEngine`, `ThreePhaseNewtonSolver`) mərhələ-mərhələ necə
-> qurulduğunu sənədləşdirir və həmin iş bir müddət faktiki işləyirdi.
-> Lakin v69-da qaz fazası TAMAMILƏ kod bazasından çıxarıldı (bax
-> `imex2d/simulation/implicit/standard_well.py:3`, `coupled_newton.py:3`,
-> `imex2d/application/serialization.py:229-233` — "Qaz fazası v69-da
-> silindi"). `ThreePhaseSimulationEngine`/`ThreePhaseNewtonSolver`
-> sinifləri artıq mövcud DEYİL. Hazırkı mühərrik (`imex2d/simulation/
-> implicit/`) YALNIZ iki fazalıdır (neft-su) — bax `residual.py`-in
-> `WATER`/`OIL` sabitləri, üçüncü faza yoxdur. Aşağıdakı mətn TARİXİ
-> qeyddir, CARİ davranışı TƏSVİR ETMİR.
+> **TARİXİ SƏNƏD** (status qeydi yeniləndi: 1 oktyabr 2026, Seans 51).
+> Bu fayl üç fazalı (neft-su-qaz) həlledicinin (`ThreePhaseSimulationEngine`,
+> `ThreePhaseNewtonSolver`) v67-yə qədər mərhələ-mərhələ necə qurulduğunu və
+> o vaxt həll olunmamış qalan Nyuton problemini təsvir edir. Aşağıdakı mətn
+> o dövrün qeydidir, CARİ davranışı tam TƏSVİR ETMİR.
+>
+> **Sonra nə oldu:**
+>
+> * **v69** — qaz fazası kod bazasından tamamilə çıxarıldı (fizikanı OPM
+>   Flow-a həvalə etmək qərarı — bax `OPM_IMPORT.md`).
+> * **10 sentyabr 2026** — o qərar ləğv olundu («öz fizikamız»); kod git
+>   tarixçəsindən bərpa edildi (`berpa/A7_qaz_fazasi/`) və **B2**-də servisə və
+>   UI-yə qaytarıldı (`ISH_HESABATI.md` → Seans 2, 6). `ThreePhaseSimulationEngine`
+>   və `ThreePhaseNewtonSolver` yenidən mövcuddur; PVT-də qaz varsa servis
+>   üç fazalı mühərriki avtomatik seçir.
+> * **Yığılmama problemi:** iki fazalı hal B3-A-da (Seans 7), üç fazalı mühərrikin
+>   yüksək doyma təzyiqində yığılmaması B3-B-də (Seans 10, `QARARLAR.md` → Q-09)
+>   həll olundu — səbəb doymamış hüceyrədə Bo-nun doymuş qoldan oxunması idi.
+>   Bu sənəddəki «t ≈ 6.7 gün, dövr-2 rəqsi»nin məhz həmin səbəbdən olub-olmadığı
+>   ayrıca ölçülməyib.
+> * **Sonradan əlavə olunanlar:** ilkin Rs (B4b), Pcow və Pcog (Q-16), qaz
+>   vurulması (Q-18), SGOF cədvəli (Q-26), deck PVT qolları (Q-27…Q-34), canlı
+>   neft sıxlığı (Q-31).
+> * **Bu sənəddə artıq doğru olmayan iddialar:** «vurucular yalnız su vurur»
+>   (indi qaz da vurulur); «Stone II mənfi olmayan nəticəyə riyazi zəmanət verir»
+>   (kod nəticəni `np.clip` ilə `[0, kro_end]`-ə kəsir); OPM tipli quyu modeli
+>   (`standard_well.py`, `coupled_newton.py`) bərpa olunub, lakin heç bir
+>   mühərrikə qoşulmayıb — yalnız öz testləri çağırır.
+>
+> Cari vəziyyət: `ROADMAP.md` və `ISH_HESABATI.md`-nin son bölmələri.
 
 Məqsəd: modelin **yeganə qalan fiziki məhdudiyyətini** aradan
 qaldırmaq. `A6_PLAN.md`-də sənədləşdirildiyi kimi, hazırkı iki fazalı

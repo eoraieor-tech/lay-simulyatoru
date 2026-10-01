@@ -1,9 +1,22 @@
 # 3D görüntü
 
+> **Cari vəziyyət** (qeyd əlavə olundu: 1 oktyabr 2026, Seans 51).
+> Proqramda İKİ 3D motoru var və «3D görüntü» tabında seçilir:
+>
+> * **VTK** — əsas motor; `vtk` `requirements.txt`-dədir və quraşdırılıbsa
+>   siyahıda birinci gəlir. Təsviri: aşağıda «VTK motoru» bölməsi.
+> * **matplotlib** — ehtiyat motor (VTK yoxdursa və ya çəkiliş alınmasa).
+>   Bu sənədin «VTK motoru» başlığına qədərki hissəsi ONU təsvir edir.
+>
+> Sonradan əlavə olunanlar (B6): interaktiv kəsik müstəvisi (yalnız VTK),
+> oynatma idarəsi (sürət, kadr-kadr, dövrə), PNG/GIF ixracı, qaz doyumluluğu
+> (Sg) xassəsi — bax `ISH_HESABATI.md` → Seans 18, 20, 21, 22.
+
 ## Niyə matplotlib
 
 `pyvista`/`vtk` daha güclüdür, lakin əlavə quraşdırma tələb edir və
-bu mühitdə mövcud deyil. `matplotlib` onsuz da layihənin asılılığıdır
+bu bölmə yazılanda mühitdə mövcud deyildi (indi VTK var — yuxarıdakı
+qeydə bax). `matplotlib` onsuz da layihənin asılılığıdır
 və Qt ilə birlikdə interaktiv fırlatma verir.
 
 Əvəzində performans üçün xüsusi iş görülüb (aşağıda).
@@ -71,6 +84,13 @@ etmir. Yəni dəyər-rəng uyğunluğu qorunur, sadəcə parlaqlıq dəyişir.
 | **İşıq** | Kölgənin gücü (0–100 %) |
 | **Şəffaflıq** | 20–100 %; daxili qatları göstərir |
 | **Görünüşü sıfırla** | İzometrik + defolt parametrlər |
+
+> **Qeyd:** `Z×` (şaquli mübaliğə) idarəsi sonradan **çıxarıldı** — model
+> həmişə həqiqi nisbətdə göstərilir (bax «Yaxınlaşdırma»). Aşağıdakı iki
+> «Şaquli mübaliğə» bölməsi o idarənin necə işlədiyinin tarixi izahıdır.
+> «Şəffaflıq» haqqında: matplotlib-də dərinlik sıralaması dəqiq olmadığı
+> üçün düzgün işləmir (bax «Məhdudiyyətlər»); VTK motorunda dəstəklənir
+> (bax «v54»).
 
 "Baxış" siyahısında **Sərbəst** seçilibsə, siçanla qurulan bucaq
 qorunur — xassə və ya zaman dəyişəndə kamera sıfırlanmır.
@@ -155,74 +175,16 @@ saniyələr çəkərdi və hərəkət kəsikli olardı.
 
 ## Yaxınlaşdırma
 
-`Yaxınlaşdırma` sürgüsü ekran böyütməsidir:
-
-| Dəyər | Nəticə |
-|---|---|
-| **100 %** (defolt) | tam model çərçivəyə sığır |
-| 150–250 % | modelə yaxından baxış, detallar aydınlaşır |
-| 25–75 % | uzaqdan ümumi görünüş |
-
-Yaxınlaşdırma **yalnız görüntüyə** təsir edir: ox hədləri, dərinlik
-işarələri və çəkilən həndəsə dəyişmir. Test bunu qoruyur.
-
-matplotlib-in 3D oxu defolt olaraq geniş boş kənar buraxır, ona görə
-100 %-ə baza əmsalı (`BASE_FIT = 1.35`) tətbiq olunur — əks halda model
-çərçivənin yalnız yarısını tutardı.
-
-Şaquli miqyas idarəsi (`Z×`) çıxarıldı: model həmişə **həqiqi nisbətdə**
-göstərilir. Hündür qutuda plan sıxılırdı və nəzarət qarışıqlıq yaradırdı.
-
-## Məhdudiyyətlər
-
-- **Şəffaflıq yoxdur.** matplotlib-in 3D-də şəffaflıq sıralaması
-  düzgün işləmir, ona görə hüceyrələr tam qeyri-şəffafdır. Daxili
-  strukturu görmək üçün kəsim həddi və təbəqə aralığı işlədilir.
-- **Çox böyük modellər.** 100 000+ hüceyrədə çəkmə bir neçə saniyə
-  çəkir. Bu halda təbəqə aralığını daraltmaq lazımdır.
-- **Fırlatma sürəti.** Hər fırlatmada səhnə yenidən çəkilir; böyük
-  modellərdə bu hiss olunur.
-
-`pyvista` quraşdırılsa, gələcəkdə ikinci renderer kimi əlavə edilə
-bilər — `VolumeRenderer` interfeysi buna hazırdır.## Siçanla idarəetmə
-
-CMG Builder ilə eyni təyinat:
-
-| Düymə | Nə edir |
-|---|---|
-| **Sol** basıb sürüşdür | Modeli fırladır |
-| **Orta** basıb sürüşdür | Səhnəni sürüşdürür (Pan) |
-| **Sağ** basıb sürüşdür | Yaxınlaşdırır |
-| **Çarx** | Yaxınlaşdırır / uzaqlaşdırır |
-
-### Alət paneli niyə çıxarıldı
-
-3D tabında matplotlib naviqasiya paneli **zərərlidir**. `Axes3D._on_move`
-başlanğıcda yoxlayır:
-
-    get_navigate_mode() is not None  ->  return
-
-Yəni panelin "pan" və ya "zoom" rejimi aktiv olan kimi siçanla
-fırlatmaq **tamamilə dayanır**. İstifadəçi düyməni basır və modelin
-niyə fırlanmadığını anlamır.
-
-Ona görə 3D tabında yalnız "Şəkli saxla…" düyməsi qalıb. 2D xəritədə
-panel faydalıdır və orada saxlanılıb. Test bunu qoruyur.
-
-### Çarxın sürəti
-
-Çarx hər addımda səhnəni yenidən çəkmir — yalnız kamera nisbətini
-dəyişir (`apply_zoom`). 50 000 hüceyrəli modeldə tam yenidən çəkiliş
-saniyələr çəkərdi və hərəkət kəsikli olardı.
-
-## Yaxınlaşdırma
-
 `Yaxınlaşdırma` (25–500 %, defolt **100 %**) kameranı modelə
 yaxınlaşdırır. 100 % — model tam kadra sığır; artırdıqca detallara
 yaxından baxılır.
 
 Yalnız kameraya təsir edir: koordinatlar, ox hədləri və çəkilən üzlər
 dəyişmir. Test bunu qoruyur.
+
+matplotlib-in 3D oxu defolt olaraq geniş boş kənar buraxır, ona görə
+100 %-ə baza əmsalı (`BASE_FIT = 1.35`) tətbiq olunur — əks halda model
+çərçivənin yalnız yarısını tutardı.
 
 Şaquli mübaliğə (`Z×`) idarəetməsi **çıxarıldı** — model həmişə həqiqi
 nisbətdə göstərilir. Yaxından baxmaq lazım olanda yaxınlaşdırma
@@ -238,8 +200,9 @@ işlədilir.
 - **Fırlatma sürəti.** Hər fırlatmada səhnə yenidən çəkilir; böyük
   modellərdə bu hiss olunur.
 
-`pyvista` quraşdırılsa, gələcəkdə ikinci renderer kimi əlavə edilə
-bilər — `VolumeRenderer` interfeysi buna hazırdır.
+Bu məhdudiyyətlər matplotlib motoruna aiddir. İkinci motor sonradan
+əlavə olundu — PyVista yox, birbaşa VTK (`QARARLAR.md` → Q-08); təsviri
+aşağıdadır.
 
 ---
 
@@ -396,9 +359,17 @@ saxlama) interaktor olmadığı üçün səssizcə atlanılır.
 
 ## Qalan iş
 
-- Kəsim müstəviləri (ResInsight-ın güclü tərəfi — VTK-da `vtkPlane`
-  ilə asandır)
-- Zaman üzrə avtomatik animasiya
+Bu bölmə yazılanda iki bənd açıq idi; hər ikisi B6-da görülüb
+(yeniləndi: 1 oktyabr 2026):
+
+- ~~Kəsim müstəviləri~~ — ✅ B6-a (Seans 21): «Kəsik: Yox / X / Y / Z» +
+  mövqe sürgüsü, müstəvi 3D-də sürüklənir (`vtkImplicitPlaneWidget2`,
+  `vtkCutter`); yalnız VTK motorunda.
+- ~~Zaman üzrə avtomatik animasiya~~ — ✅ B6-b (Seans 18): sürət seçicisi,
+  kadr-kadr addımlama, dövrə; B6-c (Seans 22): PNG kadr və animasiyalı
+  GIF ixracı (`rendering/animation_export.py`).
+
+Açıq qalan: əsl volumetric rendering (`ROADMAP.md` 6.4 — psevdo-3D var).
 
 ## v56 — koordinat şəbəkəsi və istiqamət oxu
 

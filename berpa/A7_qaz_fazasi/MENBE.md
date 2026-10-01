@@ -36,11 +36,15 @@ nüsxə saxlanılır.
 | `three_phase_state.py` | 170 | Primary dəyişənlər + dəyişən keçidi |
 | `three_phase.py` | 111 | Üç fazalı doyumluluq (domain) |
 
-**Testlər — 1 953 sətir**
+**Testlər — 2 158 sətir**
 
 `test_three_phase_residual.py` (964), `test_three_phase_newton.py` (257),
-`test_three_phase.py` (215), `test_gas_pvt.py` (192),
-`test_stone_relperm.py` (192), `test_gas_ui_wiring.py` (133).
+`test_three_phase.py` (215), `test_variable_switching.py` (205),
+`test_gas_pvt.py` (192), `test_stone_relperm.py` (192),
+`test_gas_ui_wiring.py` (133).
+
+(İlk bərpada `test_variable_switching.py` buraxılmışdı — sonradan əlavə
+olundu; cəmi 13 fayl, 4 323 sətir. Bax `AUDIT_2026-09-10.md` §11.)
 
 ## Vəziyyət
 
@@ -55,7 +59,14 @@ Bu, tanınmış problemdir; həll yolları: Appleyard chopping, doyma
 dəyişiminin məhdudlaşdırılması, trust-region Nyuton (Wang & Tchelepi),
 per-cell qəbul meyarı.
 
-⏳ *Bu kod hələ əsas kod bazasına qaytarılmayıb — sahibkarın strateji
-qərarı gözlənilir (öz fizikamız, yoxsa OPM Flow).*
+**Yenilənmə (1 oktyabr 2026):** yuxarıdakı vəziyyət bərpa GÜNÜNƏ aiddir.
+Sahibkar «öz fizikamız» seçdi və kod həmin gün əsas kod bazasına (`imex2d/`,
+`tests/`) qaytarıldı (B2 — `ISH_HESABATI.md` → Seans 6). Yığılmama problemi
+B3-A və B3-B-də həll olundu (Seans 7 və 10, `QARARLAR.md` → Q-09).
+
+Bu qovluq indi yalnız **ARXİVDİR**: canlı kod onu idxal etmir, `pytest.ini`-nin
+`testpaths`-ına daxil deyil. Canlı fayllar o vaxtdan xeyli dəyişib (məs.
+`three_phase_residual.py` 1 066 → 1 401 sətir) — buradakı nüsxələr v67
+vəziyyətidir və işlək kod kimi götürülməməlidir.
 
 Ətraflı: [`../../AUDIT_2026-09-10.md`](../../AUDIT_2026-09-10.md) §8.2

@@ -5,6 +5,13 @@ Riyazi spesifikasiya: [`mpfa_o_phase5a.md`](mpfa_o_phase5a.md).
 Bütün rəqəmlər `tests/test_mpfa_o.py` və onun köməkçiləri ilə
 təkrar-istehsal olunandır.
 
+> **Sonrakı vəziyyət** (qeyd əlavə olundu: 1 oktyabr 2026, Seans 51).
+> Bu hesabat Phase 5A anına aiddir (o vaxt tam dəst 1 088 test idi; indi
+> 2 762). «P. Qalan iş» bölməsindəki 5B və 5C, həmçinin 5D-nin corner-point
+> hissəsi sonradan görülüb — bax [mpfa_o_phase5a.md](mpfa_o_phase5a.md)
+> başlığındakı «Sonrakı vəziyyət» qeydi. MPFA yolunda fay çarpanları və
+> ACTNUM hələ açıqdır.
+
 ---
 
 ## A. Dəyişən fayllar
