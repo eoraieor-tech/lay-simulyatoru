@@ -5765,3 +5765,112 @@ Yeni texniki qərar yoxdur (`QARARLAR.md` dəyişmədi); mərhələ statusu dəy
 (`ROADMAP.md` dəyişmədi). Test dəsti İŞLƏDİLMƏDİ — kod dəyişməyib; son ölçmələr:
 Seans 46 — 2773 keçdi, Seans 48 — 2761 keçdi (bu mühitdə `resdata` yoxdur).
 `origin/main` ilə yerli `main` eynidir (`3b21d52`).
+
+
+## 1 oktyabr 2026 — Seans 51: köhnəlmiş sənədlər cari vəziyyətə gətirildi
+
+Sahibkarın tələbi: «köhnəlmiş sənədləri təmizlə, ilk öncəliklə». Seans 50-nin
+§4 cədvəlindəki sənədlər və oxu zamanı görünən digər ziddiyyətlər düzəldildi.
+`imex2d/` kodu DƏYİŞMƏDİ.
+
+### 1 · Yanaşma
+
+«Təmizlə» fayl silmək kimi YOX, düzəltmək kimi icra olundu (layihə qaydası:
+tarixçə itmir). Sənədlər iki növə ayrıldı:
+
+* **cari vəziyyəti təsvir edənlər** (README, ROADMAP, ICRA_PLANI, SPE1 başlığı,
+  TEHVIL_TESLIM, ARCHITECTURE, `tests/README`) — mətn faktla uyğunlaşdırıldı;
+* **tarixi sənədlər** (A7_PLAN, OPM_IMPORT, AUDIT, MPFA-O faza sənədləri,
+  berpa/MENBE) — köhnə mətn SAXLANILDI, başına tarixli «sonrakı vəziyyət»
+  qeydi qoyuldu (`AUDIT` §8.1 və `FACIES.md`-də artıq işlədilən üsul).
+
+Heç bir fayl silinmədi. Silinən mətn yalnız ikidir: alət artefaktı olan
+teqlər və `VISUALIZATION.md`-də iki dəfə yazılmış blok.
+
+### 2 · Nə edildi
+
+| Fayl | Dəyişiklik |
+|---|---|
+| `PROJECT_ANALYSIS.md`, `PROJECT_ANALYSIS_SUMMARY.md`, `docs/diagrams/*.md` (6 fayl) | sonlarındakı artıq `</content>` / `</invoke>` sətirləri silindi (Seans 48-in yazma artefaktı) |
+| `README.md` | status («başlanğıc mərhələsi» → B1–B6 bitib, B7 gedir), əhatə cədvəli, sənəd xəritəsi (bütün sənədlər), §3 Quraşdırma və §4 İstifadə dolduruldu, repo ünvanı (`LAY-SIMULYATIR-MODELI-` → `lay-simulyatoru`) |
+| `tests/README.md` | «1841 test» → 2762 test, 137 fayl; cədvəldə 4 faylın sayı; cədvəlin yalnız ilk 26 faylı göstərdiyi yazıldı |
+| `A7_PLAN.md` | «ARXİVLƏŞDİRİLİB — koddan çıxarılıb» başlığı əvəzinə tam xronologiya: v69 silinmə → B2 bərpa → B3-A/B3-B; sənəddə artıq doğru olmayan üç iddia sadalandı |
+| `OPM_IMPORT.md` | status qeydi: v69 qərarı ləğv olunub, mühərrik iki və üç fazalıdır; OPM Flow indi SPE1 etalonudur |
+| `berpa/A7_qaz_fazasi/MENBE.md` | «hələ qaytarılmayıb» → B2-də qaytarılıb, qovluq arxivdir; test siyahısına `test_variable_switching.py` (13 fayl, 4 323 sətir) |
+| `AUDIT_2026-09-10.md` | başlığa «10 sentyabr anının şəklidir» qeydi + §10 siyahısının sonrakı taleyi |
+| `docs/mpfa_o_phase5a.md`, `…_validation.md`, `…_phase5b1.md` | «sonrakı vəziyyət» qeydləri: Phase 5B-2 (analitik çoxnöqtəli Jakobian, Nyuton) və corner-point görülüb; hələ nə rədd edilir |
+| `ARCHITECTURE.md` | §2 — sonradan əlavə olunan 6 paket və AST ilə ölçülmüş iki qayda pozuntusuna istinad; §3 — diaqramın refaktorinq anına aid olduğu; §5.13, §5.16, §5.17 — MPFA-O-nun «hələ yoxdur» / «Nyuton yoxdur» ifadələrinə yenilənmə qeydləri; §7 — quraşdırma əmri |
+| `ROADMAP.md` | başa «Cari vəziyyət» xülasəsi; «Mövcud kodda NƏ VAR» cədvəlində qaz və THP sətirləri; «Gələcək ideyalar»da artıq mövcud olanlar (fault, history matching, deck oxuyucuları) işarələndi |
+| `ICRA_PLANI.md` | cari vəziyyət qeydi; B3, B5, B6 başlıqları ✅; §3 cədvəlində B6; B7-nin dörd bəndi üzrə vəziyyət cədvəli; B2-nin «qalan iki məhdudiyyət»inə bağlanma qeydi |
+| `SPE1.md` | başlıq statusu («model HƏLƏ qurulmayıb» → qurulub, qalan fərq ~145 gün); G3 sətri; iş planının 6–7-ci bəndləri |
+| `TEHVIL_TESLIM.md` | başlıq (son kod commit-i `593023f`), §1 (Seans 51 / Q-36 / test sayları), yeni «Seans 45–51» cədvəli, §2.2 baza rəqəmləri, §7-də bağlanmış `export_results` bəndi və Seans 48–49 tapıntılarına istinad, §8-də sətir sonu qeydi |
+| `VISUALIZATION.md` | başa iki motor haqqında qeyd; iki dəfə yazılmış blok (siçan idarəsi, alət paneli, çarx, yaxınlaşdırma, məhdudiyyətlər — 62 sətir) birləşdirildi; `Z×` idarəsinin çıxarıldığı qeyd olundu; «Qalan iş» — kəsik və animasiya B6-da görülüb |
+| `FAULTS.md` | corner-point həndəsənin artıq mövcud olduğu; kontur təsvirinin matplotlib motoruna aid olduğu |
+| `PROPERTY_ENGINE.md` | §10: xassə mühərrikinin `geology_service.py`-yə bağlanması artıq edilib |
+| `PERFORMANCE.md` | §6: CPR «namizəd» deyil, edilib |
+| `docs/nezeri_esaslar.md` | §3.3 — Stone II haqqında iki yanlış iddia düzəldildi (kod `np.clip` ilə kəsir; Eclipse/OPM defoltu deyil); §6.4 — THP birləşməsinin nodal analizdən sonrakı təsviri |
+| `docs/is_axini_ardicilligi.md` | §9 — THP rejimində BHP-nin mənbəyi (Q-17) |
+| `docs/teqdimat/README.md` | açılış modelinin vaxtı ölçülüb (Seans 45, ≈ 24 s); xəritənin göz ilə yoxlanmadığı |
+
+### 3 · Yazılan iddiaların yoxlanması
+
+Sənədlərə yazılan cari-vəziyyət iddiaları koda və ya ölçməyə baxılaraq
+yoxlandı, yaddaşdan yazılmadı:
+
+* test sayı — `pytest --collect-only`: **2762 test, 136 fayl** (+ `resdata`
+  olmadığı üçün toplanmayan `test_opm_import.py`). Seans 50-nin §4 cədvəlində
+  «2773» yazmışdım — o, Seans 46-nın KEÇƏN test sayıdır (`resdata` olan
+  mühit), toplanan say deyil; düzgün rəqəm buradakıdır;
+* MPFA-O: `implicit/jacobian.py`-də `_flux_multipoint` / `_assemble_multipoint`
+  mövcuddur; `residual.py::_reject_unsupported` və `mpfa_o.py` fay və ACTNUM-u
+  rədd edir; `simulation_service.py:303` üç fazalı + MPFA-O-nu rədd edir;
+* THP: `thp_control.py` sabitləri — `RELAXATION = 0.5`, `MAX_BHP_CHANGE_BAR = 25`,
+  `OUTER_TOLERANCE_BAR = 1.0`, `MAX_OUTER_ITERATIONS = 2`;
+* Stone II: `stone_relperm.py:124` — `np.clip(result, 0.0, self.kro_end)`;
+* tablar — `version.py::EXPECTED_TABS` (13); yaxınlaşdırma diapazonu —
+  `main_window.py` (25–500 %), şaquli mübaliğə sabit 1.0;
+* repo ünvanı — `git remote -v`; son kod commit-i — `git log -- imex2d`;
+* `berpa/` — 13 fayl; `geology_service.py` `interpolate_property_field`-i çağırır.
+
+Redaktədən sonra hər faylın sətir sonu `git ls-files --eol` ilə yoxlandı —
+CRLF faylları CRLF, LF faylları LF qaldı.
+
+### 4 · Toxunulmayanlar və səbəbi
+
+* `ISH_HESABATI.md`-nin köhnə bölmələri və `QARARLAR.md` — qayda: dəyişdirilmir.
+  Q-06-nın sonundakı «⏳ yekun vizualizasiya qərarı verilməyib» Q-07 ilə
+  bağlanıb; **Q-08** isə hələ «təklif» statusundadır — onu təsdiqləmək
+  sahibkarın işidir.
+* `PROJECT_ANALYSIS.md`-nin məzmunu — 26 sentyabr anının tarixli analizidir.
+  Onun P-12 bəndinin (köhnəlmiş sənədlər) `README.md` və `tests/README.md`
+  hissələri bu seansda bağlandı.
+* **Koddakı köhnəlmiş mətnlər** (sahibkar sənədləri dedi; kod faylına
+  toxunulmadı) ⏳: `stone_relperm.py` modul şərhi (sətir 17–18, Stone II
+  haqqında eyni iki yanlış iddia), `io/grdecl.py` docstring-i (P-12),
+  `version.py` (`VERSION = "69"`, 2026-08-28).
+* `UNITS.md`, `SGS.md`, `FACIES*.md`, `GEOSTATISTICS.md`, `INTERPOLATION_CORE.md`,
+  `LAYER_AWARE_MODELING.md`, `SCAL.md`, `ECLIPSE_IO.md`, `HISTORY_MATCHING.md`,
+  `SENSITIVITY.md`, `REPORTING.md`, `A6_PLAN.md` — cari vəziyyətlə ziddiyyət
+  tapılmadı (onlardakı «qalan iş» bəndləri hələ açıqdır və ya özlərində
+  artıq yenilənmə qeydi var).
+
+### 5 · Qərarlar
+
+Yeni texniki qərar yoxdur (`QARARLAR.md` dəyişmədi). Mərhələ statusu dəyişmədi —
+`ROADMAP.md`-də yalnız köhnəlmiş iki sətir və xülasə yeniləndi.
+
+### 6 · Açıq qalanlar
+
+- ⏳ `docs/README.md`-də gözlənilən altı sənəd hələ yoxdur (`fizika.md`,
+  `riyaziyyat.md`, `grid.md`, `quyular.md`, `fayl_formatlari.md`, `testler.md`).
+- ⏳ §4-dəki üç kod mətni.
+- ⏳ `ISH_HESABATI.md`-nin sətir sonları qarışıqdır (əksəri CRLF, Seans 48-dən
+  sonrakılar LF) — normallaşdırılmadı, çünki bütün faylı dəyişmiş göstərərdi.
+- İş ağacındakı `PROJECT_THEORY_GUIDE.docx` (dəyişib) və `gunluk.csv`
+  (izlənmir) — toxunulmadı.
+
+### 7 · Yoxlama
+
+Kod dəyişmədiyi üçün test dəsti İŞLƏDİLMƏDİ (yalnız toplanma: 2762 test, xətasız).
+Dörd commit: artefakt teqləri · README-lər · tarixi sənədlər · cari vəziyyət
+sənədləri; beşinci — bu bölmə.
