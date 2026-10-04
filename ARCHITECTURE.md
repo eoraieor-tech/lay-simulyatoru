@@ -981,6 +981,22 @@ imex2d/ui/main_window.py        menyu, bağlama sualı, bərpa faylı — orkest
 panellərdən qurulduğu üçün hesablamanı təkrarlamağa məhz o lazımdır.
 Application qatı onun formatını bilmir (asılılıq istiqaməti pozulmur).
 
+### 5.23 Köhnə nəticənin qorunması və qlobal xəta tutucusu (Seans 53, X-1)
+
+```
+imex2d/simulation/results.py    SimulationResult.fits_grid(shape) — anlar bu grid üçündürmü
+imex2d/ui/main_window.py        _result_fits_model / _snapshot_at — xəritə, 3D, ixrac
+imex2d/ui/error_hook.py         sys.excepthook: loga yaz + istifadəçiyə göstər (Qt-siz)
+app.py                          error_hook.install(...) — QMessageBox burada bağlanır
+```
+
+Nəticə öz gridinin formasını (`grid_shape`) artıq saxlayırdı; indi
+pəncərə anı yalnız cari modelin gridinə uyğun gələndə çəkir. Uyğun
+deyilsə, nəticə SİLİNMİR (əyrilər, sıra ixracları qalır) — xəritə
+statik xassəni göstərir, anı yazan ixraclar imtina edir (Q-37).
+`error_hook` Qt idxal etmir: mesaj funksiyası kənardan verilir, ona
+görə testlər pəncərə qurmadan yoxlayır.
+
 ## 6. Növbəti modulun necə qoşulacağı
 
 Bu bölmə refaktorinqin sübutu kimi PVT modulunun əlavəsini nümunə

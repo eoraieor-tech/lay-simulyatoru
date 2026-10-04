@@ -6119,3 +6119,96 @@ cədvəli əlavə olundu; `TEHVIL_TESLIM.md`, `README.md` bu seansa istinad edir
 Tam test dəsti işlədildi (§1). Kod dəyişmədiyi üçün `graphify update` lazım
 olmadı. Bu seansın bütün rəqəmləri bu kompüterdə (Windows 11, Python 3.14.7)
 ölçülüb.
+
+---
+
+## 4 oktyabr 2026 — Seans 53: X-1 düzəldildi — grid dəyişəndə çökmə
+
+Sahibkarın tələbi: «x-1 et» — Seans 52-də tapılan çökmənin düzəldilməsi.
+
+### 1 · Nə edildi
+
+| Fayl | Dəyişiklik |
+|---|---|
+| `imex2d/simulation/results.py` | `SimulationResult.fits_grid(shape)` — nəticənin anları bu (nz, ny, nx) grid üçündürmü. `grid_shape` boş olan köhnə nəticələrdə hüceyrə sayı müqayisə olunur; anı olmayan nəticə istənilən gridə uyğundur |
+| `imex2d/ui/main_window.py` | `_result_fits_model()`, `_snapshot_at(index)`; `update_map` və `update_volume` anı yalnız bunlar vasitəsilə alır; `export_snapshot` və `save_volume_animation` uyğunsuz nəticədə imtina edir; `rebuild_model` status sətrində səbəbi yazır (`STALE_RESULT_MESSAGE`); `open_project` 3D zaman sürgüsünü qurur (aşağıda) |
+| `imex2d/ui/error_hook.py` (yeni) | qlobal `sys.excepthook`: tutulmamış istisna `CRITICAL` səviyyədə tam izi ilə loga yazılır, istifadəçiyə qısa mesaj göstərilir, proses davam edir. Qt idxal etmir |
+| `app.py` | `error_hook.install(...)` — mesaj `QMessageBox.critical` ilə |
+| `tests/test_stale_result_guard.py` (yeni) | 26 test |
+
+Qərar: **Q-37** — köhnə nəticə silinmir (əyrilər, KPI, günlük cədvəl, sıra
+ixracları qalır), yalnız anları başqa gridə çəkilmir; rədd edilən variant
+(`self.result = None`) və səbəbləri orada.
+
+### 2 · Yoxlama zamanı tapılan və düzəldilən əlavə xəta
+
+Real pəncərə ilə «başqa ölçülü layihənin açılması» ssenarisində çökmə
+getdikdən sonra xəritə 50-ci günü, 3D görüntü isə **8-ci günü** göstərdi:
+`open_project` 3D zaman sürgüsünü (`volume_time`) heç qurmurdu — təzə
+açılmış layihədə o söndürülmüş qalırdı və 3D ya ilk anı, ya da əvvəlki
+nəticənin indeksini göstərirdi. Seans 52-nin pəncərə gəzintisi (addım 13)
+yalnız «nəticə göstərilir»i yoxlamışdı, 3D sürgüsünü yox. `_on_finished`-dəki
+üç sətir `open_project`-ə əlavə olundu; düzəlişdən sonra hər ikisi 50-ci gün.
+
+### 3 · Testlər
+
+`tests/test_stale_result_guard.py` — 26 test:
+
+* `fits_grid`: öz gridi; NX, NZ, 50×50, GRDECL (5×25×30) ölçüləri; eyni hüceyrə
+  sayı, fərqli forma (41×40 ↔ 40×41); anı olmayan nəticə; `grid_shape`-siz köhnə
+  nəticə; mühərrikin nəticəsi; `.imx` saxla→aç sonrası;
+* kök səbəbin sənədi: uyğunsuz an `MapRenderer`-də `ValueError` verir, `None` çəkilir;
+* pəncərə əlaqəsi mənbə mətnindən (`MainWindow` pytest-də qurulmur — layihənin
+  qaydası): `update_map` / `update_volume` anı yalnız `_snapshot_at` ilə alır,
+  iki ixrac yoxlayır, `rebuild_model` mesaj yazır, `open_project` 3D sürgüsünü qurur;
+* `error_hook`: tam iz loga, mesaj istifadəçiyə; mesaj funksiyası xəta verəndə
+  çölə çıxmır; mesaj zamanı yeni istisnada təkrar mesaj yoxdur; Ctrl+C standart
+  tutucuya; `install` əvvəlkini qaytarır; `app.py` onu quraşdırır;
+* **PyQt davranışı ayrıca prosesdə** (`QT_QPA_PLATFORM=offscreen`): slotda
+  `ValueError` — tutucu ilə proses sağ qalır və mesaj göstərilir; **nəzarət
+  sınağı** tutucusuz eyni skriptin prosesi dayandırdığını təsdiqləyir (yəni
+  birinci sınaq mənalıdır).
+
+### 4 · Real pəncərədə ölçmə (Seans 52-nin ssenariləri, düzəlişdən sonra)
+
+Hər ssenari ayrı prosesdə: əvvəlcə tam implicit hesablama (100 gün, RF 1.045 %),
+sonra dəyişiklik. Mesaj qutuları avtomatik bağlanır, `IMEX2D_DATA_DIR` və
+`QSettings` müvəqqəti qovluğa yönləndirilib. Qlobal tutucu bu skriptdə
+QURAŞDIRILMAYIB — yəni nəticə yalnız `fits_grid` qoruyucusunun nəticəsidir.
+
+| Ssenari | Seans 52 | İndi |
+|---|---|---|
+| NX 41 → 40 | çökmə (`0xC0000409`) | sağ; xəritə və 3D statik (t = 0), status mesajı; sürgülər tərpədildi — sağ; yenidən işə salındı → RF 1.073 %, anlar görünür (t = 100) |
+| NZ 1 → 2 | çökmə | sağ; eyni davranış; yenidən işə salındı → RF 1.045 % |
+| başqa ölçülü layihə (50×50) | çökmə | sağ; açılan layihənin nəticəsi göstərilir — xəritə və 3D: t = 50 gün |
+| GRDECL idxalı (5×25×30) | çökmə | sağ; statik xassə |
+| NX 41 → 40 → 41 (yeni) | — | 40-da statik, 41-ə qayıdanda anlar yenidən görünür (t = 100) |
+| məsaməlilik (grid eyni) | sağ | sağ (dəyişməyib) |
+
+Altı ssenarinin hamısında çıxış kodu 0.
+
+### 5 · Tam test dəsti
+
+**2787 keçdi, 1 atlandı** (`resdata` yoxdur), **1 xfailed, 0 uğursuz** — 974 s.
+Seans 52-dəki 2761-dən fərq məhz yeni 26 testdir; köhnə testlərin heç biri dəyişməyib.
+
+`pyflakes` dəyişən fayllarda xəbərdarlıq vermir. Toplanan testlər: **2788, 138 fayl**
+(`tests/README.md` yeniləndi).
+
+Kod commit-i: `ed24b37`.
+
+### 6 · Toxunulmayanlar
+
+* X-2, X-3 — açıqdır (sahibkar yalnız X-1-i istədi).
+* `app.py`-nin köhnə docstring-i («PVT modulu yazılanda…») — X-1-ə aid deyil.
+* Seans 51-dən qalan üç köhnə kod mətni.
+* İş ağacındakı `PROJECT_THEORY_GUIDE.docx` və `gunluk.csv` — toxunulmadı.
+
+### 7 · Açıq qalanlar
+
+- ⏳ Qlobal tutucu yalnız istifadəçiyə XƏBƏR verir; istisnadan sonra pəncərənin
+  vəziyyəti qismən yenilənmiş ola bilər (Q-37-də qəbul olunmuş risk) — mesaj
+  işi saxlamağı tövsiyə edir.
+- ⏳ Seans 52-nin hadisə jurnalındakı köhnə çökmələrin (31 avqust – 17 sentyabr)
+  X-1 olduğu sübut olunmayıb; tutucu indi belə hallarda izi `logs/imex2d.log`-a
+  yazacaq.

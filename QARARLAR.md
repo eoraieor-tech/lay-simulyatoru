@@ -1370,3 +1370,48 @@ bağlanmada silinir.
 
 Yeni model qurmaq istəyəndə mane olur, böyük fayl açılışı yavaşladır.
 Əvəzində «Son layihələr» menyusu (5 fayl).
+
+---
+
+## Q-37 — Grid dəyişəndə köhnə nəticə saxlanılır, amma anları çəkilmir; qlobal xəta tutucusu
+
+**Tarix:** 4 oktyabr 2026 · **Kontekst:** X-1 — nəticə ekranda ikən grid
+ölçüsü dəyişəndə proqram çökürdü (bax [ISH_HESABATI.md](ISH_HESABATI.md) →
+Seans 52 §3, Seans 53). Sahibkar düzəlişi istədi («x-1 et»).
+
+### Problem
+
+`rebuild_model()` köhnə nəticəni saxlayırdı, `update_map()` onun anını yeni
+gridin formasına salırdı → `ValueError` → standart `sys.excepthook` ilə
+PyQt5 `qFatal` çağırırdı → proses dayanırdı, loga heç nə yazılmırdı.
+
+### Qərar 1 — nəticə SİLİNMİR, yalnız anları uyğun gridə çəkilir
+
+`SimulationResult.fits_grid(shape)` nəticənin `grid_shape`-ini cari modelin
+gridi ilə tutuşdurur. Uyğun deyilsə: xəritə və 3D statik xassəni göstərir,
+status sətrində səbəb yazılır, anı yazan ixraclar (grid anı CSV, GIF) imtina
+edir. Əyrilər, KPI, günlük cədvəl və sıra ixracları qalır — bu, grid eyni
+qalıb başqa parametr dəyişəndəki davranışla eynidir (orada da köhnə nəticə
+yenidən işə salınana qədər ekranda qalır). Grid əvvəlki ölçüyə qaytarılanda
+anlar yenidən görünür.
+
+Rədd edilən variant: grid dəyişəndə `self.result = None`. Səbəb: əyriləri və
+KPI-ni də ayrıca təmizləmək lazım gələrdi (indi `update_results` nəticə
+olmayanda köhnə əyriləri olduğu kimi saxlayır), sıra ixracları isə yanlış
+olaraq «nəticə yoxdur» deyərdi; üstəlik istifadəçi bir rəqəmi səhvən
+dəyişib geri qaytaranda nəticəni itirərdi.
+
+Eyni hüceyrə sayı, fərqli forma (40×41 ↔ 41×40) da uyğunsuz sayılır —
+orada `reshape` çökməzdi, amma xəritə yanlış olardı.
+
+### Qərar 2 — qlobal `sys.excepthook` (`ui/error_hook.py`)
+
+Tutulmamış istisna `CRITICAL` səviyyədə tam izi ilə loga yazılır və
+istifadəçiyə qısa mesaj göstərilir; proses DAVAM EDİR. `KeyboardInterrupt`
+standart tutucuya ötürülür; mesaj göstərilərkən yeni istisna olsa, yalnız
+loga yazılır (sonsuz dövrə yoxdur). Modul Qt idxal etmir — `QMessageBox`
+`app.py`-də bağlanır.
+
+Risk (qəbul olunur): istisna yarımçıq qalmış əməliyyatdan sonra vəziyyət
+qismən yenilənmiş ola bilər. Buna görə mesaj işi saxlamağı tövsiyə edir.
+Prosesin səssiz ölümündən (və saxlanmamış işin itməsindən) daha yaxşıdır.

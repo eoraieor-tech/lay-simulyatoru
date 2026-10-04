@@ -6,11 +6,11 @@
 
 **Status:** 🟡 İcra planının B1–B6 blokları bitib; **B7 (yekun doğrulama, SPE1)** gedir.
 Cari vəziyyət: [ROADMAP.md](ROADMAP.md) · qalan işlərin siyahısı:
-[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 50 · açıq xətalar (o cümlədən
-bir çökmə, X-1): [ROADMAP.md](ROADMAP.md) → «Açıq xətalar».
+[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 50 · açıq xətalar (X-2, X-3;
+X-1 çökməsi Seans 53-də düzəldildi): [ROADMAP.md](ROADMAP.md) → «Açıq xətalar».
 **Bu repoda sənədləşdirmə:** 10 sentyabr 2026-dan (kod bazası ondan əvvəl mövcud idi —
 bax [AUDIT_2026-09-10.md](AUDIT_2026-09-10.md)).
-**Son yenilənmə:** 1 oktyabr 2026 (Seans 52)
+**Son yenilənmə:** 4 oktyabr 2026 (Seans 53)
 
 ---
 

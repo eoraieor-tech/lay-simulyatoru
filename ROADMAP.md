@@ -5,15 +5,15 @@ Layihənin mərhələləri. Hər mərhələ bitəndə burada işarələnir və
 
 **İşarələr:** ✅ bitib · 🟡 gedir · ⬜ gözləyir · ❌ ləğv olunub
 
-**Son yenilənmə:** 1 oktyabr 2026
+**Son yenilənmə:** 4 oktyabr 2026
 
 ---
 
-> ## 📌 Cari vəziyyət (1 oktyabr 2026, Seans 52)
+> ## 📌 Cari vəziyyət (4 oktyabr 2026, Seans 53)
 >
-> * ⚠️ **Açıq xəta X-1:** nəticə ekranda ikən grid ölçüsü dəyişsə (və ya
->   başqa ölçülü layihə açılsa / GRDECL idxal olunsa) proqram çökür —
->   bax aşağıda «Açıq xətalar». Düzəldilməyib.
+> * ✅ **X-1 düzəldildi** (Seans 53, Q-37): grid ölçüsü dəyişəndə proqram
+>   artıq çökmür; gözlənilməz xəta loga yazılır və istifadəçiyə göstərilir.
+>   X-2, X-3 açıqdır — bax aşağıda «Açıq xətalar».
 > * İcra planının **B1–B6 blokları bitib**; M1–M8 meyarlarından yeganə
 >   natamamı M5-dir (RATE quyusunda THP hesablanmır).
 > * **Aktiv blok: B7** — SPE1CASE2 OPM Flow ilə müqayisədə qaz ~145 gün tez
@@ -329,13 +329,13 @@ qərarı ilə indi düzəldilmir, unudulmasın deyə burada saxlanılır.
 
 ### Açıq xətalar (Seans 52 — proqram işlədilərək tapılıb)
 
-Texniki borcdan fərqli olaraq bunlar istifadəçiyə görünür. Heç biri
-düzəldilməyib — sıra sahibkarın qərarıdır. Təfərrüat və ölçmələr:
-[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 52 §3.
+Texniki borcdan fərqli olaraq bunlar istifadəçiyə görünür. Sıra
+sahibkarın qərarıdır. Təfərrüat və ölçmələr:
+[ISH_HESABATI.md](ISH_HESABATI.md) → Seans 52 §3; X-1-in düzəlişi → Seans 53.
 
 | # | Nə | Ölçülüb | Harada |
 |---|---|---|---|
-| X-1 | **Proqram çökür:** nəticə ekranda ikən NX/NY/NZ dəyişəndə, başqa ölçülü layihə açılanda, GRDECL idxal olunanda. Mesaj yoxdur, loga yazılmır | 5 ssenaridən 4-ü: çıxış kodu `0xC0000409`; `ValueError: cannot reshape array of size 1681 into shape (1,41,40)` | `main_window.py::rebuild_model` köhnə `self.result`-ı təmizləmir → `update_map` → `renderers.py:234`; `app.py`-də `sys.excepthook` yoxdur |
+| X-1 | ✅ **Düzəldildi (Seans 53, Q-37).** Proqram çökürdü: nəticə ekranda ikən NX/NY/NZ dəyişəndə, başqa ölçülü layihə açılanda, GRDECL idxal olunanda. Mesaj yox idi, loga yazılmırdı | əvvəl 5 ssenaridən 4-ü: çıxış kodu `0xC0000409`; düzəlişdən sonra 6 ssenarinin hamısı: çıxış kodu 0 | `SimulationResult.fits_grid` + `MainWindow._snapshot_at`; `ui/error_hook.py` (`sys.excepthook`); `tests/test_stale_result_guard.py` |
 | X-2 | Üç fazalı Nyutonun geri-izləməsi sınaq qalığını dondurulmamış upstream ilə ölçür — cəhdlər 25 iterasiyada ilişir | yığılmayan cəhdlərdə CNV nisbəti düz 0.969; sahibkarın modelində 1500 gündə 1893 iterasiyadan 1305-i boşa gedir. Jakobian düzgündür (≤ 7.3e-05) | `three_phase_newton.py::_damped_update`. Bir sətirlik düzəliş deyil — ikinci uğursuzluq növü ⏳ |
 | X-3 | İki fazalı Nyuton cədvəl SCAL ilə donur | `numune_scal.csv`: 99 cəhddən 33-ü yığılmır (CNV nisbəti 1.000); Corey ilə 0 | səbəb ⏳ |
 

@@ -1,23 +1,23 @@
 # Təhvil-təslim — işi başqa kompüterdə davam etdirmək üçün
 
-**Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 20 sentyabr 2026 (Seans 44), 1 oktyabr 2026 (Seans 51 — başlıq, §1, §2, §7, §8 cari vəziyyətə gətirildi; Seans 52 — §1)
-**Son kod commit-i:** `593023f` (`imex2d/`, 22 sentyabr 2026 — Seans 46; Seans 47–52 yalnız sənəd əlavə etdi)
+**Hazırlanıb:** 16 sentyabr 2026 (Seans 38) · **Yenilənib:** 20 sentyabr 2026 (Seans 44), 1 oktyabr 2026 (Seans 51 — başlıq, §1, §2, §7, §8 cari vəziyyətə gətirildi; Seans 52 — §1), 4 oktyabr 2026 (Seans 53 — X-1 düzəlişi, §1)
+**Son kod commit-i:** Seans 53 — X-1 düzəlişi (`imex2d/`, `app.py`, 4 oktyabr 2026); ondan əvvəlki `593023f` (Seans 46; Seans 47–52 yalnız sənəd əlavə etdi)
 (`git log -1 --format="%h %s" -- imex2d` ilə yoxlayın)
 **Növbəti iş:** SPE1CASE2-nin QALAN fərqi üçün yeni namizəd tapmaq (§5) —
 əsas səbəb (G7) tapılıb və bağlanıb, üç namizəd isə ölçülərək istisna olunub.
 Fizikadan kənar qalan işlərin tam siyahısı: `ISH_HESABATI.md` → Seans 50.
-**Açıq xətalar (X-1 çökmə, X-2, X-3):** `ROADMAP.md` → «Açıq xətalar» · `ISH_HESABATI.md` → Seans 52.
+**Xətalar:** X-1 (çökmə) Seans 53-də düzəldildi; X-2, X-3 açıqdır — `ROADMAP.md` → «Açıq xətalar» · `ISH_HESABATI.md` → Seans 52, 53.
 
 Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI köməkçisi)
 üçündür. Burada yalnız davam etmək üçün LAZIM olanlar var:
 
 | Harada | Nə |
 |---|---|
-| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son: **Seans 52**) |
+| `ISH_HESABATI.md` | hər seansın tam təfərrüatı və ölçmələri (son: **Seans 53**) |
 | `docs/teqdimat/` | təqdimat materialları və onların linkləri (Seans 44) |
 | `docs/nezeri_esaslar.md`, `docs/is_axini_ardicilligi.md` | hər modelin nəzəriyyəsi və icra ardıcıllığı (Seans 47) |
 | `PROJECT_ANALYSIS.md` | 26 sentyabr 2026 texniki analizi, problemlər P-01…P-20 (Seans 48) |
-| `QARARLAR.md` | texniki qərarların səbəbləri (son: **Q-36**) |
+| `QARARLAR.md` | texniki qərarların səbəbləri (son: **Q-37**) |
 | `SPE1.md` | SPE1-in mənbəsi, deck parametrləri, boşluq cədvəli, **§7 səbəb**, **§8 cari müqayisə** |
 | `ROADMAP.md` | mərhələ statusu, texniki borc (TB-1…TB-3), açıq xətalar (X-1…X-3) |
 | `CLAUDE.md` | layihə qaydaları (AI köməkçisi üçün) |
@@ -33,11 +33,11 @@ Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI kö
 |---|---|
 | Budaq | `main` = `origin/main`, açıq budaq yoxdur |
 | Test dəsti | **2762 test toplanır** (1 oktyabr 2026). Son tam qaçışlar: Seans 46 — 2773 keçdi, 1 xfailed (`resdata` olan mühit); Seans 48 və Seans 52 — 2761 keçdi, 1 atlandı, 1 xfailed (`resdata` yoxdur — `test_opm_import.py`-nin 12 testi toplanmır). 9–13 dəqiqə (Seans 52-də paralel yük altında 17 dəqiqə) |
-| Son hesabat bölməsi | **Seans 52** → növbəti yazılacaq: **Seans 53** |
-| Son qərar | **Q-36** → növbəti: **Q-37** |
+| Son hesabat bölməsi | **Seans 53** → növbəti yazılacaq: **Seans 54** |
+| Son qərar | **Q-37** → növbəti: **Q-38** |
 | Aktiv blok | **B7 / SPE1** — əsas fərq bağlandı, qalan ~145 günlük fərqin səbəbi ⏳ |
 
-### Seans 45–52 (21 sentyabr – 1 oktyabr 2026)
+### Seans 45–53 (21 sentyabr – 4 oktyabr 2026)
 
 | Seans | İş | Kod dəyişdi? |
 |---|---|---|
@@ -49,8 +49,9 @@ Bu sənəd işi öz kompüterində davam etdirəcək şəxs (insan və ya AI kö
 | 50 | Bütün sənədlər oxundu — qalan işlərin vahid siyahısı | yox |
 | 51 | Köhnəlmiş sənədlər cari vəziyyətə gətirildi | yox |
 | 52 | Proqram işlədilərək yoxlandı (testlər, 35 ssenari, pəncərə, sahibkarın layihəsi, SPE1); **X-1 çökmə**, X-2, X-3 tapıldı, düzəldilmədi | yox |
+| 53 | **X-1 düzəldildi** (Q-37): köhnə nəticənin anları yalnız öz gridinə çəkilir; qlobal xəta tutucusu (ui/error_hook.py); açılan layihədə 3D zaman sürgüsü qurulur | bəli |
 
-Bu səkkiz seansda fizika mühərrikinə toxunulmayıb (yeganə `imex2d/simulation` dəyişikliyi Seans 45-in debit yazılışıdır, `334fda8`). SPE1 Seans 52-də yenidən ölçüldü: cəbhə fərqi eynidir (blok 300: 1161 / 1307 gün), bəzi rəqəmlər §4-dəkindən bir qədər fərqlidir (376 addım, FOPR 3650-ci gündə 5125) — səbəbi ⏳ ölçülməyib, bax `ISH_HESABATI.md` → Seans 52 §6.
+Bu doqquz seansda fizika mühərrikinə toxunulmayıb (Seans 53-ün `results.py` dəyişikliyi yalnız oxuyan metoddur) (yeganə `imex2d/simulation` dəyişikliyi Seans 45-in debit yazılışıdır, `334fda8`). SPE1 Seans 52-də yenidən ölçüldü: cəbhə fərqi eynidir (blok 300: 1161 / 1307 gün), bəzi rəqəmlər §4-dəkindən bir qədər fərqlidir (376 addım, FOPR 3650-ci gündə 5125) — səbəbi ⏳ ölçülməyib, bax `ISH_HESABATI.md` → Seans 52 §6.
 
 ### Seans 44 (19–20 sentyabr 2026) — təqdimat materialları
 

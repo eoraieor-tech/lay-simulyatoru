@@ -48,9 +48,12 @@ IMEX_SKIP_SLOW=1 python run_tests.py -q
 | `test_cpr.py` | 16 | **A6/5: CPR dekuplinqi, blok-Jakobi, yaddaş üstünlüyü** |
 | `test_volume_rendering.py` | 45 | **3D görüntü: üz çıxarışı, filtr, kəsim, işıqlandırma, baxış** |
 
-Cəmi **2762 test, 137 fayl** (1 oktyabr 2026, `pytest --collect-only` ilə
+Cəmi **2788 test, 138 fayl** (4 oktyabr 2026, `pytest --collect-only` ilə
 sayılıb; `resdata` quraşdırılıbsa `test_opm_import.py`-nin 12 testi də toplanır
-— 2774). Tam dəst 9–13 dəqiqə çəkir.
+— 2800). Tam dəst 9–13 dəqiqə çəkir. Seans 53-də əlavə olunan
+`test_stale_result_guard.py` (26) — X-1 çökməsinin reqressiyası: köhnə
+nəticənin anları yalnız öz gridinə çəkilir, qlobal xəta tutucusu prosesi
+dayandırmır (ayrıca prosesdə PyQt ilə yoxlanılır).
 
 Yuxarıdakı cədvəl yalnız **ilk 26 faylı** göstərir (saylar eyni tarixdə
 yeniləndi). Sonradan əlavə olunan fayllar — geostatistika (`test_variogram*`,
