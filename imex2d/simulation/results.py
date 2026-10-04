@@ -78,6 +78,22 @@ class SimulationResult:
     def final_recovery_factor(self) -> float:
         return self.series.recovery_factor[-1] if self.series.recovery_factor else 0.0
 
+    def fits_grid(self, shape: tuple) -> bool:
+        """Anlar (`snapshots`) `shape` = (nz, ny, nx) formalı grid üçündürmü.
+
+        Seans 53 (X-1): nəticə ekranda ikən grid ölçüsü dəyişəndə köhnə
+        anlar yeni gridin formasına salınırdı → `ValueError` → proqram
+        çökürdü. Anı olmayan nəticə heç bir gridə bağlı deyil. Köhnə
+        nəticələrdə `grid_shape` boş ola bilər — onda hüceyrə sayı
+        müqayisə olunur.
+        """
+        if not self.snapshots:
+            return True
+        shape = tuple(int(n) for n in shape)
+        if self.grid_shape:
+            return tuple(int(n) for n in self.grid_shape) == shape
+        return np.size(self.snapshots[0].pressure) == int(np.prod(shape))
+
     @property
     def breakthrough_time(self):
         for t, wc in zip(self.series.time, self.series.water_cut):

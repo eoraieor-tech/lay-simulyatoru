@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use("Qt5Agg")
 
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from imex2d.application.model_builder import ReservoirModelBuilder
 from imex2d.application.project import Project
@@ -29,6 +29,7 @@ from imex2d.logging_setup import configure as configure_logging
 from imex2d.logging_setup import get_logger
 from imex2d.simulation.linear_solver import ScipyCgIluSolver
 from imex2d.simulation.scal_adapter import CoreyRelativePermeabilityAdapter
+from imex2d.ui import error_hook
 from imex2d.ui.main_window import MainWindow
 from imex2d.ui.style import stylesheet
 
@@ -42,6 +43,10 @@ def main():
     logger.info("IMEX-2D v%s başladıldı  ·  log faylı: %s", VERSION, log_file)
 
     app = QApplication(sys.argv)
+    # X-1 (Seans 53): slotdakı tutulmamış istisna prosesi dayandırmasın —
+    # loga yazılsın və istifadəçiyə göstərilsin (bax `ui/error_hook.py`).
+    error_hook.install(logger, notify=lambda text: QMessageBox.critical(
+        QApplication.activeWindow(), "Gözlənilməz xəta", text))
     app.setStyleSheet(stylesheet())
     app.setFont(QFont("Segoe UI" if sys.platform.startswith("win") else "Sans", 9))
 

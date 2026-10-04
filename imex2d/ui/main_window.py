@@ -86,6 +86,11 @@ from .worker import MatchingWorker, SensitivityWorker, SimulationWorker
 
 LOG = get_logger(__name__)
 
+#: X-1 (Seans 53): nəticə ekranda ikən grid ölçüsü dəyişəndə göstərilir.
+STALE_RESULT_MESSAGE = ("Ekrandakı nəticə əvvəlki grid ölçüsü üçündür — onun "
+                        "xəritələri yeni gridə çəkilmir. Yeni nəticə üçün "
+                        "modeli yenidən işə salın.")
+
 
 class QtLogHandler(logging.Handler):
     """Log mesajlarını jurnal tabına yönləndirir.
@@ -855,10 +860,7 @@ class MainWindow(QMainWindow):
         if self.volume_k_to.value() < self.volume_k_from.value():
             self.volume_k_to.setValue(grid.nz)
 
-        snapshot = None
-        if self.result and self.result.snapshots:
-            snapshot = self.result.snapshots[
-                min(self.volume_time.value(), len(self.result.snapshots) - 1)]
+        snapshot = self._snapshot_at(self.volume_time.value())
 
         key = self.volume_property.currentData()
         values, colormap, low, high = self.map_renderer._select_volume(
@@ -1003,6 +1005,10 @@ class MainWindow(QMainWindow):
         if not self.result or not self.result.snapshots:
             QMessageBox.information(self, "Nəticə yoxdur",
                                     "Əvvəlcə simulyasiyanı işə salın.")
+            return
+        if not self._result_fits_model():
+            QMessageBox.information(self, "Nəticə başqa grid üçündür",
+                                    STALE_RESULT_MESSAGE)
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Animasiyanı saxla", "animasiya.gif", "GIF (*.gif)")
@@ -1765,12 +1771,37 @@ class MainWindow(QMainWindow):
         # axınında artıq HƏLL OLUNMUŞ problemin mesajı status sətrində
         # qalır və istifadəçini yanıldır.
         self.statusBar().clearMessage()
+        if self.result is not None and not self._result_fits_model():
+            # X-1: köhnə nəticə SAXLANILIR (əyrilər, ixrac), amma onun
+            # anları yeni gridə çəkilmir — istifadəçi səbəbini görsün.
+            self.statusBar().showMessage(STALE_RESULT_MESSAGE)
         self.refresh_tree()
         self._refresh_provenance_choices()
         self.update_scal_plot()
         self.update_pvt_plot()
         self.update_map()
         self.update_volume()
+
+    def _result_fits_model(self) -> bool:
+        """Ekrandakı nəticənin anları cari modelin gridinə aiddirmi (X-1)."""
+        if self.result is None or self.reservoir_model is None:
+            return True
+        return self.result.fits_grid(self.reservoir_model.grid.shape)
+
+    def _snapshot_at(self, index: int):
+        """Xəritə / 3D üçün an — yalnız cari gridə uyğun gələndə.
+
+        Seans 53 (X-1): grid ölçüsü dəyişəndə (NX/NY/NZ, başqa ölçülü
+        layihə, GRDECL idxalı) köhnə nəticənin anı yeni gridin formasına
+        salınırdı və `ValueError` proqramı çökdürürdü. İndi belə anda
+        `None` qaytarılır — xəritə modelin statik xassəsini göstərir.
+        """
+        if not self.result or not self.result.snapshots:
+            return None
+        if not self._result_fits_model():
+            return None
+        snapshots = self.result.snapshots
+        return snapshots[max(0, min(index, len(snapshots) - 1))]
 
     def _status_cell_mask(self):
         """Status filtrinin bool maskası (`None` — filtr yoxdur).
@@ -2224,9 +2255,7 @@ class MainWindow(QMainWindow):
     def update_map(self):
         if not getattr(self, "_ready", False) or self.reservoir_model is None:
             return
-        snapshot = None
-        if self.result and self.result.snapshots:
-            snapshot = self.result.snapshots[self.slider.value()]
+        snapshot = self._snapshot_at(self.slider.value())
 
         grid = self.reservoir_model.grid
         mode = self.view_mode.currentData()
@@ -2637,6 +2666,13 @@ class MainWindow(QMainWindow):
             self._set_playback_enabled(True)
             self.slider.setRange(0, len(self.result.snapshots) - 1)
             self.slider.setValue(len(self.result.snapshots) - 1)
+            # Seans 53: 3D zaman sürgüsü də `_on_finished`-dəki kimi qurulur —
+            # əvvəl açılan layihədə o söndürülmüş qalırdı və 3D ya ilk anı,
+            # ya da əvvəlki nəticənin indeksini göstərirdi (ölçüldü: xəritə
+            # 50-ci gün, 3D 8-ci gün).
+            self.volume_time.setEnabled(True)
+            self.volume_time.setRange(0, len(self.result.snapshots) - 1)
+            self.volume_time.setValue(len(self.result.snapshots) - 1)
         # Nəticə 3D anlar OLMADAN da göstərilir: əvvəl `update_results`
         # yalnız anlar varsa çağırılırdı və «nəticəsiz» saxlanmış layihədə
         # qrafiklər də, günlük cədvəl də boş qalırdı (Seans 46).
@@ -2899,6 +2935,10 @@ class MainWindow(QMainWindow):
     def export_snapshot(self):
         if not self.result or self.reservoir_model is None:
             QMessageBox.information(self, "Nəticə yoxdur", "Əvvəlcə modeli işə salın.")
+            return
+        if not self._result_fits_model():
+            QMessageBox.information(self, "Nəticə başqa grid üçündür",
+                                    STALE_RESULT_MESSAGE)
             return
         path, _ = QFileDialog.getSaveFileName(self, "Grid anını yaz", "grid.csv",
                                               "CSV (*.csv)")
